@@ -44,6 +44,11 @@ function renderPad(s){
  $('lb-status').textContent=c.paused?'动作暂停 · 接管保留':c.controller!=='online'?'尚未开启接管':c.armed?'LB按住 · 允许小步':'LB松开 · 等待使能';
  $('expected-action').textContent=c.paused?'排除故障后松开LB、B与方向键，点“恢复动作”。':c.controller!=='online'?'先开启接管；按手柄仍会显示输入，但不会移动。':c.armed?'点按 ↑/↓ 移动一小步；←/→ 选关节；B停止本次动作。':'接管仍开启。按住LB后点按方向键，松开LB即保持姿态。';
  $('axes').textContent='摇杆及扳机只显示输入，未绑定移动';$('buttons').textContent=`${p.buttons?.filter(Boolean).length||0} 个按下`;
+ if(s.control_profile?.startsWith('original_')){
+  $('lb-status').textContent='当前为原版Xbox映射 · LB/RB切腕姿';
+  $('expected-action').textContent='请进入原版整机控制页面。B控制头部，Menu暂停，View结束接管。';
+  $('axes').textContent='摇杆和扳机已按原版映射绑定，不是旧单关节点按模式';
+ }
  $('button-grid').innerHTML=(s.control_map||[]).filter(m=>m.index!==null&&m.index!==undefined).map(m=>`<span class="${mappingPressed(m,s)?'pressed':''}"><b>${esc(m.name)}</b><em>${esc(mappingValue(m,s))}</em></span>`).join('');
  $('axis-grid').innerHTML=Array.from({length:6},(_,i)=>{const v=p.axes?.[i]??0;return `<label>${esc(p.axis_labels?.[i]||['左X','左Y','右X','右Y','LT','RT'][i])}<b>${connected?v.toFixed(2):'—'}</b><meter min="${i>=4?0:-1}" max="1" value="${v}"></meter></label>`;}).join('');
  const h=p.hat||[0,0];$('hat-state').textContent=`十字键 X=${h[0]} Y=${h[1]}`;
@@ -54,7 +59,7 @@ function consumeInput(batch,allowNavigation){
  for(const e of batch){
   if(e.kind!=='input')continue;
   const buttons=e.buttons||[];
-  if(e.connected&&previousUiButtons&&Date.now()-new Date(e.time).getTime()<1500&&allowNavigation){
+  if(e.connected&&previousUiButtons&&Date.now()-new Date(e.time).getTime()<1500&&allowNavigation&&!latestStatus?.control_profile?.startsWith('original_')){
    const edge=i=>buttons[i]&&!previousUiButtons[i];
    buttons.forEach((pressed,i)=>{if(pressed&&!previousUiButtons[i])recentPress.set(i,Date.now());});
    // Consume native event edges so even a short tap between HTTP polls works.
@@ -111,6 +116,7 @@ function render(s){
  const ready=online===2&&motors.length===16&&padReady&&s.calibration.exists&&confirmed&&!lbHeld;
  $('controller-state').textContent=active?(paused?'接管保留 · 动作暂停':'接管已开启'):'接管未开启';
  $('session-description').textContent=active?(paused?c.pause_reason:'由你主动结束。松开LB或触限只影响当前动作，接管继续保留。'):'开启接管不会自动移动；按住LB后，方向键才允许发送小步。';
+ if(active&&s.control_profile?.startsWith('original_'))$('session-description').textContent='原版Xbox接管正在运行，请进入原版整机控制页；旧单关节说明不适用。';
  $('start-controller').hidden=active;$('start-controller').disabled=commandBusy||!ready;
  $('stop-controller').disabled=commandBusy||!active;$('resume-controller').hidden=!paused||!active;
  $('resume-controller').disabled=commandBusy||!padReady||!!s.gamepad.buttons?.[4]||!!s.gamepad.buttons?.[1]||s.gamepad.hat?.some(Boolean);

@@ -152,8 +152,10 @@ class SO101Kinematics:
         theta2 = joint3_rad - theta2_offset
         
         # Forward kinematics calculations
-        x = l1 * math.cos(theta1) + l2 * math.cos(theta1 + theta2 - math.pi)
-        y = l1 * math.sin(theta1) + l2 * math.sin(theta1 + theta2 - math.pi)
+        # IK defines theta2 as the elbow bend from the upper-link direction.
+        # Its second link points at theta1 - theta2, not theta1+theta2-pi.
+        x = l1 * math.cos(theta1) + l2 * math.cos(theta1 - theta2)
+        y = l1 * math.sin(theta1) + l2 * math.sin(theta1 - theta2)
         
         return x, y
 

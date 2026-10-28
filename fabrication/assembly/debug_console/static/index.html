@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>XLeRobot · 控制映射台</title><link rel="stylesheet" href="/static/mapping.css?v=22"></head>
-<body><main class="desk">
+<body><main class="desk"><p><a href="/original">进入原版Xbox整机控制 ↗</a> · 当前为旧单关节点按调试</p>
 <header class="masthead"><div><p class="eyebrow">XLeRobot / HARDWARE DESK</p><h1>让每个按键<span>都有回音。</span></h1></div><div class="live-id"><i></i><span id="readiness-updated">正在连接</span><small id="input-source">Windows XInput</small></div></header>
 <section class="session-dock" aria-label="接管状态"><div><span class="label">接管会话</span><strong id="controller-state">未开启</strong><p id="session-description">启动后仍需按住LB；选择关节不会自动移动。</p></div>
 <div class="session-actions"><button id="start-controller" class="primary" aria-describedby="blocker" disabled>开启受限接管</button><button id="resume-controller" hidden>恢复动作</button><button id="stop-controller" class="outline" disabled>结束接管</button></div><div class="session-readiness"><div class="confirmations"><label><input type="checkbox" id="wheels-lifted">机械臂周围安全，线路无拉扯</label><label><input type="checkbox" id="map-confirmed">仅做现有限位内的小范围单关节测试</label></div><p id="blocker" role="status">正在检查开启条件…</p><p id="controller-message" role="status" class="command-message"></p></div></section>

@@ -6,8 +6,14 @@ $python = Join-Path $repo '.venv-debug\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python)) { throw '缺少 .venv-debug，请按 README 初始化只读调试环境。' }
 $listener = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
 if ($listener) {
-    $status = Invoke-RestMethod 'http://127.0.0.1:8765/api/status' -TimeoutSec 3
-    if ($status.version -notlike '2.*') {
+    try { $status = Invoke-RestMethod 'http://127.0.0.1:8765/api/status' -TimeoutSec 3 }
+    catch {
+        # A just-stopped process can leave a stale listener observation briefly.
+        Start-Sleep -Milliseconds 250
+        $listener = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
+        if ($listener) { throw '8765仍有监听但HTTP未响应；请检查占用进程，不会强制释放。' }
+    }
+    if ($listener -and $status.version -notmatch '^[23]\.\d') {
         throw '8765 正运行旧版或其他服务。请先运行同目录 stop.ps1，再启动。'
     }
 }

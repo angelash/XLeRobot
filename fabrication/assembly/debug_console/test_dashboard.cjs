@@ -95,3 +95,11 @@ for(const [filter,count] of [['important',2],['all',3],['input',1],['motion',1],
 }
 intervals.find(x=>x.ms===700).fn();assert.equal(requests.length,before,'No heartbeat from stale status');
 console.log('Dashboard PASS: actual HTML IDs, 22 mappings, diagram inspection, live LB, limits, paused/resume gates, UI shortcuts, telemetry, stale input, log filters');
+
+context.sample.control_profile='original_preview';render();
+assert.match(node('lb-status').textContent,/LB\/RB切腕姿/);
+const scrollBefore=node('feedback-card').scrolled;
+context.inputEvents=[{kind:'input',connected:true,buttons:Array(17).fill(false),time:new Date().toISOString()},
+ {kind:'input',connected:true,buttons:[true,...Array(16).fill(false)],time:new Date().toISOString()}];
+vm.runInContext('consumeInput(inputEvents,true)',context);
+assert.equal(node('feedback-card').scrolled,scrollBefore,'Old tab must not reinterpret original A as UI navigation');

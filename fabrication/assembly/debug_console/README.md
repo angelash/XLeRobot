@@ -1,3 +1,9 @@
+# XLeRobot 本机控制台
+
+默认入口已切换为[原版Xbox整机控制](http://127.0.0.1:8765/original)，说明见[ORIGINAL_XBOX_ZH.md](ORIGINAL_XBOX_ZH.md)。默认运动学预览，实机按通道开放。LB/RB现在切腕姿，B控制头部，Menu暂停，View结束接管。
+
+旧单关节点按保留于http://127.0.0.1:8765/diagnostic，以下说明仅适用于旧点按模式，不能与原版映射混用。
+
 # XLeRobot 本机调试与控制映射台 v2.1
 
 地址：http://127.0.0.1:8765 。启动 `start.ps1`，停止 `stop.ps1`。

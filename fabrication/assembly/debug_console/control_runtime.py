@@ -18,6 +18,7 @@ from .torque_control import TorqueSession, EXPECTED, read_registers, word, write
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = ROOT / "evidence" / dt.date.today().isoformat()
+if os.environ.get('XLEROBOT_PREVIEW_ONLY')=='1':LOG_DIR=LOG_DIR/'original-preview'
 PROFILE = ROOT / "device-calibration.json"
 BUTTON_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'View', 'Menu', 'LS', 'RS', 'LT', 'RT',
                 '十字键上', '十字键下', '十字键左', '十字键右', 'Xbox']
@@ -122,15 +123,15 @@ class ControlRuntime:
         while not self.stop_event.is_set():
             try:
                 with self.io:
+                    self.check_watchdog()
                     self.scan()
                     if self.profile is None:
                         self.capture_profile()
-                    self.check_watchdog()
                     if self.pending:
                         self._check_feedback()
             except Exception as exc:
                 with self.io:
-                    if self.controller['controller']=='online':
+                    if self.controller['controller']=='online' and getattr(self,'control_profile','diagnostic')!='original_preview':
                         self._pause('通信异常：'+str(exc))
                     old_error=self.controller.get('error')
                     self.controller['error']=str(exc)

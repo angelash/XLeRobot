@@ -12,10 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .control_runtime import ControlRuntime, LOG_DIR
 from .control_mapping import CONTROL_MAP
+from .original_mapping import ORIGINAL_MAP
+from .original_runtime import OriginalRuntime, PreviewRuntime
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-runtime = ControlRuntime()
+runtime = PreviewRuntime() if os.environ.get('XLEROBOT_PREVIEW_ONLY')=='1' else OriginalRuntime()
 
 @asynccontextmanager
 async def lifespan(app):
@@ -29,7 +31,7 @@ app.mount('/static',StaticFiles(directory=STATIC),name='static')
 @app.middleware('http')
 async def local_requests(request: Request, call_next):
     origin=request.headers.get('origin')
-    if request.method=='POST' and origin and origin not in ('http://127.0.0.1:8765','http://localhost:8765'):
+    if request.method=='POST' and origin and origin not in ('http://127.0.0.1:8765','http://localhost:8765','http://127.0.0.1:8766','http://localhost:8766'):
         from fastapi.responses import JSONResponse
         return JSONResponse({'detail':'Only this local console may send commands'},status_code=403)
     response=await call_next(request)
@@ -38,11 +40,41 @@ async def local_requests(request: Request, call_next):
 
 @app.get('/')
 def index():
+    return FileResponse(STATIC/'original.html')
+
+@app.get('/diagnostic')
+def diagnostic_index():
     return FileResponse(STATIC/'index.html')
 
 @app.get('/api/status')
 def status():
-    return {**runtime.snapshot(),'server_pid':os.getpid(),'control_map':CONTROL_MAP}
+    return {**runtime.snapshot(),'server_pid':os.getpid(),'control_map':ORIGINAL_MAP if getattr(runtime,'control_profile','diagnostic')!='diagnostic' else CONTROL_MAP}
+
+@app.get('/original')
+def original_index():
+    return FileResponse(STATIC/'original.html')
+
+@app.get('/api/original/status')
+def original_status():
+    return {**runtime.snapshot(),'control_map':ORIGINAL_MAP,
+            'preview_only':isinstance(runtime,PreviewRuntime)}
+
+class OriginalStartCommand(BaseModel):
+    target:str='preview'
+    confirmed:bool=False
+
+@app.post('/api/original/start')
+def start_original(payload:OriginalStartCommand):
+    try:return {'controller':runtime.begin_original(payload.target,payload.confirmed)}
+    except Exception as exc:raise HTTPException(409,str(exc)) from exc
+
+@app.post('/api/original/pause')
+def pause_original():
+    with runtime.io:
+        if getattr(runtime,'control_profile','diagnostic')=='diagnostic':raise HTTPException(409,'当前为单关节调试，请使用该页面的停止操作')
+        if runtime.controller['controller']!='online':raise HTTPException(409,'接管尚未开启')
+        runtime._pause('页面暂停动作，接管保留')
+        return {'controller':runtime.controller.copy()}
 
 @app.get('/api/events')
 def events(after: int=0):
