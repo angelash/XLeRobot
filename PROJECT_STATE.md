@@ -25,6 +25,7 @@ status: active
 - 用户确认后续维护仓库为 `git@github.com:angelash/XLeRobot.git`，并要求后续工程修改提交并推送。
 - 已将原 `origin` 重命名为 `upstream`，将 `origin` 切换为维护仓库，并把本地 `main` 跟踪 `origin/main`。核验两仓库起始提交均为 `b017b5e6354bd9f61f4247a920c72622ca0aade0`。
 - 本次提交范围是本地工程与硬件台账、仿真、制造和只读/受限控制改进；运行时状态、日志、虚拟环境和临时相机截图不入库。
+- 首次维护提交 `206d1af64433635dbe285a0661b287d2acaec8cf` 已推送到 `origin/main`，并以 GitHub 与 SSH 两种引用查询确认远端指向该提交；GitHub API 核验仓库为公开仓库、默认分支 `main`。
 
 ## 用户已有设备台账
 
