@@ -85,7 +85,11 @@ function renderReadiness(data) {
   $('torque-state').textContent = liveTorqueCount ? `${liveTorqueCount} ON` : 'OFF';
   if ($('summary-torque')) $('summary-torque').textContent = liveTorqueCount ? String(liveTorqueCount) : 'OFF';
   if ($('summary-torque-note')) $('summary-torque-note').textContent = liveTorqueCount ? '当前位置保持中' : '保持位置后使能';
-  if ($('torque-message') && data.torque_control?.message) $('torque-message').textContent = data.torque_control.message;
+  if ($('torque-message') && data.torque_control?.message) {
+    $('torque-message').textContent = liveTorqueCount && data.torque_control.message === '扭矩关闭'
+      ? `${liveTorqueCount} 个舵机实际保持中`
+      : data.torque_control.message;
+  }
   $('active-joint').textContent = controller.active_joint || controller.selected_joint || '—';
   $('last-action').textContent = controller.last_action || '尚无动作';
   $('controller-time').textContent = controller.updated_at ? new Date(controller.updated_at).toLocaleTimeString('zh-CN') : '控制器未启动';
