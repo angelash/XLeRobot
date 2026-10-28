@@ -12,7 +12,7 @@ def guide(id,title,kicker,summary,diagram,steps,sources,limits,category='操作�
 
 GUIDES=[
  guide('start','从连接到第一次动作','START HERE','先知道自己控制的是实机还是预览，再把每一次输入变成可解释的反馈。','bringup',[
-  ['连接与观测','两块CH343控制板应枚举为COM3与COM4；设备页显示各8个电机。三路UVC相机分别识别头部、左腕、右腕，物理对应仍需要实际遮挡确认。'],
+  ['连接与观测','两块CH343控制板按USB序列号识别，逻辑COM3/COM4分别表示左臂与右臂总线；Windows实际端口可以不同。设备页各8个电机；三路UVC的物理对应需遮挡确认。'],
   ['选择控制目标','控制中心默认运动学预览。先让手柄全部回中，确认目标再开启。切换目标前由你主动结束旧接管。'],
   ['小范围实机','实机通道依赖实际行程、扭矩/模式和标定。触限保留接管；Menu暂停，View结束。不要把预览图中的末端位置当作实测。'],
   ['建立可重复的任务','固定相机、物体和篮子位置。先录制一次状态轨迹，检查动作，再进入训练数据采集。']],
@@ -81,13 +81,13 @@ GUIDES=[
   ['与实机对齐','统一关节符号、零位、安装变换、夹爪长度与双轮模型。旧三全向轮模型不能充当当前双轮行走验收。']],
  ['simulation/mujoco/README.md','simulation/mujoco/CANDIDATE_SCHEMES.md',SIM+'index.md',SIM+'simdemos.md'],
  '沙盒为运动学，不含动力学与碰撞；RL完整整机训练在上游仍以外部项目或后续工作为主。',image='pick'),
- guide('mobile','不在车上放笔记本','DISTRIBUTED ROBOT','手机做终端，网关管设备，家中台式机处理模型。','architecture',[
-  ['手机终端','浏览器显示状态、相机、任务与语音入口；不让手机网页直接冒充两路USB串口主机。'],
-  ['本地网关','一个串口所有者服务管理双板和三相机，执行低层限速、保持与断网停车。原仓库提供host/client与ZeroMQ分层。'],
-  ['家庭台式机','处理训练、视觉与异步策略推理；策略断连时网关独立停止，不依赖大模型判断安全。'],
-  ['当前平台','本版先在本机环回地址提供工作台，通过网关桥接现有控制服务。不自动暴露公网或修改路由器。']],
- ['PROJECT_ARCHITECTURE.md','software/src/robots/xlerobot_2wheels/xlerobot_2wheels_host.py','web_control/README.md'],
- '当前URL只供本机访问；远程部署需另做认证、视频传输和网络验收。'),
+ guide('mobile','车载Windows中控与远程部署','ONBOARD WINDOWS','按2026-10-29新方案：笔记本放上机器人，远程工作端管理部署与平台。','architecture',[
+  ['车载笔记本','准备Windows x64运行环境、FFmpeg和独立虚拟环境。新机配置待确认，先运行隔离预览，不自动开启扭矩或接管。'],
+  ['设备身份','同一控制板按USB序列号识别，保留左右臂逻辑角色；新Windows的实际COM号可不同。手柄要连接到车载电脑，相机顺序重新核对。'],
+  ['远程工作端','通过Windows OpenSSH密钥登录；同一局域网直连，跨网可用Tailscale。SSH隧道在工作端18770访问远端Studio，服务仍只绑定环回地址。'],
+  ['算力与终端扩展','新机承担设备中控，家中台式机可按需要提供训练或推理算力。原手机终端方案保留为可选扩展，当前优先车载Windows路线。']],
+ ['deployment/windows/README_ZH.md','PROJECT_ARCHITECTURE.md','web_control/README.md'],
+ '新机尚未就绪，远程连通和硬件链路待现场验收。迁移不会恢复旧在线接管或自动应用历史标定。'),
  guide('assembly','拼装、清点与硬件维护','HARDWARE HANDBOOK','把本机装配记录和原厂说明一起放进工作台。','bringup',[
   ['先看本机装配指南','按已到货设备和双轮布局逐步安装，阻断件优先清点，螺丝等小件在实际装配中排查。'],
   ['核对身份','COM3为左臂与头部1–8，COM4为右臂1–6和双轮9/10。旧上游图文可能展示三轮7/8/9布局，不能照图改ID。'],
@@ -131,7 +131,7 @@ CAPABILITIES=[
  dict(id='rl',title='强化学习与Sim2Real',group='learning',state='reference',route='learning',guide='simulation',summary='外部单臂教程与研究参考，不是已接通的整机训练。',sources=[DOC+'RL.md',DOC+'RL_VLA.md']),
  dict(id='navigation',title='ROS 2与移动导航',group='application',state='reference',route='manual',guide='navigation',summary='社区导航/MoveIt入口；需要额外定位与规划集成。',sources=['docs/zh/source/relatedworks/index.md']),
  dict(id='fabrication',title='拼装、CAD与打印',group='hardware',state='guide',route='manual',guide='fabrication',summary='本机装配记录、原厂指南、结构改造及采购规范。',sources=['fabrication/assembly/ASSEMBLY_GUIDE_ZH.md','simulation/mujoco/CANDIDATE_SCHEMES.md']),
- dict(id='distributed',title='手机、网关、台式机',group='application',state='guide',route='manual',guide='mobile',summary='原host/client与Web控制能力，兼顾无车载笔记本要求。',sources=['PROJECT_ARCHITECTURE.md','web_control/README.md']),
+ dict(id='distributed',title='车载Windows与远程工作端',group='application',state='guide',route='manual',guide='mobile',summary='新笔记本中控、SSH部署、加密Web隧道与可选台式机算力。',sources=['deployment/windows/README_ZH.md','PROJECT_ARCHITECTURE.md']),
 ]
 MEDIA={
  'robot':'docs/zh/source/_static/WechatIMG1826-removebg-preview.png',

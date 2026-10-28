@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import serial
+from .serial_identity import resolve_ports
 
 
 PORTS = ("COM3", "COM4")
@@ -107,12 +108,18 @@ class TorqueSession:
         self.ports: dict[str, serial.Serial] = {}
 
     def open(self) -> None:
+        actual = resolve_ports()
         for name in PORTS:
             if name in self.ports and self.ports[name].is_open:
+                if self.ports[name].port != actual[name]:
+                    raise RuntimeError(f'{name} USB路径发生变化，请等待监控关闭旧连接后重连')
                 continue
-            port = serial.Serial(port=name, baudrate=BAUD, timeout=0.12, write_timeout=0.12)
+            # Set modem lines before opening, keeping the original no-reset intent.
+            port = serial.Serial(port=None, baudrate=BAUD, timeout=0.12, write_timeout=0.12)
             port.dtr = False
             port.rts = False
+            port.port = actual[name]
+            port.open()
             self.ports[name] = port
 
     def close(self) -> None:

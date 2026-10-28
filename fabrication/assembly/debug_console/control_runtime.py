@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from .torque_control import TorqueSession, EXPECTED, read_registers, word, write_register
+from .serial_identity import EXPECTED_SERIALS, resolve_ports
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = ROOT / "evidence" / dt.date.today().isoformat()
@@ -23,7 +24,6 @@ PROFILE = ROOT / "device-calibration.json"
 BUTTON_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'View', 'Menu', 'LS', 'RS', 'LT', 'RT',
                 '十字键上', '十字键下', '十字键左', '十字键右', 'Xbox']
 JOINT_LABELS = ['肩水平', '肩抬升', '肘', '腕俯仰', '腕旋转', '夹爪']
-EXPECTED_SERIALS = {'COM3': '5B61034756', 'COM4': '5B61034338'}
 
 
 def now() -> str:
@@ -94,11 +94,7 @@ class ControlRuntime:
         threading.Thread(target=self._pad_loop,daemon=True,name='gamepad-owner').start()
 
     def _check_ports(self):
-        import serial.tools.list_ports
-        ports={p.device:p.serial_number for p in serial.tools.list_ports.comports()}
-        for name, identity in EXPECTED_SERIALS.items():
-            if ports.get(name) != identity:
-                raise RuntimeError(f'{name} 身份不匹配：预期 {identity}，当前 {ports.get(name)}')
+        return resolve_ports()
 
     def scan(self):
         self._check_ports()
@@ -116,7 +112,8 @@ class ControlRuntime:
                                'goal_velocity':word(r,46),'voltage':r[62]/10,'temperature':r[63],
                                'min':word(r,9),'max':word(r,11),'homing_raw':word(r,31),
                                'load_raw':word(r,60),'status':r[65],'error':0})
-            ports.append({'port':name,'connected':True,'error':None,'motor_count':len(motors),'motors':motors})
+            ports.append({'port':name,'physical_port':getattr(self.session.ports[name],'port',name),
+                          'connected':True,'error':None,'motor_count':len(motors),'motors':motors})
         self.report={'ports':ports,'updated_at':now()}
 
     def _monitor(self):

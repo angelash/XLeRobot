@@ -267,7 +267,10 @@ app.mount('/assets',StaticFiles(directory=STATIC),name='platform-assets')
 @app.middleware('http')
 async def local_only(request,call_next):
     origin=request.headers.get('origin')
-    if request.method not in ('GET','HEAD') and origin and origin not in ('http://127.0.0.1:8770','http://localhost:8770'):
+    if request.method not in ('GET','HEAD') and origin and origin not in (
+        'http://127.0.0.1:8770','http://localhost:8770',
+        'http://127.0.0.1:18770','http://localhost:18770',  # SSH loopback tunnel
+    ):
         return Response('Only this local workbench may change state',403)
     response=await call_next(request)
     response.headers['Cache-Control']='no-store'

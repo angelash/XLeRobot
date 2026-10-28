@@ -140,3 +140,4 @@ fabrication/assembly/debug_console/original-preview.pid
 fabrication/assembly/debug_console/platform-data/
 fabrication/assembly/debug_console/platform.*.log
 fabrication/assembly/debug_console/platform.pid
+.local-deploy/
