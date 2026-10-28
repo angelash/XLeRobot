@@ -1,0 +1,31 @@
+.readiness,.runtime{margin-top:28px;animation:rise .55s .25s ease both}
+.readiness-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;border:1px solid var(--line);background:var(--line)}
+.readiness-grid article{background:rgba(246,248,240,.82);padding:16px 18px;display:grid;gap:7px}
+.readiness-grid b,.runtime-grid span,.command-strip,.form-check{font-size:12px;color:var(--muted)}
+.readiness-grid strong,.runtime-grid strong{font:500 18px/1.25 "IBM Plex Mono",monospace;color:var(--ink);overflow-wrap:anywhere}
+.readiness-grid p{margin:0;font-size:12px;line-height:1.6;color:var(--muted)}
+.readiness-grid article.ok{background:var(--acid)}
+.readiness-grid article.blocked{background:#ffe0d8}
+.blocker{margin:11px 0 0;padding:10px 13px;background:rgba(246,248,240,.72);border-left:4px solid var(--orange);font-size:13px}
+.runtime-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.runtime-grid article{display:grid;gap:8px;padding:14px 16px;background:rgba(246,248,240,.82)}
+.command-strip{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}
+.command-strip button{font:500 12px "IBM Plex Mono",monospace;border:1px solid var(--ink);background:var(--paper);padding:9px 12px;cursor:pointer}
+.command-strip button:hover{background:var(--acid)}
+.command-strip button:disabled{opacity:.45;cursor:not-allowed}
+.command-strip button:disabled:hover{background:var(--paper)}
+.command-strip span{flex:1;min-width:220px}
+.form-check{display:flex;gap:9px;align-items:flex-start;margin-top:10px;line-height:1.5}
+.form-check input{width:18px;height:18px;accent-color:var(--ink)}
+.bringup{margin-top:28px;animation:rise .55s .3s ease both}
+.bringup-list{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;list-style:none;margin:0;padding:1px;background:var(--line);border:1px solid var(--line)}
+.bringup-list li{background:rgba(246,248,240,.82)}
+.checkline{display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:start;padding:18px;cursor:pointer}
+.checkline input{width:19px;height:19px;margin:2px 0;accent-color:var(--ink)}
+.checkline span{display:grid;gap:7px}
+.checkline b{font:400 22px/1.1 "ZCOOL QingKe HuangYou",sans-serif}
+.checkline small{color:var(--muted);font-size:12px;line-height:1.65}
+.checkline em{color:#4d5a51;font:500 10px/1.5 "IBM Plex Mono",monospace;font-style:normal;text-transform:uppercase}
+.checkline:has(input:checked){background:var(--acid)}
+@media(max-width:900px){.bringup-list,.readiness-grid{grid-template-columns:1fr}.runtime-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.runtime-grid{grid-template-columns:1fr}.command-strip button{width:100%}}

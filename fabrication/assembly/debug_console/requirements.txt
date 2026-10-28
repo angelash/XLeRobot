@@ -1,0 +1,5 @@
+fastapi>=0.116,<0.117
+uvicorn>=0.29,<0.30
+opencv-python>=4.5
+pyserial==3.5
+pygame==2.6.1

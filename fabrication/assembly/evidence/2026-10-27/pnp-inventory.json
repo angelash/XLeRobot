@@ -1,0 +1,110 @@
+[
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "USB Composite Device",
+    "InstanceId": "USB\\VID_1532&PID_00B2\\6&322D22AD&1&1"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "USB Composite Device",
+    "InstanceId": "USB\\VID_05A3&PID_9230\\6&5DE5133&1&1"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "通用 SuperSpeed USB 集线器",
+    "InstanceId": "USB\\VID_05E3&PID_0626\\5&304F97A6&0&18"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "通用 SuperSpeed USB 集线器",
+    "InstanceId": "USB\\VID_05E3&PID_0626\\5&304F97A6&0&19"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "USB Composite Device",
+    "InstanceId": "USB\\VID_05A3&PID_9230\\USB2.0_CAM1"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "Intel(R) USB 3.20 可扩展主机控制器 - 1.20 (Microsoft)",
+    "InstanceId": "PCI\\VEN_8086&DEV_7A60&SUBSYS_381317AA&REV_11\\3&11583659&4&A0"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "G610",
+    "InstanceId": "USB\\VID_046D&PID_C338\\098B31663830"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "USB Composite Device",
+    "InstanceId": "USB\\VID_05A3&PID_9230\\5&304F97A6&0&13"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "USB 根集线器(USB 3.0)",
+    "InstanceId": "USB\\ROOT_HUB30\\4&17C8E206&0&0"
+  },
+  {
+    "Status": "OK",
+    "Class": "Camera",
+    "FriendlyName": "Integrated Camera",
+    "InstanceId": "USB\\VID_5986&PID_118A&MI_00\\6&14EC10AA&0&0000"
+  },
+  {
+    "Status": "OK",
+    "Class": "Camera",
+    "FriendlyName": "USB2.0_CAM1",
+    "InstanceId": "USB\\VID_05A3&PID_9230&MI_00\\6&2F4CC1D1&0&0000"
+  },
+  {
+    "Status": "OK",
+    "Class": "Camera",
+    "FriendlyName": "USB2.0_CAM1",
+    "InstanceId": "USB\\VID_05A3&PID_9230&MI_00\\6&37E57649&0&0000"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "USB Composite Device",
+    "InstanceId": "USB\\VID_5986&PID_118A\\0001"
+  },
+  {
+    "Status": "OK",
+    "Class": "Camera",
+    "FriendlyName": "USB2.0_CAM1",
+    "InstanceId": "USB\\VID_05A3&PID_9230&MI_00\\7&2F563928&0&0000"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "通用 USB 集线器",
+    "InstanceId": "USB\\VID_05E3&PID_0610\\5&304F97A6&0&4"
+  },
+  {
+    "Status": "OK",
+    "Class": "USB",
+    "FriendlyName": "通用 USB 集线器",
+    "InstanceId": "USB\\VID_05E3&PID_0610\\5&304F97A6&0&8"
+  },
+  {
+    "Status": "OK",
+    "Class": "Ports",
+    "FriendlyName": "USB-Enhanced-SERIAL CH343 (COM4)",
+    "InstanceId": "USB\\VID_1A86&PID_55D3\\5B61034338"
+  },
+  {
+    "Status": "OK",
+    "Class": "Ports",
+    "FriendlyName": "USB-Enhanced-SERIAL CH343 (COM3)",
+    "InstanceId": "USB\\VID_1A86&PID_55D3\\5B61034756"
+  }
+]

@@ -1,0 +1,90 @@
+{
+  "timestamp": "2026-10-27T18:22:53.738605+08:00",
+  "mode": "three simultaneous external camera streams, no saved frames",
+  "cameras": [
+    {
+      "external_camera_number": 0,
+      "returncode": 0,
+      "log": "Input #0, dshow, from 'video=USB2.0_CAM1':\n  Duration: N/A, start: 379896.190115, bitrate: N/A\n  Stream #0:0: Video: mjpeg (Baseline) (MJPG / 0x47504A4D), yuvj422p(pc, bt470bg/bt709/unknown), 640x480, 30 fps, 30 tbr, 10000k tbn, start 379896.190115\nStream mapping:\n  Stream #0:0 -> #0:0 (mjpeg (native) -> wrapped_avframe (native))\nOutput #0, null, to 'pipe:':\n  Metadata:\n    encoder         : Lavf62.3.100\n  Stream #0:0: Video: wrapped_avframe, yuvj422p(pc, bt470bg/bt709/unknown, progressive), 640x480, q=2-31, 200 kb/s, 30 fps, 30 tbn\n    Metadata:\n      encoder         : Lavc62.11.100 wrapped_avframe\nframe=   16 fps=0.0 q=-0.0 size=N/A time=00:00:00.53 bitrate=N/A speed=1.04x elapsed=0:00:00.51    \n[out#0/null @ 000001d181476380] video:12KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown\nframe=   30 fps=0.0 q=-0.0 Lsize=N/A time=00:00:00.99 bitrate=N/A speed=1.01x elapsed=0:00:00.99    \n",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-f",
+        "dshow",
+        "-video_device_number",
+        "0",
+        "-video_size",
+        "640x480",
+        "-framerate",
+        "30",
+        "-i",
+        "video=USB2.0_CAM1",
+        "-an",
+        "-frames:v",
+        "30",
+        "-f",
+        "null",
+        "-"
+      ]
+    },
+    {
+      "external_camera_number": 1,
+      "returncode": 0,
+      "log": "Input #0, dshow, from 'video=USB2.0_CAM1':\n  Duration: N/A, start: 379896.240363, bitrate: N/A\n  Stream #0:0: Video: mjpeg (Baseline) (MJPG / 0x47504A4D), yuvj422p(pc, bt470bg/bt709/unknown), 640x480, 30 fps, 30 tbr, 10000k tbn, start 379896.240363\nStream mapping:\n  Stream #0:0 -> #0:0 (mjpeg (native) -> wrapped_avframe (native))\nOutput #0, null, to 'pipe:':\n  Metadata:\n    encoder         : Lavf62.3.100\n  Stream #0:0: Video: wrapped_avframe, yuvj422p(pc, bt470bg/bt709/unknown, progressive), 640x480, q=2-31, 200 kb/s, 30 fps, 30 tbn\n    Metadata:\n      encoder         : Lavc62.11.100 wrapped_avframe\nframe=   15 fps=0.0 q=-0.0 size=N/A time=00:00:00.50 bitrate=N/A speed=0.988x elapsed=0:00:00.50    \n[out#0/null @ 000001ec8a8d6380] video:12KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown\nframe=   30 fps= 30 q=-0.0 Lsize=N/A time=00:00:00.99 bitrate=N/A speed=0.984x elapsed=0:00:01.01    \n",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-f",
+        "dshow",
+        "-video_device_number",
+        "1",
+        "-video_size",
+        "640x480",
+        "-framerate",
+        "30",
+        "-i",
+        "video=USB2.0_CAM1",
+        "-an",
+        "-frames:v",
+        "30",
+        "-f",
+        "null",
+        "-"
+      ]
+    },
+    {
+      "external_camera_number": 2,
+      "returncode": 0,
+      "log": "Input #0, dshow, from 'video=USB2.0_CAM1':\n  Duration: N/A, start: 379896.200576, bitrate: N/A\n  Stream #0:0: Video: mjpeg (Baseline) (MJPG / 0x47504A4D), yuvj422p(pc, bt470bg/bt709/unknown), 640x480, 30 fps, 30 tbr, 10000k tbn, start 379896.200576\nStream mapping:\n  Stream #0:0 -> #0:0 (mjpeg (native) -> wrapped_avframe (native))\nOutput #0, null, to 'pipe:':\n  Metadata:\n    encoder         : Lavf62.3.100\n  Stream #0:0: Video: wrapped_avframe, yuvj422p(pc, bt470bg/bt709/unknown, progressive), 640x480, q=2-31, 200 kb/s, 30 fps, 30 tbn\n    Metadata:\n      encoder         : Lavc62.11.100 wrapped_avframe\nframe=   16 fps=0.0 q=-0.0 size=N/A time=00:00:00.53 bitrate=N/A speed=1.04x elapsed=0:00:00.51    \n[out#0/null @ 0000024a3b3c6380] video:12KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown\nframe=   30 fps= 29 q=-0.0 Lsize=N/A time=00:00:00.99 bitrate=N/A speed=0.975x elapsed=0:00:01.02    \n",
+      "command": [
+        "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-f",
+        "dshow",
+        "-video_device_number",
+        "2",
+        "-video_size",
+        "640x480",
+        "-framerate",
+        "30",
+        "-i",
+        "video=USB2.0_CAM1",
+        "-an",
+        "-frames:v",
+        "30",
+        "-f",
+        "null",
+        "-"
+      ]
+    }
+  ]
+}

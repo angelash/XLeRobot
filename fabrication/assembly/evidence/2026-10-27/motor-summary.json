@@ -1,0 +1,121 @@
+{
+  "source": "motor-readonly.json",
+  "register_reference": "LeRobot v0.3.3 STS_SMS_SERIES_CONTROL_TABLE (downloaded only; not executed)",
+  "ports": [
+    {
+      "port": "COM3",
+      "error": null,
+      "motors": [
+        {
+          "id": 1,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 1926,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 27
+        },
+        {
+          "id": 2,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 2022,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 28
+        },
+        {
+          "id": 3,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 2036,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 28
+        },
+        {
+          "id": 4,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 2124,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 28
+        },
+        {
+          "id": 5,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 1480,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 27
+        },
+        {
+          "id": 6,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 2038,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 28
+        },
+        {
+          "id": 7,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 1814,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 29
+        },
+        {
+          "id": 8,
+          "model_number": 777,
+          "model_lookup": "sts3215",
+          "reply_error": 0,
+          "torque_enable": 0,
+          "operating_mode": 0,
+          "position_raw": 1404,
+          "speed_raw": 0,
+          "voltage_raw": 50,
+          "voltage_V_per_STS_scale": 5.0,
+          "temperature_C": 27
+        }
+      ]
+    },
+    {
+      "port": "COM4",
+      "error": "调用“Open”并传入“0”个参数时发生异常：“连到系统上的设备没有发挥作用。”",
+      "motors": []
+    }
+  ]
+}

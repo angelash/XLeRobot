@@ -1,0 +1,75 @@
+{
+  "source_step": "hardware/step/XLeRobot_040/XLeRobot040_armbase.step",
+  "source_solid_count": 14,
+  "arm_interface_plate_mm": {
+    "width": 150.5,
+    "depth": 140.0,
+    "thickness": 8.0
+  },
+  "dual_arm_interface_m3_clearance_holes_mm": [
+    {
+      "x": -31.74,
+      "y": -66.09,
+      "diameter": 3.4
+    },
+    {
+      "x": 14.25,
+      "y": -66.09,
+      "diameter": 3.4
+    },
+    {
+      "x": 60.25,
+      "y": -66.09,
+      "diameter": 3.4
+    },
+    {
+      "x": -31.74,
+      "y": 63.91,
+      "diameter": 3.4
+    },
+    {
+      "x": 14.25,
+      "y": 63.91,
+      "diameter": 3.4
+    },
+    {
+      "x": 60.25,
+      "y": 63.91,
+      "diameter": 3.4
+    }
+  ],
+  "frame_m5_clearance_holes_mm": [
+    {
+      "x": -55.0,
+      "y": -50.0,
+      "diameter": 5.5
+    },
+    {
+      "x": 55.0,
+      "y": -50.0,
+      "diameter": 5.5
+    },
+    {
+      "x": -55.0,
+      "y": 55.0,
+      "diameter": 5.5
+    },
+    {
+      "x": 55.0,
+      "y": 55.0,
+      "diameter": 5.5
+    }
+  ],
+  "concept_dimensions_mm": {
+    "forward_reach": 120.0,
+    "vertical_drop": 207.0
+  },
+  "status": "first-article concept; dimensional fit and structural test pending",
+  "printable_parts": [
+    "xlerobot_040_arm_interface.stl"
+  ],
+  "non_printable_parts_in_preview": [
+    "2020/2040 aluminium rails",
+    "steel M5 fasteners"
+  ]
+}

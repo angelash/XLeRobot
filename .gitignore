@@ -106,3 +106,18 @@ web_control/server/.venv/
 web_control/server/__pycache__/
 web_control/server/.pytest_cache/
 .claude/
+.venv-cad/
+.venv-debug/
+.venv-robot/
+fabrication/assembly/debug_console/server.pid
+fabrication/assembly/debug_console/server.stdout.log
+fabrication/assembly/debug_console/server.stderr.log
+
+# Runtime observations and temporary diagnostics are kept beside the project
+# locally but are not source or procurement records to publish.
+fabrication/assembly/evidence/*/robot-runtime-state.json
+fabrication/assembly/evidence/*/first-motion-events.jsonl
+fabrication/assembly/evidence/*/lerobot-pose-probe.log
+fabrication/assembly/evidence/*/camera-index-check/
+fabrication/assembly/evidence/*/console-camera-0.headers.txt
+fabrication/export/.x2d_page_tmp.html

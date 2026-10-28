@@ -1,0 +1,12 @@
+{
+  "mode": "read_only_enumeration",
+  "devices": [
+    {
+      "index": 0,
+      "name": "Xbox One Elite 2 Controller",
+      "axes": 6,
+      "buttons": 16,
+      "hats": 1
+    }
+  ]
+}

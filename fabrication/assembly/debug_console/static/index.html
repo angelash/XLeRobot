@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>XLeRobot Hardware Desk</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/bringup.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">HARDWARE DESK / 0.4 DUAL WHEEL</p>
+        <h1>XLeRobot <span>观测台</span></h1>
+      </div>
+      <div class="mode"><span class="pulse"></span><strong id="mode-label">READ ONLY</strong><small>动作通道已锁定</small></div>
+    </header>
+
+    <section class="summary" aria-label="系统摘要">
+      <article><span>串口</span><strong id="ports-count">—</strong><small>正在读取</small></article>
+      <article><span>舵机</span><strong id="motor-count">—</strong><small>PING + READ</small></article>
+      <article><span>相机</span><strong id="camera-count">—</strong><small>MJPEG / 15 FPS</small></article>
+      <article class="warn"><span>安全状态</span><strong>停用</strong><small>未使能扭矩</small></article>
+    </section>
+
+    <section class="readiness" aria-labelledby="readiness-title">
+      <div class="section-head"><h2 id="readiness-title">操作许可</h2><span id="readiness-updated">等待检测</span></div>
+      <div class="readiness-grid">
+        <article id="gate-observe"><b>观测</b><strong>等待硬件</strong><p>控制板、相机与舵机通信正常</p></article>
+        <article id="gate-calibrate"><b>校准</b><strong>未检查</strong><p>双板在线且手臂被支撑</p></article>
+        <article id="gate-move"><b>受限动作</b><strong>锁定</strong><p>校准、手柄、离地确认全部通过</p></article>
+      </div>
+      <p class="blocker" id="blocker" role="status">正在检查当前连接与操作条件…</p>
+    </section>
+
+    <section class="runtime" aria-labelledby="runtime-title">
+      <div class="section-head"><h2 id="runtime-title">实时操作</h2><span id="controller-time">控制器未启动</span></div>
+      <div class="runtime-grid">
+        <article><span>控制器</span><strong id="controller-state">OFFLINE</strong></article>
+        <article><span>扭矩</span><strong id="torque-state">OFF</strong></article>
+        <article><span>当前关节</span><strong id="active-joint">—</strong></article>
+        <article><span>最近动作</span><strong id="last-action">尚无动作</strong></article>
+      </div>
+      <div class="command-strip">
+        <button type="button" id="start-controller">启动受限控制</button>
+        <button type="button" id="stop-controller">停止并断开</button>
+        <span id="controller-message" role="status">当前为只读观测；动作控制需单独启动。</span>
+      </div>
+      <label class="form-check"><input type="checkbox" id="wheels-lifted">我确认车轮离地、线路无拉扯，机械臂周围安全</label>
+      <label class="form-check"><input type="checkbox" id="map-confirmed">我确认左右臂和关节方向已实物核对</label>
+    </section>
+
+    <section class="cameras" aria-labelledby="camera-title">
+      <div class="section-head"><h2 id="camera-title">光学通道</h2><span id="camera-time">connecting</span></div>
+      <div class="camera-grid">
+        <figure><div class="frame"><img src="/camera/0.mjpg" alt="腕部相机 01 实时画面"><i></i></div><figcaption><b>CAM 01</b><span>左腕候选</span><em id="cam0">等待画面</em></figcaption></figure>
+        <figure><div class="frame"><img src="/camera/1.mjpg" alt="腕部相机 02 实时画面"><i></i></div><figcaption><b>CAM 02</b><span>右腕候选</span><em id="cam1">等待画面</em></figcaption></figure>
+        <figure><div class="frame"><img src="/camera/2.mjpg" alt="头部相机实时画面"><i></i></div><figcaption><b>CAM 03</b><span>头部候选</span><em id="cam2">等待画面</em></figcaption></figure>
+      </div>
+    </section>
+
+    <section class="middle">
+      <article class="panel motors-panel">
+        <div class="section-head"><h2>舵机总线</h2><span id="motor-time">—</span></div>
+        <div id="ports"></div>
+      </article>
+      <article class="panel gamepad-panel">
+        <div class="section-head"><h2>Gamepad</h2><span id="pad-state">按任意键唤醒</span></div>
+        <div class="pad-visual" id="pad-visual" role="img" aria-label="手柄输入可视化">
+          <span class="stick left" id="stick-left"></span><span class="stick right" id="stick-right"></span>
+          <span class="cross"></span>
+        </div>
+        <p class="pad-name" id="pad-name">Windows 已识别 Xbox Elite Wireless Controller</p>
+        <div class="pad-meta"><span id="axes">Axes 0</span><span id="buttons">Buttons 0</span><span class="armed">DRY RUN</span></div>
+        <p class="mapping">左摇杆 → 左臂 XY · 右摇杆 → 右臂 XY · 左扳机 → 左夹爪 · 右扳机 → 右夹爪 · 十字键 → 底盘</p>
+      </article>
+    </section>
+
+    <section class="bringup" aria-labelledby="bringup-title">
+      <div class="section-head"><h2 id="bringup-title">Bring-up 路线</h2><span>先无电/离地验证，再开放动作</span></div>
+      <ol class="bringup-list">
+        <li><label class="checkline"><input type="checkbox" data-step="arm-map"><span><b>01 / 左右臂与关节</b><small>支撑机械臂，保持扭矩关闭；每次只手动移动一个关节，观察哪个 COM 和 ID 的数字变化。</small><em>完成标准：左右臂、ID 1–8、轮 9/10 都有实物对应</em></span></label></li>
+        <li><label class="checkline"><input type="checkbox" data-step="camera-map"><span><b>02 / 相机身份</b><small>用纸逐台遮住镜头，确认对应 CAM；贴上 01/02/03，再标明左腕、右腕和头部。</small><em>完成标准：遮住任意一台时只有对应画面变黑</em></span></label></li>
+        <li><label class="checkline"><input type="checkbox" data-step="gamepad"><span><b>03 / 手柄接管</b><small>先校准、再单关节、再车轮离地；最后才落地。按住 LB 才允许动作，松开即停。</small><em>完成标准：断连、松键、退出程序和失去焦点都能停止</em></span></label></li>
+      </ol>
+    </section>
+
+    <footer><span>观测层只发送 PING / READ；受限控制由独立进程执行，Web 只负责启停与状态回读。</span><code>127.0.0.1:8765</code></footer>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

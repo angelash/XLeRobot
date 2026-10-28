@@ -1,0 +1,12 @@
+[
+  {
+    "port": "COM3",
+    "opened": false,
+    "error": "调用“Open”并传入“0”个参数时发生异常：“Could not find file 'COM3'.”"
+  },
+  {
+    "port": "COM4",
+    "opened": false,
+    "error": "调用“Open”并传入“0”个参数时发生异常：“Could not find file 'COM4'.”"
+  }
+]

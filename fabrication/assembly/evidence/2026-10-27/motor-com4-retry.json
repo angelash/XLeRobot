@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-10-27T18:26:43.7056840+08:00",
+  "safety": "Only PING and READ; DTR/RTS disabled; no robot SDK, torque, goal, mode, calibration, reset or ID writes",
+  "ports": [
+    {
+      "port": "COM4",
+      "motors": [],
+      "probes": [],
+      "error": "调用“Open”并传入“0”个参数时发生异常：“连到系统上的设备没有发挥作用。”"
+    }
+  ]
+}
