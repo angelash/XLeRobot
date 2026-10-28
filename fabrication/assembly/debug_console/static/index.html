@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XLeRobot · 控制映射台</title><link rel="stylesheet" href="/static/mapping.css?v=21"></head>
+<title>XLeRobot · 控制映射台</title><link rel="stylesheet" href="/static/mapping.css?v=22"></head>
 <body><main class="desk">
 <header class="masthead"><div><p class="eyebrow">XLeRobot / HARDWARE DESK</p><h1>让每个按键<span>都有回音。</span></h1></div><div class="live-id"><i></i><span id="readiness-updated">正在连接</span><small id="input-source">Windows XInput</small></div></header>
 <section class="session-dock" aria-label="接管状态"><div><span class="label">接管会话</span><strong id="controller-state">未开启</strong><p id="session-description">启动后仍需按住LB；选择关节不会自动移动。</p></div>
-<div class="session-actions"><button id="start-controller" class="primary">开启受限接管</button><button id="resume-controller" hidden>恢复动作</button><button id="stop-controller" class="outline" disabled>结束接管</button></div></section>
+<div class="session-actions"><button id="start-controller" class="primary" aria-describedby="blocker" disabled>开启受限接管</button><button id="resume-controller" hidden>恢复动作</button><button id="stop-controller" class="outline" disabled>结束接管</button></div><div class="session-readiness"><div class="confirmations"><label><input type="checkbox" id="wheels-lifted">机械臂周围安全，线路无拉扯</label><label><input type="checkbox" id="map-confirmed">仅做现有限位内的小范围单关节测试</label></div><p id="blocker" role="status">正在检查开启条件…</p><p id="controller-message" role="status" class="command-message"></p></div></section>
 <div class="notice" id="session-notice" role="status" hidden></div>
 <section class="status-line"><span id="ports-count">—</span><span id="motor-count">—</span><span id="camera-count">—</span><span id="summary-torque">—</span><span id="pad-state">检测手柄中</span></section>
 <section class="workspace">
@@ -44,8 +44,8 @@
 <div class="direction-guide"><div><kbd>LB + ↑</kbd><span>编码器增加</span></div><div><kbd>LB + ↓</kbd><span>编码器减少</span></div></div><p class="fineprint">正反向以编码器为准；抬升、旋转的物理方向以实物核对为准。</p>
 <div class="feedback-card" id="feedback-card"><strong id="feedback-title">尚无本次动作</strong><p id="last-action">先开启接管，再按住LB点按方向键。</p><div class="command-track" id="command-track"></div><p id="feedback-values"></p></div>
 <p id="joint-limits" class="fineprint"></p><div class="mini-settings"><span>单步 <strong id="step-preview">—</strong></span><span>低速 <strong id="speed-preview">—</strong></span></div>
-<div class="confirmations"><label><input type="checkbox" id="wheels-lifted">机械臂周围安全，线路无拉扯</label><label><input type="checkbox" id="map-confirmed">仅做现有限位内的小范围单关节测试</label></div>
-<p id="controller-message" role="status" class="command-message">服务已连接后可开启接管</p><div id="blocker" class="fineprint"></div>
+
+
 </article></section>
 <section class="mapping-section" id="mapping-section"><div class="section-heading"><div><p class="eyebrow">03 / MAPPING REFERENCE</p><h2>知道每个按键，知道每次结果。</h2></div><p id="mapping-mode-note">简明模式 · 先掌握使能、选择与小步</p></div><div id="mapping-list" class="mapping-list"></div></section>
 <section class="joint-section"><div class="section-heading"><div><p class="eyebrow">04 / JOINTS</p><h2>把动作交给哪个关节？</h2></div><p>选择只改变控制对象，不会让新关节移动</p></div><div id="joint-cards" class="joint-cards"></div><p class="fineprint">“限位待校准”项可查看原因，不能直接控制。底盘当前不参与手柄动作。</p></section>
@@ -54,4 +54,4 @@
 <section class="log-section"><div class="section-heading"><div><p class="eyebrow">05 / FEEDBACK</p><h2>每一步，都有据可查。</h2></div><a href="/api/log/download" target="_blank">导出日志 ↗</a></div><div class="log-tools"><select id="log-filter" aria-label="日志筛选"><option value="important">动作与提示</option><option value="all">全部事件</option><option value="input">手柄输入</option><option value="motion">目标与反馈</option><option value="warning">边界与故障</option></select><span id="log-count"></span></div><ol id="diagnostic-log"></ol></section>
 <details class="hardware-section"><summary>视频与硬件明细 <span id="motor-time">—</span></summary><div class="camera-grid"><figure><img src="/camera/0.mjpg" alt="相机01实时画面"><figcaption>CAM 01 <span id="cam0"></span></figcaption></figure><figure><img src="/camera/1.mjpg" alt="相机02实时画面"><figcaption>CAM 02 <span id="cam1"></span></figcaption></figure><figure><img src="/camera/2.mjpg" alt="相机03实时画面"><figcaption>CAM 03 <span id="cam2"></span></figcaption></figure></div><div id="ports"></div></details>
 <footer><span>接管由你开启和结束 · 触限提示，故障暂停，恢复由你确认</span><code>127.0.0.1:8765</code></footer>
-</main><script src="/static/app.js?v=21"></script></body></html>
+</main><script src="/static/app.js?v=22"></script></body></html>

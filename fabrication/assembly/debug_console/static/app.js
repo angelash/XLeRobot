@@ -107,7 +107,8 @@ function render(s){
  const torque=motors.filter(m=>m.torque).length,c=s.controller,active=c.controller==='online',paused=!!c.paused;
  const padReady=s.gamepad.connected&&s.input_age_ms!==null&&s.input_age_ms<500;
  const confirmed=$('wheels-lifted').checked&&$('map-confirmed').checked;
- const ready=online===2&&motors.length===16&&padReady&&s.calibration.exists&&confirmed;
+ const lbHeld=!!s.gamepad.buttons?.[s.gamepad.lb_index??4];
+ const ready=online===2&&motors.length===16&&padReady&&s.calibration.exists&&confirmed&&!lbHeld;
  $('controller-state').textContent=active?(paused?'接管保留 · 动作暂停':'接管已开启'):'接管未开启';
  $('session-description').textContent=active?(paused?c.pause_reason:'由你主动结束。松开LB或触限只影响当前动作，接管继续保留。'):'开启接管不会自动移动；按住LB后，方向键才允许发送小步。';
  $('start-controller').hidden=active;$('start-controller').disabled=commandBusy||!ready;
@@ -119,8 +120,13 @@ function render(s){
  $('readiness-updated').textContent=s.version;$('controller-time').textContent=timeText(c.updated_at);
  $('torque-state').textContent='扭矩保持与接管独立';$('torque-message').textContent=`${torque}个电机扭矩开启。接管运行时请先结束接管再改扭矩。`;
  ['torque-all-on','torque-all-off','torque-one-on','torque-one-off'].forEach(id=>$(id).disabled=active||commandBusy);
- const blockers=[];if(motors.length!==16)blockers.push('双板/电机未齐');if(!padReady)blockers.push('手柄未连接');if(!s.calibration.exists)blockers.push('限位未读取');if(!confirmed)blockers.push('勾选小范围确认');
- $('blocker').textContent=active?'':blockers.join(' · ');
+ const blockers=[];if(online!==2||motors.length!==16)blockers.push('双板/电机未齐');if(!padReady)blockers.push(s.gamepad.connected?'手柄输入过期':'手柄未连接');if(!s.calibration.exists)blockers.push('限位未读取');
+ if(!$('wheels-lifted').checked)blockers.push('确认机械臂周围安全、线路无拉扯');
+ if(!$('map-confirmed').checked)blockers.push('确认仅做现有限位内的小范围测试');
+ if(lbHeld)blockers.push('先松开LB，再开启接管');
+ $('blocker').textContent=active?'':commandBusy?'正在处理操作…':blockers.length?'尚未开启：'+blockers.join('；'):'条件已满足，可以点击“开启受限接管”';
+ $('start-controller').title=blockers.length?blockers.join('；'):'开启不会自动移动，之后按住LB使能';
+ $('wheels-lifted').disabled=active;$('map-confirmed').disabled=active;
  const notice=paused?{level:'error',message:c.pause_reason}:localNotice||s.notice;
  $('session-notice').hidden=!notice;$('session-notice').className='notice'+(notice?.level==='error'?' error':'');
  $('session-notice').textContent=notice?.message||'';

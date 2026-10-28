@@ -27,8 +27,19 @@ context.sample={ports:[{port:'COM3',connected:true,motor_count:8,motors},{port:'
  control_map:controlMap,settings:{step_raw:16,speed_raw:100}};
 function render(){vm.runInContext('render(sample)',context);}
 render();assert.equal(node('start-controller').disabled,true,'Unconfirmed start is blocked');
-node('wheels-lifted').checked=node('map-confirmed').checked=true;render();
+assert.match(node('blocker').textContent,/确认机械臂周围安全/);
+assert.match(node('blocker').textContent,/确认仅做现有限位内/);
+assert(html.indexOf('id="wheels-lifted"')<html.indexOf('class="workspace"'),'Confirmation is beside the top start button');
+node('wheels-lifted').checked=true;render();
+assert.equal(node('start-controller').disabled,true);
+assert.doesNotMatch(node('blocker').textContent,/确认机械臂周围安全/);
+node('map-confirmed').checked=true;render();
 assert.equal(node('start-controller').disabled,false);
+assert.match(node('blocker').textContent,/条件已满足/);
+context.sample.gamepad.buttons[4]=true;render();
+assert.equal(node('start-controller').disabled,true);
+assert.match(node('blocker').textContent,/先松开LB/);
+context.sample.gamepad.buttons[4]=false;render();
 assert.equal((node('mapping-list').innerHTML.match(/class="mapping-card/g)||[]).length,7);
 assert.equal((node('button-grid').innerHTML.match(/<span/g)||[]).length,17);
 node('view-full').onclick();
