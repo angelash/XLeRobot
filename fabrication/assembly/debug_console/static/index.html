@@ -5,24 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>XLeRobot Hardware Desk</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/bringup.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="stylesheet" href="/static/bringup.css?v=2">
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
         <p class="eyebrow">HARDWARE DESK / 0.4 DUAL WHEEL</p>
-        <h1>XLeRobot <span>观测台</span></h1>
+        <h1>XLeRobot <span>调试与控制</span></h1>
       </div>
-      <div class="mode"><span class="pulse"></span><strong id="mode-label">READ ONLY</strong><small>动作通道已锁定</small></div>
+      <div class="mode"><span class="pulse"></span><strong id="mode-label">READ ONLY</strong><small>编码器回读 · 原生手柄</small></div>
     </header>
 
     <section class="summary" aria-label="系统摘要">
       <article><span>串口</span><strong id="ports-count">—</strong><small>正在读取</small></article>
-      <article><span>舵机</span><strong id="motor-count">—</strong><small>PING + READ</small></article>
+      <article><span>舵机</span><strong id="motor-count">—</strong><small>实时编码器反馈</small></article>
       <article><span>相机</span><strong id="camera-count">—</strong><small>MJPEG / 15 FPS</small></article>
-      <article class="warn"><span>安全状态</span><strong>停用</strong><small>未使能扭矩</small></article>
+      <article class="warn"><span>安全状态</span><strong id="summary-torque">读取中</strong><small id="summary-torque-note">未使能扭矩</small></article>
     </section>
 
     <section class="readiness" aria-labelledby="readiness-title">
@@ -58,13 +58,21 @@
       </div>
       <div class="command-strip">
         <button type="button" id="start-controller">启动受限控制</button>
-        <button type="button" id="stop-controller">停止并断开</button>
-        <span id="controller-message" role="status">当前为只读观测；动作控制需单独启动。</span>
+        <button type="button" id="stop-controller">停止接管（保持姿态）</button>
+        <span id="controller-message" role="status">观测中；点击启动后，按住LB才能发送小步。</span>
       </div>
-      <label class="form-check"><input type="checkbox" id="wheels-lifted">我确认车轮离地、线路无拉扯，机械臂周围安全</label>
-      <label class="form-check"><input type="checkbox" id="map-confirmed">我确认左右臂和关节方向已实物核对</label>
+      <label class="form-check"><input type="checkbox" id="wheels-lifted">我确认机械臂周围安全、线路无拉扯；本轮底盘不参与动作</label>
+      <label class="form-check"><input type="checkbox" id="map-confirmed">我确认仅在现有限位内做小范围单关节测试</label>
     </section>
 
+    <section class="panel control-settings">
+      <div class="section-head"><h2>关节与小步设置</h2><span>保留设备限位 · 本轮最多偏离起点约8°</span></div>
+      <div class="settings-row"><label>当前关节<select id="joint-select"></select></label>
+        <label>单步<input id="step-setting" type="number" min="4" max="32" value="16"> 计数</label>
+        <label>低速<input id="speed-setting" type="number" min="40" max="150" value="100"> 计数/秒</label>
+        <button id="apply-settings">应用小步设置</button><button id="read-calibration">重新读取设备限位</button></div>
+      <p id="joint-limits">启动后显示当前设备限位与本轮允许范围</p>
+    </section>
     <section class="cameras" aria-labelledby="camera-title">
       <div class="section-head"><h2 id="camera-title">光学通道</h2><span id="camera-time">connecting</span></div>
       <div class="camera-grid">
@@ -86,8 +94,11 @@
           <span class="cross"></span>
         </div>
         <p class="pad-name" id="pad-name">Windows 已识别 Xbox Elite Wireless Controller</p>
-        <div class="pad-meta"><span id="axes">Axes 0</span><span id="buttons">Buttons 0</span><span class="armed">DRY RUN</span></div>
-        <p class="mapping">左摇杆 → 左臂 XY · 右摇杆 → 右臂 XY · 左扳机 → 左夹爪 · 右扳机 → 右夹爪 · 十字键 → 底盘</p>
+        <div class="button-grid" id="button-grid"></div>
+        <p class="mapping" id="expected-action">按住 LB 才允许动作；十字键左右选关节，上下小步移动。</p>
+        <ol class="event-log" id="event-log"></ol>
+        <div class="pad-meta"><span id="axes">Axes 0</span><span id="buttons">Buttons 0</span><span id="input-source" class="armed">原生输入</span></div><div id="axis-grid" class="axis-grid"></div><div id="hat-state" class="pad-meta"></div>
+        <p class="mapping">LB：按住使能 / 松开停止并保持 · 十字键左右：选关节 · 上下：正负小步 · View：停止接管。摇杆与扳机仅显示，本轮未映射移动。</p>
       </article>
     </section>
 
@@ -96,12 +107,13 @@
       <ol class="bringup-list">
         <li><label class="checkline"><input type="checkbox" data-step="arm-map"><span><b>01 / 左右臂与关节</b><small>支撑机械臂，保持扭矩关闭；每次只手动移动一个关节，观察哪个 COM 和 ID 的数字变化。</small><em>完成标准：左右臂、ID 1–8、轮 9/10 都有实物对应</em></span></label></li>
         <li><label class="checkline"><input type="checkbox" data-step="camera-map"><span><b>02 / 相机身份</b><small>用纸逐台遮住镜头，确认对应 CAM；贴上 01/02/03，再标明左腕、右腕和头部。</small><em>完成标准：遮住任意一台时只有对应画面变黑</em></span></label></li>
-        <li><label class="checkline"><input type="checkbox" data-step="gamepad"><span><b>03 / 手柄接管</b><small>先校准、再单关节、再车轮离地；最后才落地。按住 LB 才允许动作，松开即停。</small><em>完成标准：断连、松键、退出程序和失去焦点都能停止</em></span></label></li>
+        <li><label class="checkline"><input type="checkbox" data-step="gamepad"><span><b>03 / 手柄接管</b><small>读取设备限位，再做手臂小步测试。底盘保持原状。按住 LB 才允许动作，松开停止并保持姿态。</small><em>完成标准：断连、松键、退出程序和失去焦点都能停止</em></span></label></li>
       </ol>
     </section>
 
-    <footer><span>观测层只发送 PING / READ；受限控制由独立进程执行，Web 只负责启停与状态回读。</span><code>127.0.0.1:8765</code></footer>
+    <section class="panel diagnostics"><div class="section-head"><h2>输入 → 指令 → 实际反馈</h2><a href="/api/log/download" target="_blank">导出诊断日志</a></div><p>按键日志表示收到输入；command表示已发送目标；feedback表示读到编码器变化。被阻断时会记录原因。</p><ol id="diagnostic-log" class="diagnostic-log"></ol></section>
+    <footer><span>v2 · 原生手柄与监控共享同一串口所有者；速度有上限，原有硬件限位保持。</span><code>127.0.0.1:8765</code></footer>
   </main>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2"></script>
 </body>
 </html>

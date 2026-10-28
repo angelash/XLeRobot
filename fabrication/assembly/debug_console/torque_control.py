@@ -65,10 +65,12 @@ def exchange(port: serial.Serial, motor_id: int, instruction: int, params: list[
 
 
 def read_registers(port: serial.Serial, motor_id: int) -> list[int]:
-    reply = exchange(port, motor_id, 2, [0, 70])
-    if reply is None or reply["error"] != 0 or len(reply["data"]) != 70:
-        raise RuntimeError(f"ID {motor_id} 状态读取失败")
-    return reply["data"]
+    for _ in range(3):
+        reply = exchange(port, motor_id, 2, [0, 70])
+        if reply is not None and reply["error"] == 0 and len(reply["data"]) == 70:
+            return reply["data"]
+        time.sleep(.003)
+    raise RuntimeError(f"ID {motor_id} 状态读取失败")
 
 
 def write_register(port: serial.Serial, motor_id: int, address: int, value: int, length: int) -> None:

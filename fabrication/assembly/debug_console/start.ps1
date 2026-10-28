@@ -5,6 +5,12 @@ $repo = (Resolve-Path (Join-Path $consoleDir '..\..\..')).Path
 $python = Join-Path $repo '.venv-debug\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python)) { throw '缺少 .venv-debug，请按 README 初始化只读调试环境。' }
 $listener = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
+if ($listener) {
+    $status = Invoke-RestMethod 'http://127.0.0.1:8765/api/status' -TimeoutSec 3
+    if ($status.version -ne '2.0-encoder-feedback') {
+        throw '8765 正运行旧版或其他服务。请先运行同目录 stop.ps1，再启动。'
+    }
+}
 if (-not $listener) {
     $stdout = Join-Path $consoleDir 'server.stdout.log'
     $stderr = Join-Path $consoleDir 'server.stderr.log'
@@ -15,7 +21,7 @@ if (-not $listener) {
         Start-Sleep -Milliseconds 250
         try { Invoke-RestMethod 'http://127.0.0.1:8765/api/status' -TimeoutSec 2 | Out-Null; $healthy = $true; break } catch { }
     }
-    if (-not $healthy) { throw '只读调试台未能在 8765 端口启动，请查看 server.stderr.log。' }
+    if (-not $healthy) { throw '调试控制台未能在 8765 端口启动，请查看 server.stderr.log。' }
 }
 $url = 'http://127.0.0.1:8765'
 Write-Output $url

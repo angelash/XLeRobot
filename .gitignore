@@ -123,3 +123,13 @@ fabrication/assembly/evidence/*/console-camera-0.headers.txt
 fabrication/assembly/evidence/*/motor-after-torque-test.json
 fabrication/assembly/evidence/*/torque-command.json
 fabrication/export/.x2d_page_tmp.html
+# Local device limits and diagnostic telemetry (not a portable calibration).
+fabrication/assembly/device-calibration.json
+fabrication/assembly/evidence/*/control-events.jsonl
+fabrication/assembly/evidence/*/control-chain-verification.json
+fabrication/assembly/evidence/*/register-backup-*.json
+fabrication/assembly/evidence/*/bounded-motion-*.json
+fabrication/assembly/evidence/*/first-motion-calibration.json
+fabrication/assembly/evidence/*/simulated-small-move.json
+fabrication/assembly/evidence/*/speed-zero-vs-100.json
+fabrication/assembly/evidence/*/virtual-xbox-live-verification.json

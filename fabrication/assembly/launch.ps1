@@ -18,6 +18,7 @@ switch ($Mode) {
         & $python -X utf8 'fabrication/assembly/calibrate_first_motion.py'
     }
     'move' {
-        & $python -X utf8 'fabrication/assembly/first_motion_controller.py' --step 8 --max-raw 50
+        Write-Host '旧独立动作进程已停用；启动 v2 Web 控制台，按页面说明做小步测试。'
+        & (Join-Path $assemblyDir 'debug_console\start.ps1') -OpenBrowser
     }
 }
