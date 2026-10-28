@@ -16,14 +16,16 @@ from pathlib import Path
 from typing import Any
 
 import serial
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
     from fabrication.assembly.runtime_state import read_state
+    from fabrication.assembly.debug_console.torque_control import TorqueSession
 except ImportError:
     from runtime_state import read_state
+    from torque_control import TorqueSession
 
 
 ROOT = Path(__file__).resolve().parent
@@ -37,6 +39,8 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 
 CONTROLLER_PROCESS: subprocess.Popen | None = None
+TORQUE = TorqueSession()
+TORQUE_STATE: dict[str, Any] = {"enabled": False, "scope": None, "message": "扭矩关闭", "updated_at": None}
 
 
 def gamepad_inventory() -> list[str]:
@@ -161,6 +165,7 @@ class HardwareMonitor:
         ]
         self.started = False
         self.paused = False
+        self.serial_open = False
 
     def start(self) -> None:
         if self.started:
@@ -171,9 +176,13 @@ class HardwareMonitor:
     def _motor_loop(self) -> None:
         while True:
             if not self.paused:
+                self.serial_open = True
                 ports = []
-                for port in PORTS:
-                    ports.append(read_port(port))
+                try:
+                    for port in PORTS:
+                        ports.append(read_port(port))
+                finally:
+                    self.serial_open = False
             with self.lock:
                 if self.paused:
                     continue
@@ -219,12 +228,59 @@ def index() -> FileResponse:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     snapshot = monitor.snapshot()
+    snapshot["torque_control"] = dict(TORQUE_STATE)
     snapshot["controller_launch"] = {
         "can_start": True,
         "reason": "UI also requires 2 boards, 16 motors, 3 cameras, gamepad, calibration and explicit safety confirmation",
         "running": bool(CONTROLLER_PROCESS and CONTROLLER_PROCESS.poll() is None),
     }
     return snapshot
+
+
+def _torque_selection(scope: str, port_name: str | None, motor_id: int | None) -> dict[str, list[int]] | None:
+    if scope == "all":
+        return None
+    if scope != "single" or port_name not in PORTS or motor_id is None:
+        raise HTTPException(status_code=400, detail="精细模式需要指定 COM3/COM4 和电机 ID")
+    return {port_name: [int(motor_id)]}
+
+
+@app.post("/api/torque")
+def set_torque(payload: dict[str, Any]) -> dict[str, Any]:
+    """Enable or disable holding torque without commanding a motor move."""
+    global TORQUE_STATE
+    if _controller_process():
+        raise HTTPException(status_code=409, detail="受限控制器正在占用串口，先停止它")
+    enabled = bool(payload.get("enabled"))
+    scope = str(payload.get("scope", "all"))
+    port_name = payload.get("port")
+    motor_id = payload.get("id")
+    selection = _torque_selection(scope, port_name, motor_id)
+    monitor.paused = True
+    deadline = time.monotonic() + 4.0
+    while monitor.serial_open and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if monitor.serial_open:
+        monitor.paused = False
+        raise HTTPException(status_code=503, detail="只读监控仍未释放串口，扭矩命令未发送")
+    time.sleep(0.8)
+    try:
+        report = TORQUE.apply(enabled, selection)
+    except Exception as exc:
+        TORQUE.close()
+        monitor.paused = False
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    TORQUE.close()
+    monitor.paused = False
+    mismatches = [item for item in report["motors"] if bool(item["torque"]) != enabled]
+    TORQUE_STATE = {
+        "enabled": enabled and not mismatches,
+        "scope": scope,
+        "count": report["count"],
+        "message": ("已打开" if enabled else "已关闭") + f" {report['count']} 个舵机扭矩",
+        "updated_at": dt.datetime.now().astimezone().isoformat(),
+    }
+    return {"status": "ok", **TORQUE_STATE, "report": report}
 
 
 def _controller_process() -> subprocess.Popen | None:

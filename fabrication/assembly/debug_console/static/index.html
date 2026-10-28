@@ -37,6 +37,19 @@
 
     <section class="runtime" aria-labelledby="runtime-title">
       <div class="section-head"><h2 id="runtime-title">实时操作</h2><span id="controller-time">控制器未启动</span></div>
+      <div class="torque-panel">
+        <div class="torque-simple">
+          <button type="button" id="torque-all-on">打开全部扭矩</button>
+          <button type="button" id="torque-all-off" class="secondary">关闭全部扭矩</button>
+          <span id="torque-message" role="status">打开前会把每个舵机目标锁在当前位置。</span>
+        </div>
+        <form class="torque-fine">
+          <label>端口<select id="torque-port"><option>COM3</option><option>COM4</option></select></label>
+          <label>电机 ID<input id="torque-id" type="number" min="1" max="20" value="1"></label>
+          <button type="button" id="torque-one-on">打开这个</button>
+          <button type="button" id="torque-one-off" class="secondary">关闭这个</button>
+        </form>
+      </div>
       <div class="runtime-grid">
         <article><span>控制器</span><strong id="controller-state">OFFLINE</strong></article>
         <article><span>扭矩</span><strong id="torque-state">OFF</strong></article>

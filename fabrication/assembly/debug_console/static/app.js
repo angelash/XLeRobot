@@ -81,7 +81,11 @@ function renderReadiness(data) {
   if (!pads.length && controllerOnline) blockers.push('控制器运行中但手柄可能已断开，立即停止');
   $('blocker').textContent = blockers.length ? '阻断：' + blockers.join(' · ') : '全部条件通过；仍以低速、离地、LB 保持使能方式测试。';
   $('controller-state').textContent = controllerOnline ? 'ONLINE' : 'OFFLINE';
-  $('torque-state').textContent = torque ? 'ENABLED' : 'OFF';
+  const liveTorqueCount = data.ports.reduce((sum, port) => sum + (port.motors || []).filter((motor) => motor.torque).length, 0);
+  $('torque-state').textContent = liveTorqueCount ? `${liveTorqueCount} ON` : 'OFF';
+  if ($('summary-torque')) $('summary-torque').textContent = liveTorqueCount ? String(liveTorqueCount) : 'OFF';
+  if ($('summary-torque-note')) $('summary-torque-note').textContent = liveTorqueCount ? '当前位置保持中' : '保持位置后使能';
+  if ($('torque-message') && data.torque_control?.message) $('torque-message').textContent = data.torque_control.message;
   $('active-joint').textContent = controller.active_joint || controller.selected_joint || '—';
   $('last-action').textContent = controller.last_action || '尚无动作';
   $('controller-time').textContent = controller.updated_at ? new Date(controller.updated_at).toLocaleTimeString('zh-CN') : '控制器未启动';
@@ -95,7 +99,7 @@ function renderReadiness(data) {
     $('controller-state').textContent = 'STALE';
     $('controller-message').textContent = '控制器状态已超过 3 秒未更新，可能异常退出；动作不得依赖此状态。';
   }
-  $('mode-label') && ($('mode-label').textContent = controllerOnline ? 'GUARDED ACTIVE' : 'READ ONLY');
+  $('mode-label') && ($('mode-label').textContent = liveTorqueCount ? 'TORQUE HOLD' : controllerOnline ? 'GUARDED ACTIVE' : 'HOLD READY');
 }
 
 function updateSafetyConfirmation() {
@@ -132,6 +136,21 @@ async function controllerCommand(action) {
 
 $('start-controller').addEventListener('click', () => controllerCommand('start'));
 $('stop-controller').addEventListener('click', () => controllerCommand('stop'));
+
+async function torqueCommand(enabled, scope) {
+  const payload = {enabled, scope};
+  if (scope === 'single') { payload.port = $('torque-port').value; payload.id = Number($('torque-id').value); }
+  if ($('torque-message')) $('torque-message').textContent = enabled ? '正在锁定当前位置并打开扭矩…' : '正在关闭扭矩…';
+  const response = await fetch('/api/torque', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+  const data = await response.json();
+  if ($('torque-message')) $('torque-message').textContent = data.message || data.detail || '扭矩命令已处理';
+  setTimeout(refresh, 800);
+}
+$('torque-all-on').addEventListener('click', () => torqueCommand(true, 'all'));
+$('torque-all-off').addEventListener('click', () => torqueCommand(false, 'all'));
+$('torque-one-on').addEventListener('click', () => torqueCommand(true, 'single'));
+$('torque-one-off').addEventListener('click', () => torqueCommand(false, 'single'));
+
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));

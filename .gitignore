@@ -112,7 +112,6 @@ web_control/server/.pytest_cache/
 fabrication/assembly/debug_console/server.pid
 fabrication/assembly/debug_console/server.stdout.log
 fabrication/assembly/debug_console/server.stderr.log
-fabrication/assembly/debug_console/torque_control.py
 
 # Runtime observations and temporary diagnostics are kept beside the project
 # locally but are not source or procurement records to publish.
@@ -121,6 +120,6 @@ fabrication/assembly/evidence/*/first-motion-events.jsonl
 fabrication/assembly/evidence/*/lerobot-pose-probe.log
 fabrication/assembly/evidence/*/camera-index-check/
 fabrication/assembly/evidence/*/console-camera-0.headers.txt
-fabrication/assembly/evidence/*/torque-command.json
 fabrication/assembly/evidence/*/motor-after-torque-test.json
+fabrication/assembly/evidence/*/torque-command.json
 fabrication/export/.x2d_page_tmp.html
