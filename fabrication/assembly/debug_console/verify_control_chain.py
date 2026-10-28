@@ -49,11 +49,11 @@ def main():
             print('real_motion',json.dumps(results[-1]),flush=True)
         runtime.process_input({'connected':False},source='diagnostic_replay')
         events=list(runtime.events)
-        assert runtime.controller['controller']=='offline'
+        assert runtime.controller['controller']=='online' and runtime.controller['paused']
         assert len([e for e in events if e['kind']=='feedback' and e.get('moved')])>=4
         result={'passed':True,'method':'same process_input -> move -> encoder feedback path',
                 'real_gamepad_buttons_pressed_by_agent':False,'motors':results,
-                'disconnect_stops':True,'events':events}
+                'disconnect_stops_motion_and_preserves_takeover':True,'events':events}
         (LOG_DIR/'control-chain-verification.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
         print('PASS: LB / D-pad replay, two joints measured, release and disconnect stop',flush=True)
     finally:

@@ -1,119 +1,57 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>XLeRobot Hardware Desk</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
-  <link rel="stylesheet" href="/static/bringup.css?v=2">
-</head>
-<body>
-  <main class="shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">HARDWARE DESK / 0.4 DUAL WHEEL</p>
-        <h1>XLeRobot <span>调试与控制</span></h1>
-      </div>
-      <div class="mode"><span class="pulse"></span><strong id="mode-label">READ ONLY</strong><small>编码器回读 · 原生手柄</small></div>
-    </header>
-
-    <section class="summary" aria-label="系统摘要">
-      <article><span>串口</span><strong id="ports-count">—</strong><small>正在读取</small></article>
-      <article><span>舵机</span><strong id="motor-count">—</strong><small>实时编码器反馈</small></article>
-      <article><span>相机</span><strong id="camera-count">—</strong><small>MJPEG / 15 FPS</small></article>
-      <article class="warn"><span>安全状态</span><strong id="summary-torque">读取中</strong><small id="summary-torque-note">未使能扭矩</small></article>
-    </section>
-
-    <section class="readiness" aria-labelledby="readiness-title">
-      <div class="section-head"><h2 id="readiness-title">操作许可</h2><span id="readiness-updated">等待检测</span></div>
-      <div class="readiness-grid">
-        <article id="gate-observe"><b>观测</b><strong>等待硬件</strong><p>控制板、相机与舵机通信正常</p></article>
-        <article id="gate-calibrate"><b>校准</b><strong>未检查</strong><p>双板在线且手臂被支撑</p></article>
-        <article id="gate-move"><b>受限动作</b><strong>锁定</strong><p>校准、手柄、离地确认全部通过</p></article>
-      </div>
-      <p class="blocker" id="blocker" role="status">正在检查当前连接与操作条件…</p>
-    </section>
-
-    <section class="runtime" aria-labelledby="runtime-title">
-      <div class="section-head"><h2 id="runtime-title">实时操作</h2><span id="controller-time">控制器未启动</span></div>
-      <div class="torque-panel">
-        <div class="torque-simple">
-          <button type="button" id="torque-all-on">打开全部扭矩</button>
-          <button type="button" id="torque-all-off" class="secondary">关闭全部扭矩</button>
-          <span id="torque-message" role="status">打开前会把每个舵机目标锁在当前位置。</span>
-        </div>
-        <form class="torque-fine">
-          <label>端口<select id="torque-port"><option>COM3</option><option>COM4</option></select></label>
-          <label>电机 ID<input id="torque-id" type="number" min="1" max="20" value="1"></label>
-          <button type="button" id="torque-one-on">打开这个</button>
-          <button type="button" id="torque-one-off" class="secondary">关闭这个</button>
-        </form>
-      </div>
-      <div class="runtime-grid">
-        <article><span>控制器</span><strong id="controller-state">OFFLINE</strong></article>
-        <article><span>扭矩</span><strong id="torque-state">OFF</strong></article>
-        <article><span>当前关节</span><strong id="active-joint">—</strong></article>
-        <article><span>最近动作</span><strong id="last-action">尚无动作</strong></article>
-      </div>
-      <div class="command-strip">
-        <button type="button" id="start-controller">启动受限控制</button>
-        <button type="button" id="stop-controller">停止接管（保持姿态）</button>
-        <span id="controller-message" role="status">观测中；点击启动后，按住LB才能发送小步。</span>
-      </div>
-      <label class="form-check"><input type="checkbox" id="wheels-lifted">我确认机械臂周围安全、线路无拉扯；本轮底盘不参与动作</label>
-      <label class="form-check"><input type="checkbox" id="map-confirmed">我确认仅在现有限位内做小范围单关节测试</label>
-    </section>
-
-    <section class="panel control-settings">
-      <div class="section-head"><h2>关节与小步设置</h2><span>保留设备限位 · 本轮最多偏离起点约8°</span></div>
-      <div class="settings-row"><label>当前关节<select id="joint-select"></select></label>
-        <label>单步<input id="step-setting" type="number" min="4" max="32" value="16"> 计数</label>
-        <label>低速<input id="speed-setting" type="number" min="40" max="150" value="100"> 计数/秒</label>
-        <button id="apply-settings">应用小步设置</button><button id="read-calibration">重新读取设备限位</button></div>
-      <p id="joint-limits">启动后显示当前设备限位与本轮允许范围</p>
-    </section>
-    <section class="cameras" aria-labelledby="camera-title">
-      <div class="section-head"><h2 id="camera-title">光学通道</h2><span id="camera-time">connecting</span></div>
-      <div class="camera-grid">
-        <figure><div class="frame"><img src="/camera/0.mjpg" alt="腕部相机 01 实时画面"><i></i></div><figcaption><b>CAM 01</b><span>左腕候选</span><em id="cam0">等待画面</em></figcaption></figure>
-        <figure><div class="frame"><img src="/camera/1.mjpg" alt="腕部相机 02 实时画面"><i></i></div><figcaption><b>CAM 02</b><span>右腕候选</span><em id="cam1">等待画面</em></figcaption></figure>
-        <figure><div class="frame"><img src="/camera/2.mjpg" alt="头部相机实时画面"><i></i></div><figcaption><b>CAM 03</b><span>头部候选</span><em id="cam2">等待画面</em></figcaption></figure>
-      </div>
-    </section>
-
-    <section class="middle">
-      <article class="panel motors-panel">
-        <div class="section-head"><h2>舵机总线</h2><span id="motor-time">—</span></div>
-        <div id="ports"></div>
-      </article>
-      <article class="panel gamepad-panel">
-        <div class="section-head"><h2>Gamepad</h2><span id="pad-state">按任意键唤醒</span></div>
-        <div class="pad-visual" id="pad-visual" role="img" aria-label="手柄输入可视化">
-          <span class="stick left" id="stick-left"></span><span class="stick right" id="stick-right"></span>
-          <span class="cross"></span>
-        </div>
-        <p class="pad-name" id="pad-name">Windows 已识别 Xbox Elite Wireless Controller</p>
-        <div class="button-grid" id="button-grid"></div>
-        <p class="mapping" id="expected-action">按住 LB 才允许动作；十字键左右选关节，上下小步移动。</p>
-        <ol class="event-log" id="event-log"></ol>
-        <div class="pad-meta"><span id="axes">Axes 0</span><span id="buttons">Buttons 0</span><span id="input-source" class="armed">原生输入</span></div><div id="axis-grid" class="axis-grid"></div><div id="hat-state" class="pad-meta"></div>
-        <p class="mapping">LB：按住使能 / 松开停止并保持 · 十字键左右：选关节 · 上下：正负小步 · View：停止接管。摇杆与扳机仅显示，本轮未映射移动。</p>
-      </article>
-    </section>
-
-    <section class="bringup" aria-labelledby="bringup-title">
-      <div class="section-head"><h2 id="bringup-title">Bring-up 路线</h2><span>先无电/离地验证，再开放动作</span></div>
-      <ol class="bringup-list">
-        <li><label class="checkline"><input type="checkbox" data-step="arm-map"><span><b>01 / 左右臂与关节</b><small>支撑机械臂，保持扭矩关闭；每次只手动移动一个关节，观察哪个 COM 和 ID 的数字变化。</small><em>完成标准：左右臂、ID 1–8、轮 9/10 都有实物对应</em></span></label></li>
-        <li><label class="checkline"><input type="checkbox" data-step="camera-map"><span><b>02 / 相机身份</b><small>用纸逐台遮住镜头，确认对应 CAM；贴上 01/02/03，再标明左腕、右腕和头部。</small><em>完成标准：遮住任意一台时只有对应画面变黑</em></span></label></li>
-        <li><label class="checkline"><input type="checkbox" data-step="gamepad"><span><b>03 / 手柄接管</b><small>读取设备限位，再做手臂小步测试。底盘保持原状。按住 LB 才允许动作，松开停止并保持姿态。</small><em>完成标准：断连、松键、退出程序和失去焦点都能停止</em></span></label></li>
-      </ol>
-    </section>
-
-    <section class="panel diagnostics"><div class="section-head"><h2>输入 → 指令 → 实际反馈</h2><a href="/api/log/download" target="_blank">导出诊断日志</a></div><p>按键日志表示收到输入；command表示已发送目标；feedback表示读到编码器变化。被阻断时会记录原因。</p><ol id="diagnostic-log" class="diagnostic-log"></ol></section>
-    <footer><span>v2 · 原生手柄与监控共享同一串口所有者；速度有上限，原有硬件限位保持。</span><code>127.0.0.1:8765</code></footer>
-  </main>
-  <script src="/static/app.js?v=2"></script>
-</body>
-</html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XLeRobot · 控制映射台</title><link rel="stylesheet" href="/static/mapping.css?v=21"></head>
+<body><main class="desk">
+<header class="masthead"><div><p class="eyebrow">XLeRobot / HARDWARE DESK</p><h1>让每个按键<span>都有回音。</span></h1></div><div class="live-id"><i></i><span id="readiness-updated">正在连接</span><small id="input-source">Windows XInput</small></div></header>
+<section class="session-dock" aria-label="接管状态"><div><span class="label">接管会话</span><strong id="controller-state">未开启</strong><p id="session-description">启动后仍需按住LB；选择关节不会自动移动。</p></div>
+<div class="session-actions"><button id="start-controller" class="primary">开启受限接管</button><button id="resume-controller" hidden>恢复动作</button><button id="stop-controller" class="outline" disabled>结束接管</button></div></section>
+<div class="notice" id="session-notice" role="status" hidden></div>
+<section class="status-line"><span id="ports-count">—</span><span id="motor-count">—</span><span id="camera-count">—</span><span id="summary-torque">—</span><span id="pad-state">检测手柄中</span></section>
+<section class="workspace">
+<article class="pad-panel"><div class="panel-head"><div><span class="eyebrow">01 / INPUT</span><h2>控制映射</h2></div><div class="segmented" aria-label="映射密度"><button id="view-simple" class="selected">简明</button><button id="view-full">完整</button></div></div>
+<p class="subtle" id="pad-name">正在检测原生手柄</p>
+<div class="controller-stage">
+<svg class="controller-svg" viewBox="0 0 720 420" aria-label="Xbox手柄映射图：点按查看用途，不发送动作" role="group">
+<defs><linearGradient id="shell" x2="0" y2="1"><stop stop-color="#3a4443"/><stop offset="1" stop-color="#172221"/></linearGradient></defs>
+<path class="pad-shell" d="M159 100 Q180 78 240 91 L280 106 L440 106 L480 91 Q540 78 561 100 Q600 139 626 244 L650 335 Q657 387 618 393 Q594 397 568 363 L505 300 L215 300 L152 363 Q126 397 102 393 Q63 387 70 335 L94 244 Q120 139 159 100Z"/>
+<path class="pad-seam" d="M164 110 Q130 220 114 319 M556 110 Q590 220 606 319"/>
+<g class="map-key bumper" data-map-key="lt" role="button" tabindex="0" aria-label="LT扳机说明"><rect x="152" y="24" width="110" height="38" rx="16"/><text x="207" y="49">LT</text></g>
+<g class="map-key bumper" data-map-key="rt" role="button" tabindex="0" aria-label="RT扳机说明"><rect x="458" y="24" width="110" height="38" rx="16"/><text x="513" y="49">RT</text></g>
+<g class="map-key bumper" data-map-key="lb" role="button" tabindex="0" aria-label="LB持续按住使能"><rect x="136" y="71" width="143" height="38" rx="14"/><text x="207" y="96">LB · 按住使能</text></g>
+<g class="map-key bumper" data-map-key="rb" role="button" tabindex="0" aria-label="RB未绑定"><rect x="441" y="71" width="143" height="38" rx="14"/><text x="512" y="96">RB</text></g>
+<g class="map-key" data-map-key="xbox" role="button" tabindex="0" aria-label="Xbox系统键"><circle cx="360" cy="142" r="18"/><text x="360" y="148">X</text></g>
+<g class="map-key mini" data-map-key="view" role="button" tabindex="0" aria-label="View结束接管"><circle cx="318" cy="191" r="17"/><text x="318" y="197">▣</text></g>
+<g class="map-key mini" data-map-key="menu" role="button" tabindex="0" aria-label="Menu查看映射"><circle cx="401" cy="191" r="17"/><text x="401" y="197">☰</text></g>
+<g class="map-key stick" data-map-key="ls" role="button" tabindex="0" aria-label="左摇杆只观测"><circle cx="209" cy="187" r="43"/><circle id="stick-left" cx="209" cy="187" r="29"/><text x="209" y="247">左摇杆 · 未绑定</text></g>
+<g class="map-key stick" data-map-key="rs" role="button" tabindex="0" aria-label="右摇杆只观测"><circle cx="444" cy="285" r="40"/><circle id="stick-right" cx="444" cy="285" r="27"/><text x="444" y="346">右摇杆 · 未绑定</text></g>
+<g class="map-key face" data-map-key="y" role="button" tabindex="0" aria-label="Y切换完整映射"><circle cx="545" cy="144" r="22"/><text x="545" y="151">Y</text></g>
+<g class="map-key face" data-map-key="x" role="button" tabindex="0" aria-label="X未绑定"><circle cx="502" cy="187" r="22"/><text x="502" y="194">X</text></g>
+<g class="map-key face" data-map-key="b" role="button" tabindex="0" aria-label="B停止本次动作"><circle cx="588" cy="187" r="22"/><text x="588" y="194">B</text></g>
+<g class="map-key face" data-map-key="a" role="button" tabindex="0" aria-label="A查看关节详情"><circle cx="545" cy="230" r="22"/><text x="545" y="237">A</text></g>
+<g class="map-key dpad" data-map-key="up" role="button" tabindex="0" aria-label="十字键上正向小步"><path d="M254 253 L288 253 L288 284 L271 295 L254 284Z"/><text x="271" y="277">↑</text></g>
+<g class="map-key dpad" data-map-key="down" role="button" tabindex="0" aria-label="十字键下反向小步"><path d="M254 330 L288 330 L288 299 L271 288 L254 299Z"/><text x="271" y="321">↓</text></g>
+<g class="map-key dpad" data-map-key="left" role="button" tabindex="0" aria-label="十字键左上一关节"><path d="M230 276 L230 310 L261 310 L272 293 L261 276Z"/><text x="249" y="300">←</text></g>
+<g class="map-key dpad" data-map-key="right" role="button" tabindex="0" aria-label="十字键右下一关节"><path d="M312 276 L312 310 L281 310 L270 293 L281 276Z"/><text x="295" y="300">→</text></g>
+</svg><p class="diagram-note">按真实手柄时点亮 · 点击图上按键只查看说明</p></div>
+<div class="enable-strip" id="enable-strip"><kbd>LB</kbd><div><strong id="lb-status">等待手柄</strong><span id="expected-action">接管与LB使能独立显示</span></div></div>
+<div id="map-detail" class="map-detail" aria-live="polite"></div>
+<details id="all-inputs"><summary>原始按键与轴值 <span id="buttons"></span></summary><div id="button-grid" class="button-grid"></div><div id="axis-grid" class="axis-grid"></div><div id="hat-state"></div><span id="axes"></span></details>
+</article>
+<article class="target-panel"><div class="panel-head"><div><span class="eyebrow">02 / TARGET</span><h2>当前控制对象</h2></div><span class="tag" id="controller-time">—</span></div>
+<h3 id="active-joint">正在读取</h3><p id="joint-identity" class="subtle">选择关节后，所有方向指令只作用于这个关节。</p>
+<div class="pose-values"><div><span>实际位置</span><strong id="pose-position">—</strong></div><div><span>本次目标</span><strong id="pose-target">—</strong></div></div>
+<div class="travel"><div class="travel-label"><span id="travel-low">—</span><span>本轮可用范围</span><span id="travel-high">—</span></div><div class="travel-rail"><i id="travel-fill"></i><b id="travel-marker"></b></div><div class="travel-label"><span id="remaining-negative">反向余量 —</span><span id="remaining-positive">正向余量 —</span></div></div>
+<div class="direction-guide"><div><kbd>LB + ↑</kbd><span>编码器增加</span></div><div><kbd>LB + ↓</kbd><span>编码器减少</span></div></div><p class="fineprint">正反向以编码器为准；抬升、旋转的物理方向以实物核对为准。</p>
+<div class="feedback-card" id="feedback-card"><strong id="feedback-title">尚无本次动作</strong><p id="last-action">先开启接管，再按住LB点按方向键。</p><div class="command-track" id="command-track"></div><p id="feedback-values"></p></div>
+<p id="joint-limits" class="fineprint"></p><div class="mini-settings"><span>单步 <strong id="step-preview">—</strong></span><span>低速 <strong id="speed-preview">—</strong></span></div>
+<div class="confirmations"><label><input type="checkbox" id="wheels-lifted">机械臂周围安全，线路无拉扯</label><label><input type="checkbox" id="map-confirmed">仅做现有限位内的小范围单关节测试</label></div>
+<p id="controller-message" role="status" class="command-message">服务已连接后可开启接管</p><div id="blocker" class="fineprint"></div>
+</article></section>
+<section class="mapping-section" id="mapping-section"><div class="section-heading"><div><p class="eyebrow">03 / MAPPING REFERENCE</p><h2>知道每个按键，知道每次结果。</h2></div><p id="mapping-mode-note">简明模式 · 先掌握使能、选择与小步</p></div><div id="mapping-list" class="mapping-list"></div></section>
+<section class="joint-section"><div class="section-heading"><div><p class="eyebrow">04 / JOINTS</p><h2>把动作交给哪个关节？</h2></div><p>选择只改变控制对象，不会让新关节移动</p></div><div id="joint-cards" class="joint-cards"></div><p class="fineprint">“限位待校准”项可查看原因，不能直接控制。底盘当前不参与手柄动作。</p></section>
+<details class="settings-section"><summary>设置与扭矩 <span>简化预设 / 精细参数</span></summary><div class="settings-layout"><article><h3>小步预设</h3><div class="preset-row"><button data-preset="4">精细 · 0.35°</button><button data-preset="16">标准 · 1.4°</button><button data-preset="32">较大 · 2.8°</button></div><p class="fineprint">每次点按一次，不连续累加；更改参数先松开LB。</p><div class="settings-row"><label>步长<input id="step-setting" type="number" min="4" max="32" value="16">计数</label><label>速度<input id="speed-setting" type="number" min="40" max="150" value="100">计数/秒</label><button id="apply-settings">应用</button></div><label>精细选关节<select id="joint-select"></select></label><button id="read-calibration">重新读取设备限位</button></article>
+<article><h3>扭矩与支撑</h3><p id="torque-message"></p><p>停止动作、结束接管均保留扭矩支撑。关闭扭矩前，请先托住手臂。</p><div class="settings-row"><button id="torque-all-on">打开全部扭矩</button><button id="torque-all-off">关闭全部扭矩</button></div><div class="settings-row"><select id="torque-port"><option>COM3</option><option>COM4</option></select><input id="torque-id" type="number" min="1" max="10" value="1" aria-label="电机ID"><button id="torque-one-on">打开这个</button><button id="torque-one-off">关闭这个</button></div><small id="torque-state"></small></article></div></details>
+<section class="log-section"><div class="section-heading"><div><p class="eyebrow">05 / FEEDBACK</p><h2>每一步，都有据可查。</h2></div><a href="/api/log/download" target="_blank">导出日志 ↗</a></div><div class="log-tools"><select id="log-filter" aria-label="日志筛选"><option value="important">动作与提示</option><option value="all">全部事件</option><option value="input">手柄输入</option><option value="motion">目标与反馈</option><option value="warning">边界与故障</option></select><span id="log-count"></span></div><ol id="diagnostic-log"></ol></section>
+<details class="hardware-section"><summary>视频与硬件明细 <span id="motor-time">—</span></summary><div class="camera-grid"><figure><img src="/camera/0.mjpg" alt="相机01实时画面"><figcaption>CAM 01 <span id="cam0"></span></figcaption></figure><figure><img src="/camera/1.mjpg" alt="相机02实时画面"><figcaption>CAM 02 <span id="cam1"></span></figcaption></figure><figure><img src="/camera/2.mjpg" alt="相机03实时画面"><figcaption>CAM 03 <span id="cam2"></span></figcaption></figure></div><div id="ports"></div></details>
+<footer><span>接管由你开启和结束 · 触限提示，故障暂停，恢复由你确认</span><code>127.0.0.1:8765</code></footer>
+</main><script src="/static/app.js?v=21"></script></body></html>

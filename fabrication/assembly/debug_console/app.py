@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .control_runtime import ControlRuntime, LOG_DIR
+from .control_mapping import CONTROL_MAP
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
@@ -41,7 +42,7 @@ def index():
 
 @app.get('/api/status')
 def status():
-    return {**runtime.snapshot(),'server_pid':os.getpid()}
+    return {**runtime.snapshot(),'server_pid':os.getpid(),'control_map':CONTROL_MAP}
 
 @app.get('/api/events')
 def events(after: int=0):
@@ -68,6 +69,11 @@ def start_controller(payload:StartCommand):
 @app.post('/api/controller/stop')
 def stop_controller():
     return {'status':'stopped','controller':runtime.stop()}
+
+@app.post('/api/controller/resume')
+def resume_controller():
+    try:return {'status':'ready','controller':runtime.resume(),'message':'已恢复，等待重新按住LB'}
+    except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/controller/heartbeat')
 def heartbeat():

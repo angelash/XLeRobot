@@ -55,6 +55,7 @@ class ControlRuntime:
         self.event_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.controller = {'controller': 'offline', 'armed': False, 'torque': False,
+                           'paused': False, 'pause_reason': None,
                            'selected_joint': None, 'last_action': '观测中，尚未启动手柄接管',
                            'updated_at': now(), 'error': None}
         self.gamepad = {'connected': False, 'devices': [], 'buttons': [], 'axes': [], 'hat': [0,0],
@@ -67,6 +68,8 @@ class ControlRuntime:
         self.previous = {'connected': False, 'lb': False, 'back': False, 'hat': (0,0)}
         self.active = None
         self.pending = None
+        self.last_command = None
+        self.notice = None
         self.step_raw = 16
         self.speed_raw = 100
         self.ui_heartbeat = time.monotonic()
@@ -122,22 +125,31 @@ class ControlRuntime:
                     self.scan()
                     if self.profile is None:
                         self.capture_profile()
-                    if self.controller['controller']=='online' and time.monotonic()-self.pad_time>.5:
-                        self._stop('手柄输入超过500ms未更新，已停止')
-                    if self.controller['controller']=='online' and time.monotonic()-self.ui_heartbeat>3:
-                        self._stop('网页心跳超过3秒未更新，已停止')
+                    self.check_watchdog()
                     if self.pending:
                         self._check_feedback()
             except Exception as exc:
                 with self.io:
                     if self.controller['controller']=='online':
-                        self._stop('通信异常：'+str(exc))
+                        self._pause('通信异常：'+str(exc))
                     old_error=self.controller.get('error')
                     self.controller['error']=str(exc)
                     self.report={'ports':[],'updated_at':now(),'error':str(exc)}
                     self.session.close()
                     if old_error!=str(exc): self.log('error',str(exc))
             self.stop_event.wait(.35)
+
+    def check_watchdog(self):
+        if self.controller['controller']!='online' or self.controller['paused']:return
+        if time.monotonic()-self.pad_time>.5:
+            self._pause('手柄输入超过500ms未更新')
+        elif time.monotonic()-self.ui_heartbeat>3:
+            self._pause('网页心跳超过3秒未更新；接管保留，请回到页面手动恢复')
+
+    def inform(self, code, message, level='info', **fields):
+        self.notice={'code':code,'message':message,'level':level,'time':now(),**fields}
+        self.controller.update(last_action=message,updated_at=now())
+        self.log(code,message,**fields)
 
     def capture_profile(self):
         """Read device calibration. Never write min/max or homing to EEPROM."""
@@ -165,6 +177,7 @@ class ControlRuntime:
                 high=min(m['max'],m['position']+96)
                 available=high-low>=24 and low-8<=m['position']<=high+8
                 self.envelopes[(port['port'],m['id'])]={'min':low,'max':high,'available':available,
+                    'device_min':m['min'],'device_max':m['max'],
                     'label':m['label'],'initial':m['position'],
                     'reason':None if available else '设备保存的行程过窄或当前位置不在范围内，需人工限位校准'}
 
@@ -176,14 +189,18 @@ class ControlRuntime:
             if normalize_pad(self.gamepad)['lb']:
                 raise ValueError('请先松开LB，再启动；防止接管时沿用已按住的使能键')
             if self.controller['controller']=='online': return self.controller.copy()
+            if self.active:self._hold()
             self.capture_profile()
             self._make_envelopes()
             options=[key for key,value in self.envelopes.items() if value['available']]
             if not options: raise ValueError('没有可安全小步测试的关节，需人工校准')
             if self.selected not in options: self.selected=options[0]
             self.previous=normalize_pad(self.gamepad)
+            self.previous_buttons=list(self.gamepad.get('buttons',[]))
+            self.notice=None
+            self.last_command=None
             self.ui_heartbeat=time.monotonic()
-            self.controller.update(controller='online',armed=False,error=None,
+            self.controller.update(controller='online',armed=False,paused=False,pause_reason=None,error=None,
                 selected_joint=self.envelopes[self.selected]['label'],updated_at=now(),
                 last_action='接管成功，等待新的LB按下；方向键一次一小步')
             self.log('controller_start',self.controller['last_action'],selected=list(self.selected))
@@ -196,13 +213,57 @@ class ControlRuntime:
             r=read_registers(p,motor_id)
             write_register(p,motor_id,42,word(r,56),2)
             self.active=None
+        if self.pending and self.last_command:
+            self.last_command.update(outcome='interrupted',message='动作已停止并保持，未把中断当作完成')
         self.pending=None
+        self.controller['active_joint']=None
+
+    def _pause(self, reason):
+        """Fault stops motion but never cancels the user's takeover session."""
+        if self.controller['paused']:return
+        try:self._hold()
+        except Exception as exc:
+            reason+='；保持指令未确认：'+str(exc)
+            if self.last_command:self.last_command.update(outcome='hold_unconfirmed',message=reason)
+            self.pending=None
+        self.controller.update(armed=False,paused=True,pause_reason=reason,active_joint=None,
+                               last_action=reason,updated_at=now())
+        self.inform('fault_pause',reason,'error')
+
+    def resume(self):
+        with self.io:
+            if self.controller['controller']!='online':raise ValueError('先开启接管')
+            if not self.controller['paused']:return self.controller.copy()
+            if not self.gamepad['connected'] or time.monotonic()-self.pad_time>.5:
+                raise ValueError('手柄输入尚未恢复')
+            state=normalize_pad(self.gamepad)
+            buttons=self.gamepad.get('buttons',[])
+            if state['lb'] or any(state['hat']) or (len(buttons)>1 and buttons[1]):
+                raise ValueError('先松开LB、B和十字键，再恢复')
+            self.scan()
+            # Retry an unconfirmed hold after communication recovers. Never
+            # resume while a prior goal may still be latched in the servo.
+            self._hold()
+            self.previous=state
+            self.previous_buttons=list(buttons)
+            self.ui_heartbeat=time.monotonic()
+            self.controller.update(armed=False,paused=False,pause_reason=None,error=None,updated_at=now())
+            self.notice=None
+            self.inform('resume','接管已恢复，等待重新按住LB；没有续发旧指令')
+            return self.controller.copy()
 
     def _stop(self, reason):
+        hold_error=None
         try: self._hold()
-        except Exception as exc: reason += ';保持指令失败：'+str(exc)
-        self.controller.update(controller='offline',armed=False,active_joint=None,
+        except Exception as exc:
+            reason += ';保持指令失败：'+str(exc)
+            hold_error=reason
+            self.pending=None
+            if self.last_command:self.last_command.update(outcome='hold_unconfirmed',message=reason)
+        self.controller.update(controller='offline',armed=False,paused=False,pause_reason=None,active_joint=None,
                                last_action=reason,updated_at=now())
+        self.notice=None
+        if hold_error:self.inform('error',hold_error,'error')
         self.log('controller_stop',reason)
 
     def stop(self):
@@ -216,26 +277,29 @@ class ControlRuntime:
             if key not in self.envelopes: raise ValueError('当前仅开放手臂和头部小步测试')
             if not self.envelopes[key]['available']: raise ValueError(self.envelopes[key]['reason'])
             self._hold()
+            self.notice=None
             self.selected=key
             self.controller.update(selected_joint=self.envelopes[key]['label'],updated_at=now())
             self.log('select','选中'+self.envelopes[key]['label'],port=name,id=motor_id)
 
     def _move(self, direction: int, source='native_gamepad'):
         if not self.controller['armed']: raise ValueError('LB未按住，动作被拒绝')
+        if self.controller['paused']:raise ValueError('动作已暂停，请先恢复')
         if self.pending:
-            self.log('blocked','上一条命令等待编码器反馈，未叠加新目标');return None
+            self.inform('blocked','上一条命令等待编码器反馈，未叠加新目标；接管保留',waiting_for_feedback=True);return None
         name,motor_id=self.selected
         limits=self.envelopes[self.selected]
         if not limits['available']: raise ValueError(limits['reason'])
         p=self.session.ports[name]
         r=read_registers(p,motor_id)
         origin=word(r,56)
-        if not 10<=r[62]/10<=13 or r[63]>=55: raise ValueError('供电或温度超出小步测试范围')
+        if not 10<=r[62]/10<=13 or r[63]>=55:
+            self._pause('供电或温度超出小步测试范围');return None
         requested=origin+direction*self.step_raw
         target=max(limits['min'],min(limits['max'],requested))
-        if (target-origin)*direction<=0 or abs(target-origin)>32:
-            self.log('blocked','到达本轮小范围边界，未发送位置指令',port=name,id=motor_id,
-                     origin=origin,requested=requested,limits=limits)
+        if (target-origin)*direction<4 or abs(target-origin)>32:
+            self.inform('limit','已到'+('正向' if direction>0 else '反向')+'边界；接管保留，可反向小步或切换关节','warning',
+                        port=name,id=motor_id,origin=origin,requested=requested,limits=limits,direction=direction)
             return None
         if r[33]!=0: raise ValueError('关节不是位置模式，未自动修改模式')
         # No old target is ever energized: latch current position first.
@@ -246,6 +310,12 @@ class ControlRuntime:
         self.active=self.selected
         self.pending={'port':name,'id':motor_id,'origin':origin,'target':target,
                       'at':time.monotonic(),'source':source}
+        self.last_command={k:v for k,v in self.pending.items() if k!='at'}
+        self.last_command.update(label=limits['label'],time=now(),outcome='pending',message='目标已发送，等待读取编码器')
+        self.notice=None
+        if target!=requested:
+            self.inform('limit','本步已缩短至边界；接管保留，下一步可反向或切换关节','warning',
+                        port=name,id=motor_id,origin=origin,target=target,requested=requested,direction=direction)
         self.controller.update(active_joint=limits['label'],last_action=f'{limits["label"]}：{origin} → {target}',updated_at=now())
         self.log('command',self.controller['last_action'],port=name,id=motor_id,origin=origin,
                  target=target,speed=self.speed_raw,source=source)
@@ -260,9 +330,13 @@ class ControlRuntime:
                  f'编码器反馈：{pending["origin"]} → {pos}，目标 {pending["target"]}',
                  port=pending['port'],id=pending['id'],origin=pending['origin'],position=pos,
                  target=pending['target'],moved=moved,source=pending['source'])
-        self.controller['last_action']=f'编码器已变化至 {pos}' if moved else '已写目标但编码器未变化，暂停接管'
+        reached=abs(pos-pending['target'])<=6
+        self.last_command.update(position=pos,moved=moved,outcome='feedback' if moved else 'no_motion',
+                                 reached=reached,message='编码器已变化'+('，进入目标容差' if reached else '，目标尚有偏差') if moved else '编码器未变化')
+        self.controller['last_action']=f'编码器已变化至 {pos}' if moved else '已写目标但编码器未变化，动作暂停，接管保留'
+        if self.notice and self.notice.get('waiting_for_feedback'):self.notice=None
         self.pending=None
-        if not moved:self._stop('目标已写入但编码器未变化，请查看反馈日志')
+        if not moved:self._pause('目标已写入但编码器未变化；接管保留，请检查日志后手动恢复')
 
     def process_input(self, raw, source='native_gamepad'):
         """Native/replay share edge detection and the command boundary."""
@@ -272,21 +346,35 @@ class ControlRuntime:
         with self.io:
             if self.controller['controller']!='online':return
             if not current['connected']:
-                self._stop('手柄断开，已停止');return
+                self._pause('手柄断开；接管保留，连接恢复后请手动恢复动作');return
             if current['back']:
                 self._stop('View键停止接管');return
+            if self.controller['paused']:return
+            buttons=raw.get('buttons',[])
+            previous_buttons=getattr(self,'previous_buttons',[])
+            self.previous_buttons=list(buttons)
+            b_edge=len(buttons)>1 and buttons[1] and not (len(previous_buttons)>1 and previous_buttons[1])
+            if b_edge:
+                self._hold()
+                self.controller.update(armed=False,updated_at=now())
+                self.inform('hold','B：本次动作停止并保持；接管保留，松开LB再按可继续')
+                return
+            if len(buttons)>1 and buttons[1]:return
             if current['lb']!=old['lb']:
                 if not current['lb']:self._hold()
                 self.controller.update(armed=current['lb'],updated_at=now(),
                     last_action='LB已按住：允许一次一步' if current['lb'] else 'LB已松开：停止并保持姿态')
                 self.log('lb',self.controller['last_action'],pressed=current['lb'],source=source)
             x,y=current['hat']; px,py=old['hat']
+            if x and y:
+                if (x,y)!=(px,py):self.inform('blocked','十字键斜向输入不执行；请松开后单独点按一个方向')
+                return
             if self.controller['armed'] and x and x!=px:
                 options=[key for key,value in self.envelopes.items() if value['available']]
                 self.select(*options[(options.index(self.selected)+(1 if x>0 else -1))%len(options)])
             if y and y!=py:
                 if self.controller['armed']:self._move(1 if y>0 else -1,source)
-                else:self.log('blocked','十字键已收到，但LB没有按住；未发送动作',source=source)
+                else:self.inform('blocked','十字键已收到，但LB没有按住；未发送动作',source=source)
             self.controller['updated_at']=now()
 
     def _pad_loop(self):
@@ -312,7 +400,7 @@ class ControlRuntime:
                 if not self.diagnostic_replay:self.process_input(raw)
             except Exception as exc:
                 with self.io:
-                    if self.controller['controller']=='online':self._stop('手柄输入异常：'+str(exc))
+                    if self.controller['controller']=='online':self._pause('手柄输入异常：'+str(exc))
                 self.gamepad={'connected':False,'devices':[],'error':str(exc),'buttons':[],'axes':[],'hat':[0,0]}
             self.stop_event.wait(.025)
 
@@ -346,7 +434,8 @@ class ControlRuntime:
             result.update(mode='BOUNDED_CONTROL' if c['controller']=='online' else 'OBSERVE',
                 controller=c,gamepad=self.gamepad,calibration={'exists':self.profile is not None,
                 'kind':'device_register_snapshot','full_range_verified':False},
-                cameras=[dict(x) for x in self.camera_health],version='2.0-encoder-feedback',
+                cameras=[dict(x) for x in self.camera_health],version='2.1-control-map',
+                notice=self.notice,last_command=self.last_command,
                 joints=[{'port':p,'id':i,**v} for (p,i),v in self.envelopes.items()],
                 settings={'step_raw':self.step_raw,'speed_raw':self.speed_raw,'session_limit':96},
                 input_age_ms=round((time.monotonic()-self.pad_time)*1000) if self.pad_time else None)

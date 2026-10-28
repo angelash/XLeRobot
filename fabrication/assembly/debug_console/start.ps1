@@ -7,7 +7,7 @@ if (-not (Test-Path -LiteralPath $python)) { throw '缺少 .venv-debug，请按 
 $listener = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
 if ($listener) {
     $status = Invoke-RestMethod 'http://127.0.0.1:8765/api/status' -TimeoutSec 3
-    if ($status.version -ne '2.0-encoder-feedback') {
+    if ($status.version -notlike '2.*') {
         throw '8765 正运行旧版或其他服务。请先运行同目录 stop.ps1，再启动。'
     }
 }
