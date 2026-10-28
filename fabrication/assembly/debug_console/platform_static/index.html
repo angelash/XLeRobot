@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#172522"><title>XLeRobot Studio · 机器人工坊</title><link rel="stylesheet" href="/assets/studio.css"></head>
+<body>
+<a class="skip" href="#workspace">跳转至工作区</a>
+<aside id="sidebar" class="sidebar"><a class="brand" href="#home" aria-label="XLeRobot Studio 首页"><span class="brand-mark">X<span>↗</span></span><span>XLeRobot<small>STUDIO / 机器人工坊</small></span></a><div class="rail-label">WORKSPACE</div><nav id="navigation" aria-label="工作区导航"></nav><div class="rail-bottom"><span class="local-dot"></span>本地工作台 <span class="mono">01</span><p>从一次动作，到一种能力。</p><a href="#manual/mobile">查看设备架构 ↗</a></div></aside>
+<div class="app"><header class="topbar"><button class="icon-button mobile-menu" id="menu-toggle" aria-label="打开导航">☰</button><div class="breadcrumb">工作台 <span>/</span> <b id="current-page">总览</b></div><button class="search-trigger" id="search-open"><span>⌕</span> 搜索能力、手册、源文件 <kbd>/</kbd></button><div class="connection"><i id="connection-dot"></i><span id="connection-text">连接中</span></div><button id="global-pause" class="button compact" disabled>Ⅱ 暂停动作</button></header>
+<div id="session-strip" class="session-strip" role="status">正在读取控制服务…</div>
+<main id="workspace" tabindex="-1"><div id="page"></div><section id="control-page" hidden><div class="page-heading"><div><p class="eyebrow">TELEOPERATION</p><h1>让每一次输入，都有回应。</h1><p>原项目的双臂整机映射，与本机受限控制共用一个串口服务。</p></div><button class="button" data-guide="xbox">查看操作图解 ↗</button></div><div class="tabs" id="control-tabs"><button class="active" data-runtime="original">整机遥操作</button><button data-runtime="diagnostic">单关节调试</button></div><div id="control-frames"></div></section></main>
+<footer class="app-footer"><span>XLeRobot Studio <span class="mono">1.0</span> · 基于当前本地仓库</span><a href="#capabilities">能力与来源公开可查 ↗</a></footer></div>
+<dialog id="source-dialog" class="source-dialog"><header><div><p class="eyebrow" id="source-kind">REPOSITORY SOURCE</p><h2 id="source-title">源文件</h2></div><div class="actions"><button class="button compact" id="source-copy">复制原文</button><button class="icon-button" data-close="source-dialog" aria-label="关闭源文件">×</button></div></header><p id="source-path" class="mono"></p><article id="source-content"></article></dialog>
+<dialog id="search-dialog" class="search-dialog"><div class="search-box"><span>⌕</span><input id="search-input" placeholder="试试 Xbox、PICO、ACT、装配…" aria-label="搜索工作台"><button class="icon-button" data-close="search-dialog" aria-label="关闭搜索">×</button></div><div id="search-results"></div></dialog>
+<dialog id="image-dialog" class="image-dialog"><button class="icon-button" data-close="image-dialog" aria-label="关闭图片">×</button><img id="large-image" alt="仿真研究图大图"></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="/assets/diagrams.js"></script><script src="/assets/studio.js"></script>
+</body></html>
