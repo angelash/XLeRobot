@@ -112,6 +112,7 @@ web_control/server/.pytest_cache/
 fabrication/assembly/debug_console/server.pid
 fabrication/assembly/debug_console/server.stdout.log
 fabrication/assembly/debug_console/server.stderr.log
+fabrication/assembly/debug_console/torque_control.py
 
 # Runtime observations and temporary diagnostics are kept beside the project
 # locally but are not source or procurement records to publish.
