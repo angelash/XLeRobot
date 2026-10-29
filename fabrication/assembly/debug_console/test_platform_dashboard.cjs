@@ -10,6 +10,24 @@ assert(!unsafe.includes('<script>')&&!unsafe.includes('<img'));
 assert(unsafe.includes('rel="noopener noreferrer"')&&!unsafe.includes('href="javascript:'));
 assert.match(studio.sessionInfo({upstream_connected:true,runtime:{controller:{controller:'online',paused:true,pause_reason:'handpad absent'}}}).text,/接管保留/);
 assert.match(studio.sessionInfo({upstream_connected:false}).detail,/不可确认/);
+// Preview must not diagnose a hardware disconnection or invent physical COM numbers.
+let connections=studio.deviceConnections({preview_only:true,gamepad:{connected:true}});
+assert.equal(connections[0].state,'隔离预览');
+assert.equal(connections[1].state,'隔离预览');
+assert.equal(connections[0].title,'逻辑COM3 / 实际端口待识别');
+assert.equal(connections[2].state,'在线');
+connections=studio.deviceConnections({preview_only:false,ports:[
+  {port:'COM3',physical_port:'COM8',connected:true,motors:Array(8).fill({torque:0})},
+  {port:'COM4',physical_port:'COM9',connected:true,motors:Array(8).fill({torque:0})}
+]});
+assert.equal(connections[0].title,'逻辑COM3 / 实际COM8');
+assert.equal(connections[1].title,'逻辑COM4 / 实际COM9');
+assert.equal(connections[0].state,'8个电机');
+assert.equal(connections[0].connected,true); // Torque off does not mean disconnected.
+connections=studio.deviceConnections({preview_only:false,error:'USB identity missing'});
+assert.equal(connections[0].state,'读取失败');
+assert.equal(connections[0].connected,false);
+assert.equal(studio.deviceConnections({},false)[0].state,'服务离线');
 const nodes={'sandbox-side':{value:'both'},'sandbox-mode':{value:'position'}};
 context.document={getElementById:id=>nodes[id]};
 let input=studio.sandboxInput('extend');assert.equal(input.axes[1],-.8);assert.equal(input.axes[3],-.8);

@@ -87,14 +87,24 @@ const Studio = (() => {
     }
     if(route==='learning')$('environment-list').innerHTML=(status.environment||[]).map(e=>`<div class="env-row"><strong>${esc(e.name)}</strong> <span>${e.present?'环境存在':'未找到'}</span><div>${Object.entries(e.packages).filter(([,v])=>v).map(([k,v])=>`<span>${esc(k)} ${esc(v)}</span>`).join('')||'没有可索引的软件包'}</div></div>`).join('');
   }
+  function deviceConnections(r,serviceConnected=true){
+    const rows=[['COM3','左臂 1–6 / 头部 7、8'],['COM4','右臂 1–6 / 双轮 9、10']].map(([role,detail])=>{
+      const port=(r.ports||[]).find(p=>p.port===role),count=port?.motors?.length||0;
+      const connected=serviceConnected&&!r.preview_only&&port?.connected!==false&&count>0;
+      return {title:'逻辑'+role+' / '+(port?.physical_port?'实际'+port.physical_port:'实际端口待识别'),detail,connected,
+        state:!serviceConnected?'服务离线':r.preview_only?'隔离预览':connected?count+'个电机':r.error||port?.error?'读取失败':'等待读取'};
+    });
+    const pad=serviceConnected&&!!r.gamepad?.connected;
+    return [...rows,{title:'Xbox',detail:'Windows XInput 原生输入',connected:pad,state:pad?'在线':'未连接'}];
+  }
   function renderDevices(r){
-    const ports=r.ports||[],pad=!!r.gamepad?.connected,online=r.controller?.controller==='online';
-    $('device-connections').innerHTML=[['COM3','左臂 1–6 / 头部 7、8',ports.find(p=>p.port==='COM3')?.motors?.length],['COM4','右臂 1–6 / 双轮 9、10',ports.find(p=>p.port==='COM4')?.motors?.length],['Xbox','Windows XInput 原生输入',pad?'在线':null]].map(([t,d,n])=>`<div class="device-line"><i class="status-dot ${n?'good':''}"></i><div><strong>${t.startsWith('COM')?'逻辑'+t+' / 实际'+esc(ports.find(p=>p.port===t)?.physical_port||t):t}</strong><small>${d}</small></div><span class="tag">${n?typeof n==='number'?n+'个电机':n:'未连接'}</span></div>`).join('');
-    $('device-error').textContent=r.error||'已读取控制服务；请以下方实测值为准。';
+    const ports=r.ports||[],online=r.controller?.controller==='online';
+    $('device-connections').innerHTML=deviceConnections(r,status.upstream_connected).map(row=>`<div class="device-line"><i class="status-dot ${row.connected?'good':''}"></i><div><strong>${esc(row.title)}</strong><small>${esc(row.detail)}</small></div><span class="tag">${esc(row.state)}</span></div>`).join('');
+    $('device-error').textContent=r.error||(r.preview_only?'当前为隔离预览，尚未读取控制板和电机；需切换为设备监控。手柄与相机状态单独显示。':ports.length?'已读取设备状态；监控不会自动开启扭矩或接管。':'等待设备状态；请检查供电、USB和设备身份。');
     $('torque-reason').textContent=online?'接管仍在线：请由你在控制中心结束接管后再操作扭矩。':'扭矩操作需设备在线并确认人工支撑，结果以寄存器回读为准。';
-    const allowed=!online&&ports.length>0&&$('torque-confirm').checked&&status.upstream_connected;$('torque-on').disabled=!allowed;$('torque-off').disabled=!allowed;
-    $('read-limits').disabled=online||!ports.length;
-    $('motor-readings').innerHTML=ports.length?ports.map(p=>`<h3>${esc(p.port)} <span class="subtle">${esc(p.identity||'')}</span></h3><div class="table-wrap"><table class="motor-table"><thead><tr><th>ID</th><th>当前位置</th><th>目标</th><th>设备范围</th><th>扭矩</th><th>模式</th><th>温度 / 电压</th></tr></thead><tbody>${p.motors.map(m=>`<tr><td class="mono">${m.id}</td><td>${esc(m.position)}</td><td>${esc(m.goal??'—')}</td><td>${esc(m.min)} – ${esc(m.max)}</td><td>${m.torque?'开启':'关闭'}</td><td>${esc(m.mode)}</td><td>${esc(m.temperature??'—')}° / ${esc(m.voltage??'—')}V</td></tr>`).join('')}</tbody></table></div>`).join(''):empty('当前没有实测电机','检查供电、USB和设备身份。预览模式仍可使用。');
+    const allowed=!r.preview_only&&!online&&ports.length>0&&$('torque-confirm').checked&&status.upstream_connected;$('torque-on').disabled=!allowed;$('torque-off').disabled=!allowed;
+    $('read-limits').disabled=r.preview_only||online||!ports.length;
+    $('motor-readings').innerHTML=ports.length?ports.map(p=>`<h3>${esc(p.port)} <span class="subtle">${esc(p.identity||'')}</span></h3><div class="table-wrap"><table class="motor-table"><thead><tr><th>ID</th><th>当前位置</th><th>目标</th><th>设备范围</th><th>扭矩</th><th>模式</th><th>温度 / 电压</th></tr></thead><tbody>${p.motors.map(m=>`<tr><td class="mono">${m.id}</td><td>${esc(m.position)}</td><td>${esc(m.goal??'—')}</td><td>${esc(m.min)} – ${esc(m.max)}</td><td>${m.torque?'开启':'关闭'}</td><td>${esc(m.mode)}</td><td>${esc(m.temperature??'—')}° / ${esc(m.voltage??'—')}V</td></tr>`).join('')}</tbody></table></div>`).join(''):r.preview_only?empty('隔离预览未读取电机','设备监控会读取位置、电压、温度和限位，启动时不会自动接管。'):empty('当前没有实测电机','检查供电、USB和设备身份。');
     for(let i=0;i<3;i++)$('cam-state-'+i).textContent=r.cameras?.find(c=>c.camera===i)?.state||'设备状态未知';
   }
   function renderLibrary(){
@@ -203,7 +213,7 @@ const Studio = (() => {
     $('navigation').innerHTML=pages.map(([id,t,n])=>`<a href="#${id}">${StudioVisuals.icon(id)}<span>${t}</span><small>${n}</small></a>`).join('');
     try{catalog=await api('/api/platform/catalog');wire();await refresh();await navigate();}catch(e){$('page').innerHTML=`<div class="error-box">工作台加载失败：${esc(e.message)}<p>请确认8770平台服务已启动，然后刷新页面。</p></div>`;}
   }
-  return {init,esc,markdown,sessionInfo,sandboxInput};
+  return {init,esc,markdown,sessionInfo,sandboxInput,deviceConnections};
 })();
 if(typeof document!=='undefined')Studio.init();
 if(typeof module!=='undefined')module.exports=Studio;
