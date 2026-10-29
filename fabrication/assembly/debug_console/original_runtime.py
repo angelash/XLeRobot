@@ -238,6 +238,19 @@ class OriginalRuntime(ControlRuntime):
         return channels
 
     def whole_robot_setup(self):
+        manual=self.manual_calibration.snapshot()
+        if manual['active']:
+            checks=[]
+            by_item={x['item']:x for x in manual['apply_blockers'] if 'item' in x}
+            for side,label in [('left','左臂联动与夹爪'),('right','右臂联动与夹爪')]:
+                reasons=[by_item[side+'_'+kind]['message'] for kind in ('a','b','c','open','closed') if side+'_'+kind in by_item]
+                checks.append({'key':side,'label':label,'ready':not reasons,'reasons':reasons})
+            checks.append({'key':'base','label':'底盘连续遥控（可选）',
+                           'ready':bool(manual['wheels'].get('verified')),'optional':True,
+                           'reasons':[] if manual['wheels'].get('verified') else ['底盘尚未确认，可独立完成或暂不开放']})
+            reasons=[x['message'] for x in manual['apply_blockers'] if 'item' not in x]
+            checks.append({'key':'range','label':'完整操作行程','ready':not reasons,'reasons':reasons})
+            return {'ready':manual['apply_ready'],'checks':checks,'live_manual':True}
         channels=self.readiness('original_hardware')
         checks=[]
         ports=self.arm_ports()

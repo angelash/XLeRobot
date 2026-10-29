@@ -97,8 +97,14 @@ def recentered(sample,old_homing,margin=8):
     offset=(signed_homing(old_homing)+mid-2047+2048)%4096-2048
     if offset==-2048:mid+=1;offset=-2047
     convert=lambda value:value-mid+2047
-    return {'min':convert(sample.low)+margin,'max':convert(sample.high)-margin,
-            'homing_raw':encode_homing(offset),'position':convert(sample.current),'mid':mid}
+    # Keep the approved safety inset where there is room, but never create a
+    # smaller range than the physically observed current position. This lets a
+    # user save while resting at an endpoint and then command only inward.
+    low=convert(sample.low);high=convert(sample.high);position=convert(sample.current)
+    low_margin=margin if position-low>=margin else 0
+    high_margin=margin if high-position>=margin else 0
+    return {'min':low+low_margin,'max':high-high_margin,
+            'homing_raw':encode_homing(offset),'position':position,'mid':mid}
 
 
 def build_profile(samples,captures,backup,wheels,confirmed_keys,arm_ports=None):
@@ -112,8 +118,7 @@ def build_profile(samples,captures,backup,wheels,confirmed_keys,arm_ports=None):
           'method':'torque_off_unwrapped_range_and_geometric_ABC','raw_captures':deepcopy(captures)}
     for key in KEYS:
         sample=samples[key];entry=recentered(sample,word(backup[key],31))
-        if not entry['min']<=entry['position']<=entry['max']:
-            raise ValueError(joint_label(*split_key(key))+'当前在采集端点，请手动回到范围中部再保存')
+        if not entry['min']<=entry['position']<=entry['max']:raise RuntimeError('内部范围换算错误')
         entry.update(observed_range=sample.snapshot(),full_range_confirmed=True,verified=True)
         data['joints'][key]=entry
     # Capture cards follow the operator's logical left/right. Map them to the
@@ -464,8 +469,8 @@ class WholeCalibration:
 
     def base_test(self,kind,left_sign,right_sign,confirmed):
         self.require_active()
-        if self.step!='base' or kind not in ('forward','left') or not confirmed:
-            raise ValueError('请在底盘步骤确认周围有空间，再测试')
+        if kind not in ('forward','left') or not confirmed:
+            raise ValueError('请勾选“双臂已放稳、车轮周围有空位”，再测试底盘')
         if left_sign not in (-1,1) or right_sign not in (-1,1):raise ValueError('轮子方向必须为±1')
         if self.wheels.get('left_sign')!=left_sign or self.wheels.get('right_sign')!=right_sign:self.base_tests={}
         self.wheels={**DESIGN_GEOMETRY,'left_sign':left_sign,'right_sign':right_sign,'verified':False}
@@ -590,6 +595,15 @@ class WholeCalibration:
         return self.snapshot()
 
     def snapshot(self):
+        required={side+'_'+kind for side in ('left','right') for kind in ('a','b','c','open','closed')}
+        missing_cards=[{'item':item,'message':'尚未录制 '+item} for item in sorted(required-set(self.captures))]
+        short_ranges=[{'key':key,'label':joint_label(*split_key(key)),
+                       'message':joint_label(*split_key(key))+'行程不足48计数'}
+                      for key in KEYS if self.samples and self.samples[key].high-self.samples[key].low<48]
+        unconfirmed=[{'key':key,'label':joint_label(*split_key(key)),
+                      'message':joint_label(*split_key(key))+'行程尚未确认'}
+                     for key in KEYS if key not in self.confirmed_keys]
+        blockers=[*missing_cards,*short_ranges,*unconfirmed]
         return {'active':self.active,'id':self.id,'step':self.step,'error':self.error,'applied':self.applied,
                 'arm_ports':self.runtime.arm_ports(),
                 'ranges':[{'key':key,'label':joint_label(*split_key(key)),**s.snapshot()} for key,s in self.samples.items()],
@@ -598,4 +612,5 @@ class WholeCalibration:
                 'design_geometry':DESIGN_GEOMETRY,'recovery_reset':self.recovery_reset,
                 'recoverable':self.find_recoverable() if not self.active or self.error else None,
                 'merge_checkpoint_id':self._best_card_checkpoint() if self.active and self.step=='cards' and not self.captures else None,
-                'step_warnings':self.step_warnings,'persistence_error':self.persistence_error}
+                'step_warnings':self.step_warnings,'persistence_error':self.persistence_error,
+                'required_cards':sorted(required),'apply_blockers':blockers,'apply_ready':self.active and not blockers}
