@@ -366,6 +366,15 @@ def test_clear_pose_cards_keeps_ranges_and_saves_old_cards_as_separate_evidence(
     assert len(list(c.path.parent.glob('*captures-before-rerecord*')))==count+1
 
 
+def test_latest_torque_off_checkpoint_resumes_after_service_restart(runtime):
+    c=runtime.manual_calibration;c.start(True);c.persist()
+    # Simulate an app restart: retain persisted evidence but replace live owner.
+    runtime.manual_calibration=cal.WholeCalibration(runtime,c.path,c.profile_path)
+    assert not runtime.manual_calibration.active
+    resumed=runtime.manual_calibration.resume_latest()
+    assert resumed['active'] and resumed['step']=='cards'
+
+
 def test_recovered_pose_cards_follow_saved_physical_port_not_current_UI_side(runtime):
     c=runtime.manual_calibration;c.start(True)
     positions={key:s.current for key,s in c.samples.items()}

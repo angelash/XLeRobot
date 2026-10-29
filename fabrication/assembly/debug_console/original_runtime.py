@@ -58,6 +58,7 @@ class OriginalRuntime(ControlRuntime):
             if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不访问实机标定')
             c=self.manual_calibration
             if action=='start':return c.start(payload.get('confirmed',False))
+            if action=='resume':return c.resume_latest()
             if action=='recover':return c.recover(payload.get('session_id'),payload.get('confirmed',False))
             if action=='merge-checkpoint':return c.merge_checkpoint(payload.get('session_id'),payload.get('confirmed',False))
             if action=='capture':return c.capture(payload.get('step'),payload.get('confirmed_keys'))

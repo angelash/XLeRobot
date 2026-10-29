@@ -56,6 +56,13 @@ def original_index():
 
 @app.get('/api/original/status')
 def original_status():
+    # Status polling is not a hardware mutation. Resuming a previously verified
+    # torque-off checkpoint only reopens observation after a clean restart.
+    if not isinstance(runtime,PreviewRuntime) and not runtime.manual_calibration.active and runtime.manual_calibration.recoverable:
+        try:
+            if runtime.controller['controller']=='offline' and not any(m['torque'] for p in runtime.report['ports'] for m in p['motors']):
+                runtime.calibration_command('resume',{})
+        except Exception:pass
     return {**runtime.snapshot(),'control_map':JOINT_MAP if runtime.control_profile=='original_joint' else ORIGINAL_MAP,
             'trial_control_map':JOINT_MAP,'preview_only':isinstance(runtime,PreviewRuntime)}
 

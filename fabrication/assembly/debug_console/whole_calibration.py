@@ -215,6 +215,16 @@ class WholeCalibration:
             self.active=False;self.persist();raise RuntimeError(self.error) from exc
         return self.snapshot()
 
+    def resume_latest(self):
+        """Continue the best torque-off checkpoint after a healthy restart."""
+        if self.active:return self.snapshot()
+        r=self.runtime
+        if r.controller['controller']!='offline' or any(m['torque'] for p in r.report['ports'] for m in p['motors']):
+            raise ValueError('恢复采集要求手柄离线且所有扭矩关闭')
+        candidate=self.find_recoverable()
+        if not candidate:raise ValueError('没有可恢复的采集记录')
+        return self.recover(candidate['id'],True)
+
     def find_recoverable(self):
         """Find only this robot's non-applied checkpoints; never activate them."""
         stamp=time.monotonic()
