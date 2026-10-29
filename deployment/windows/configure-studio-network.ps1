@@ -28,7 +28,9 @@ function Get-OtherClientRanges([string[]]$Addresses) {
         $rangeStart = [uint64]$value+1
     }
     if ($rangeStart -le 4294967295) { (ConvertTo-IPv4Text $rangeStart)+'-'+(ConvertTo-IPv4Text 4294967295) }
-    '::/0'
+    # Windows Firewall rejects ::/0; two /1 prefixes cover the same IPv6 set.
+    '::/1'
+    '8000::/1'
 }
 $otherClients = @(Get-OtherClientRanges (@($ClientAddress)+'127.0.0.1'))
 if (-not $Apply) {
