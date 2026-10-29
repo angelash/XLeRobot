@@ -26,6 +26,7 @@ console.log('Original dashboard PASS: mapping, linkage diagrams, visible gates, 
 context.s.controller={controller:'offline'};context.s.gamepad.buttons=Array(17).fill(false);node('target').value='hardware';node('confirm').checked=true;render();
 assert(node('start').disabled);assert.match(node('blocker').textContent,/实机未就绪/);
 node('target').value='preview';render();assert.equal(node('start').disabled,false,'Preview does not require serial boards');
+context.s.preview_only=false;render();assert.match(node('backend').textContent,/设备监控/);
 
 context.s.control_profile='original_hardware';context.s.controller={controller:'online',paused:false};node('target').value='preview';render();
 assert.equal(node('target').value,'hardware','A reloaded page must show the actual active execution target');

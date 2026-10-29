@@ -394,7 +394,7 @@ class ControlRuntime:
                     self.log('input','手柄按键/方向状态变化',buttons=raw['buttons'],hat=raw['hat'],connected=raw['connected'])
                     last_signature=signature
                 if axes!=last_axis:
-                    self.log('axes','摇杆/扳机变化（只显示，未映射动作）',axes=raw['axes']);last_axis=axes
+                    self.log('axes','摇杆/扳机状态变化',axes=raw['axes']);last_axis=axes
                 if not self.diagnostic_replay:self.process_input(raw)
             except Exception as exc:
                 with self.io:

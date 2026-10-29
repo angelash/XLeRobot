@@ -24,7 +24,7 @@ $('resume').hidden=!active||!ours||!paused;$('resume').disabled=busy||!neutral;
 $('blocker').textContent=active?'':target==='hardware'&&!hardwareReady?'实机未就绪：需要双板16电机在线；当前可使用运动学预览':!s.gamepad.connected?'请连接Xbox手柄':!neutral?'请松开所有按键/扳机并将摇杆回中':!$('confirm').checked?'请确认上方控制目标':'条件满足，可以开启；之后拨杆即可控制';
 $('notice').hidden=!s.notice&&!paused;$('notice').className='notice'+(paused?' error':'');$('notice').textContent=paused?c.pause_reason:s.notice?.message||'';
 $('pad').textContent=s.gamepad.connected?(s.gamepad.name||'Xbox在线'):'手柄离线';$('input-age').textContent=`原生输入 ${s.input_age_ms??'—'}ms`;
-$('backend').textContent=s.preview_only?'隔离预览 · 无串口访问':s.control_profile==='original_hardware'?'实机 · 按通道门控':'运动学预览 · 不向硬件发送目标';
+$('backend').textContent=s.preview_only?'隔离预览 · 无串口访问':s.control_profile==='original_hardware'?'实机 · 按通道门控':s.control_profile==='diagnostic'?'设备监控 · 未开启原版接管':'运动学预览 · 不向硬件发送目标';
 $('version').textContent=s.version;$('service-mode').textContent=s.preview_only?'当前服务只预览，现有实机接管保持':'单串口所有者';
 const o=s.original;if(o){$('kind').textContent=s.control_profile==='original_hardware'?'计划值示意':'运动学预览';$('arm-view').innerHTML=armDiagram(o);$('speed').textContent=`底盘档位 ${o.speed_level}/3`;
 for(const side of ['left','right']){const a=o.arms[side];$(side+'-mode').textContent=modeNames[a.mode];$(side+'-position').textContent=`径向 ${(a.plane_m[0]*1000).toFixed(1)}mm · 高度 ${(a.plane_m[1]*1000).toFixed(1)}mm`;$(side+'-grip').textContent=`夹爪目标 ${a.joints.grip.toFixed(1)} / 100 · 松扳机打开`;}

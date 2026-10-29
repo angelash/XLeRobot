@@ -126,6 +126,19 @@ def test_start_neutral_gate_and_no_auto_zero(runtime):
     with pytest.raises(ValueError):runtime.begin(True) # no implicit takeover replacement
 
 
+def test_readiness_distinguishes_saved_range_torque_and_mode(runtime):
+    motor={'label':'左肩','min':2044,'max':2051,'position':2047,'mode':0,'torque':0}
+    reasons=runtime.joint_readiness_reasons(motor,{'available':False})
+    assert any('7计数' in r and '0.62°' in r for r in reasons)
+    assert '左肩扭矩关闭' in reasons
+    assert not any('需要位置模式' in r for r in reasons)
+    motor.update(min=1000,max=2000,position=2050,mode=1,torque=1)
+    reasons=runtime.joint_readiness_reasons(motor,{'available':False})
+    assert any('实测2050超出设备范围1000–2000' in r for r in reasons)
+    assert '左肩当前模式1，需要位置模式0' in reasons
+    assert not any('扭矩关闭' in r for r in reasons)
+
+
 def test_hardware_blocks_uncalibrated_ik_grip_and_position_mode_wheels(runtime):
     runtime.begin_original('hardware',True)
     assert not runtime.readiness()['left_position']['ready']

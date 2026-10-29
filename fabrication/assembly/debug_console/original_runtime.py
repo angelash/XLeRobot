@@ -72,6 +72,19 @@ class OriginalRuntime(ControlRuntime):
         if any(value.get(k)!=motor[k] for k in ('min','max','homing_raw')):return None
         return value
 
+    def joint_readiness_reasons(self,motor,envelope):
+        label=motor['label'];reasons=[]
+        if not envelope.get('available'):
+            span=motor['max']-motor['min']
+            if span<24:
+                reasons.append(f'{label}设备行程仅{span}计数（{span*360/4096:.2f}°），需人工核对真实行程')
+            elif not motor['min']<=motor['position']<=motor['max']:
+                reasons.append(f'{label}实测{motor["position"]}超出设备范围{motor["min"]}–{motor["max"]}')
+            else:reasons.append(f'{label}本轮可用行程不足24计数，需核对限位与当前位置')
+        if motor['mode']!=0:reasons.append(f'{label}当前模式{motor["mode"]}，需要位置模式0')
+        if not motor['torque']:reasons.append(f'{label}扭矩关闭')
+        return reasons
+
     def readiness(self):
         channels={};motors=self.motors()
         for side,port in [('left','COM3'),('right','COM4')]:
@@ -81,15 +94,14 @@ class OriginalRuntime(ControlRuntime):
                 for i in ids:
                     m=motors.get((port,i));e=self.envelopes.get((port,i))
                     if not m or not e:reasons.append(f'{port}:{i}未读取');continue
-                    if not e['available']:reasons.append(f'{m["label"]}行程过窄/位置越界')
-                    if m['mode']!=0 or not m['torque']:reasons.append(f'{m["label"]}需位置模式且扭矩开启')
+                    reasons.extend(self.joint_readiness_reasons(m,e))
                     if needs_ref and not self.reference(port,i):reasons.append(f'{m["label"]}运动学零位/方向未确认')
                 channels[f'{side}_{channel}']={'ready':not reasons,'reasons':reasons}
         for i in (7,8):
             m=motors.get(('COM3',i));e=self.envelopes.get(('COM3',i),{})
             reasons=[]
-            if not m or not e.get('available'):reasons.append('头部行程未就绪')
-            if m and (m['mode']!=0 or not m['torque']):reasons.append('头部模式/扭矩未就绪')
+            if not m:reasons.append(f'COM3:{i}未读取')
+            else:reasons.extend(self.joint_readiness_reasons(m,e))
             channels[f'head_{i}']={'ready':not reasons,'reasons':reasons}
         reasons=[]
         if not self.kinematic_profile.get('wheels',{}).get('verified'):
