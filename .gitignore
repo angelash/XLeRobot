@@ -141,3 +141,17 @@ fabrication/assembly/debug_console/platform-data/
 fabrication/assembly/debug_console/platform.*.log
 fabrication/assembly/debug_console/platform.pid
 .local-deploy/
+
+# Portable exclusions formerly stored only in .git/info/exclude.
+# Original evidence stays local and is indexed by PROJECT_HANDOFF_ZH.md.
+.venv-sim/
+.venv-pdf/
+local_evidence/
+simulation/mujoco/artifacts/
+simulation/mujoco/xlerobot_two_layer.xml
+simulation/mujoco/scene_two_layer.xml
+simulation/mujoco/scheme_scene.xml
+simulation/mujoco/scheme_table_scene.xml
+
+# Retired pygame probe: preserve locally; current control uses Windows XInput.
+fabrication/assembly/debug_console/gamepad_probe.py
