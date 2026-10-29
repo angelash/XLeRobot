@@ -1,4 +1,5 @@
 /* Same controller and session, presented inside the Studio shell. */
+.calibration-panel button.primary,#whole-setup button.primary{color:#f6f7f1!important}
 :root{--bg:#f5f7ef;--panel:#fff;--ink:#213426;--line:#dce4d3;--muted:#819174;--green:#547e38}
 body{font-family:"Segoe UI","Microsoft YaHei",sans-serif!important}
 body{background:#f5f7ef!important;color:#213426!important}.desk{max-width:none!important;padding:22px!important}.masthead,.studio-link{display:none!important}.session-dock{top:0!important;box-shadow:none!important;border-radius:8px!important}h2{font-size:19px!important}button{border-radius:5px!important}.primary{background:#294c34!important}.pad-panel,.target-panel,.map-detail,.hardware-section,.mapping-section,.log-section{border-radius:8px!important}.original-workspace{gap:16px!important}footer{display:none!important}
