@@ -121,8 +121,8 @@ def build_profile(samples,captures,backup,wheels,confirmed_keys,arm_ports=None):
         if not entry['min']<=entry['position']<=entry['max']:raise RuntimeError('内部范围换算错误')
         entry.update(observed_range=sample.snapshot(),full_range_confirmed=True,verified=True)
         data['joints'][key]=entry
-    # Capture cards follow the operator's logical left/right. Map them to the
-    # profile's physical buses using the arm binding selected when capture starts.
+    # Cards carry the physical bus on which they were recorded. It wins over a
+    # later logical side mapping so a reversed installation cannot relabel data.
     arm_ports=arm_ports or {'left':'COM3','right':'COM4'}
     for side in ('left','right'):
         port=captures[side+'_a'].get('port') or arm_ports[side]
@@ -295,19 +295,18 @@ class WholeCalibration:
         self.id=session_id;self.path=path;self.backup=backup;self.samples=samples
         self.captures=deepcopy(data.get('captures',{}));self.confirmed_keys=list(data.get('confirmed_keys',[]))
         self.wheels=deepcopy(data.get('wheels',{}));self.base_tests=deepcopy(data.get('base_tests',{}))
-        # Capture cards are evidence for the physical arm, not a mutable UI
-        # side. Rebind inherited cards from the saved record's physical port.
+        # Historical cards used original physical naming (COM3 left, COM4
+        # right). Preserve their saved port while deriving display-side names
+        # from today's mapping.
         if self.captures:
-            ports=self.runtime.arm_ports();port_sides={p:s for s,p in ports.items()}
+            historical={'left':'COM3','right':'COM4'}
             for side in ('left','right'):
                 for kind in ('a','b','c','open','closed'):
                     item=side+'_'+kind
                     if item not in self.captures:continue
-                    port=self.captures[item].get('port')
-                    if port not in EXPECTED:port=ports[side]
-                    target=port_sides.get(port,side);new_item=target+'_'+kind
-                    self.captures[new_item]={**self.captures[item],'port':port}
-                    if new_item!=item:self.captures.pop(item,None)
+                    port=self.captures[item].get('port') or historical[side]
+                    if port not in EXPECTED:port=historical[side]
+                    self.captures[item]={**self.captures[item],'port':port}
         self.step='cards'
         self.error=None;self.active=True;self.applied=False;self.recovery_reset=reset
         self.recovery_sources=[session_id];self.recoverable=None;self.persist()
