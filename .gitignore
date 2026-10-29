@@ -134,6 +134,7 @@ fabrication/assembly/evidence/*/simulated-small-move.json
 fabrication/assembly/evidence/*/speed-zero-vs-100.json
 fabrication/assembly/evidence/*/virtual-xbox-live-verification.json
 fabrication/assembly/evidence/*/original-preview/
+fabrication/assembly/evidence/*/whole-calibration/
 fabrication/assembly/kinematic-calibration.json
 fabrication/assembly/debug_console/original-preview.*.log
 fabrication/assembly/debug_console/original-preview.pid

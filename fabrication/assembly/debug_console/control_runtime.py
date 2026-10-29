@@ -128,6 +128,8 @@ class ControlRuntime:
                         self._check_feedback()
             except Exception as exc:
                 with self.io:
+                    calibration=getattr(self,'manual_calibration',None)
+                    if calibration and calibration.active:calibration.fail('标定采样中断：'+str(exc))
                     if self.controller['controller']=='online' and getattr(self,'control_profile','diagnostic')!='original_preview':
                         self._pause('通信异常：'+str(exc))
                     old_error=self.controller.get('error')
@@ -135,7 +137,7 @@ class ControlRuntime:
                     self.report={'ports':[],'updated_at':now(),'error':str(exc)}
                     self.session.close()
                     if old_error!=str(exc): self.log('error',str(exc))
-            self.stop_event.wait(.35)
+            self.stop_event.wait(.05 if getattr(getattr(self,'manual_calibration',None),'active',False) else .35)
 
     def check_watchdog(self):
         if self.controller['controller']!='online' or self.controller['paused']:return

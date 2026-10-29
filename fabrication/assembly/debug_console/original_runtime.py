@@ -4,9 +4,10 @@ import json
 import time
 import threading
 from pathlib import Path
-from .control_runtime import ControlRuntime,EXPECTED_SERIALS,ROOT,now
+from .control_runtime import ControlRuntime,EXPECTED_SERIALS,ROOT,now,LOG_DIR
+from .whole_calibration import WholeCalibration
 from .torque_control import EXPECTED,read_registers,word,write_register
-from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity
+from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse
 
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
 SERVICE_PROFILE=ROOT.parents[1]/'.local-deploy'/'hardware-service.json'
@@ -26,6 +27,27 @@ class OriginalRuntime(ControlRuntime):
         self.preparation=None
         self.service_blocked={}
         self.wheel_pulse_timer=None;self.wheel_pulse_latched=False
+        self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
+
+    def scan(self):
+        super().scan()
+        if getattr(self,'manual_calibration',None):self.manual_calibration.observe(self.report)
+
+    def _require_not_calibrating(self):
+        if self.manual_calibration.active:raise ValueError('正在手动标定；请保存或结束标定后再准备/接管/开启扭矩')
+
+    def calibration_command(self,action,payload):
+        with self.io:
+            if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不访问实机标定')
+            c=self.manual_calibration
+            if action=='start':return c.start(payload.get('confirmed',False))
+            if action=='capture':return c.capture(payload.get('step'),payload.get('confirmed_keys'))
+            if action=='rewind':return c.rewind(payload.get('step'))
+            if action=='base-test':return c.base_test(payload.get('kind'),payload.get('left_sign',-1),payload.get('right_sign',1),payload.get('confirmed',False))
+            if action=='base-confirm':return c.confirm_base(payload.get('forward_observed',False),payload.get('left_observed',False))
+            if action=='apply':return c.apply(payload.get('confirmed',False))
+            if action=='cancel':return c.cancel()
+            raise ValueError('未知标定操作')
 
     def _make_envelopes(self):
         # Reload maintenance exclusions on every fresh capture, including after
@@ -47,6 +69,7 @@ class OriginalRuntime(ControlRuntime):
     def torque(self,enabled,selection=None):
         with self.io:
             if enabled:
+                self._require_not_calibrating()
                 if self.controller['controller']=='online':raise ValueError('先停止手柄接管，再切换扭矩')
                 self._make_envelopes()
                 blocked=[key for key in self.service_blocked
@@ -58,6 +81,7 @@ class OriginalRuntime(ControlRuntime):
     def prepare_hardware(self,confirmed):
         """Explicitly latch present positions before enabling usable servos."""
         with self.io:
+            self._require_not_calibrating()
             if not confirmed:raise ValueError('请确认机械臂已支撑且周围可做小幅动作')
             if self.controller['controller']=='online':raise ValueError('先结束当前接管，再准备实机')
             self.capture_profile();ready=[];blocked=[]
@@ -92,11 +116,13 @@ class OriginalRuntime(ControlRuntime):
             return self.preparation
 
     def begin(self,confirmed):
-        if self.controller['controller']=='online' and self.control_profile!='diagnostic':
-            raise ValueError('先由你结束原版接管，再切换单关节调试')
-        if self.control_profile!='diagnostic':self._hold()
-        self.control_profile='diagnostic'
-        return super().begin(confirmed)
+        with self.io:
+            self._require_not_calibrating()
+            if self.controller['controller']=='online' and self.control_profile!='diagnostic':
+                raise ValueError('先由你结束原版接管，再切换单关节调试')
+            if self.control_profile!='diagnostic':self._hold()
+            self.control_profile='diagnostic'
+            return super().begin(confirmed)
 
     def capture_profile(self):
         result=super().capture_profile()
@@ -182,7 +208,7 @@ class OriginalRuntime(ControlRuntime):
             channels[f'head_{i}']={'ready':not reasons,'reasons':reasons}
         reasons=[]
         if profile!='original_joint' and not self.kinematic_profile.get('wheels',{}).get('verified'):
-            reasons.append('双轮离地模式/方向/零速尚未验收')
+            reasons.append('双轮模式/现场方向/零速尚未验收')
         for i in (9,10):
             m=motors.get(('COM4',i))
             if not m or m['mode']!=1 or not m['torque']:reasons.append(f'COM4:{i}需要速度模式且扭矩开启（不自动修改）')
@@ -200,7 +226,7 @@ class OriginalRuntime(ControlRuntime):
             checks.append({'key':side,'label':label,'ready':not reasons,'reasons':list(dict.fromkeys(reasons))})
         wheels=self.kinematic_profile.get('wheels',{})
         reasons=[]
-        if not wheels.get('verified'):reasons.append('需实测轮径、轮距、物理方向及停车，不使用示例几何代替')
+        if not wheels.get('verified'):reasons.append('需选择底盘几何来源，并完成现场方向与停车确认')
         for i in (9,10):
             motor=self.motors().get(('COM4',i))
             if not motor:reasons.append(f'COM4:{i}未读取')
@@ -214,6 +240,7 @@ class OriginalRuntime(ControlRuntime):
     def begin_whole_robot(self,confirmed):
         """The normal real-robot entry must never report a partial takeover."""
         with self.io:
+            self._require_not_calibrating()
             if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不能控制实机')
             if not confirmed:raise ValueError('请确认整机遥操作与周围安全')
             if self.controller['controller']=='online':raise ValueError('先结束当前接管，再开启整机遥操作')
@@ -224,6 +251,16 @@ class OriginalRuntime(ControlRuntime):
             if not setup['ready']:
                 missing=[c['label']+'：'+'；'.join(c['reasons']) for c in setup['checks'] if not c['ready']]
                 raise ValueError('整机初始化未完成。'+' | '.join(missing))
+            for side,port in [('左','COM3'),('右','COM4')]:
+                angles=[]
+                for i in (2,3):
+                    ref=self.reference(port,i);raw=self.motors()[(port,i)]['position']
+                    angles.append(ref['reference_deg']+(raw-ref['reference_raw'])*ref['direction']*360/4096)
+                try:
+                    solved=inverse(*forward(*angles))
+                    if max(abs(a-b) for a,b in zip(angles,solved))>2:raise ValueError('不在上游逆解分支')
+                except ValueError as exc:
+                    raise ValueError(side+'臂当前姿态超出末端联动分支；请在支撑下回到标定姿态B附近再开启') from exc
             prepared=self.prepare_hardware(True)
             if prepared['blocked']:raise ValueError('整机准备仍有未通过项，请查看初始化清单')
             return self.begin_original('hardware',True,full_range=True)
@@ -231,6 +268,7 @@ class OriginalRuntime(ControlRuntime):
     def begin_trial(self,confirmed):
         """Start bounded joint trials without requiring an IK/full-range file."""
         with self.io:
+            self._require_not_calibrating()
             if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不能准备实机试控')
             if not confirmed:raise ValueError('请确认手臂有支撑、周围有小幅动作空间')
             if self.controller['controller']=='online':raise ValueError('先结束当前接管，再开启低速试控')
@@ -256,6 +294,7 @@ class OriginalRuntime(ControlRuntime):
 
     def begin_original(self,target,confirmed,full_range=False):
         with self.io:
+            self._require_not_calibrating()
             if target not in ('preview','hardware','joint'):raise ValueError('未知控制目标')
             if self.controller['controller']=='online':raise ValueError('请先由你结束当前接管，再切换控制方式')
             if not confirmed:raise ValueError('请确认当前控制目标和周围安全')
@@ -524,13 +563,22 @@ class OriginalRuntime(ControlRuntime):
                 if rate and not self._channel(side+'_'+channel):
                     if (port,i) in self.moving:self._hold_one((port,i))
                     continue
-                self._direct(port,i,rate,dt)
+                ref=self.reference(port,i)
+                self._direct(port,i,rate*(ref['direction'] if ref and i==4 else 1),dt)
+                if ref and (port,i) in self.direct_targets:
+                    self.engine.q[side][JOINTS[i-1]]=ref['reference_deg']+(self.direct_targets[(port,i)]-ref['reference_raw'])*ref['direction']*360/4096
+                    if i==4 and mode=='wrist':
+                        q=self.engine.q[side];self.engine.pitch[side]=q['lift']+q['elbow']+q['wrist']
             if item['trigger']>.75:self.grip_touched[side]=True
             if self.grip_touched[side]:
                 if self._channel(side+'_grip'):
                     ref=self.reference(port,6)
                     raw=ref['closed_raw']+(self.engine.q[side]['grip']-2)/88*(ref['open_raw']-ref['closed_raw'])
-                    self._goal(port,6,raw)
+                    origin=self.moving.get((port,6),self.motors()[(port,6)]['position'])
+                    raw=origin+max(-60*dt,min(60*dt,raw-origin))
+                    accepted=self._goal(port,6,raw)
+                    actual=raw if accepted else origin
+                    self.engine.q[side]['grip']=2+(actual-ref['closed_raw'])*88/(ref['open_raw']-ref['closed_raw'])
                 else:self.engine.q[side]['grip']=previous[side]['grip']
         for i,axis_name in [(7,'pan'),(8,'tilt')]:
             rate=intent['head'][axis_name]*5
@@ -539,6 +587,9 @@ class OriginalRuntime(ControlRuntime):
                 continue
             self._direct('COM3',i,rate,dt)
         raw=list(self.engine.wheels)
+        wheels=self.kinematic_profile.get('wheels',{})
+        raw=[raw[0]*(-wheels.get('left_sign',-1)),raw[1]*wheels.get('right_sign',1)]
+        self.engine.wheels=raw
         if any(raw):
             if not self._channel('base'):
                 if self.wheels_commanded:
@@ -574,13 +625,15 @@ class OriginalRuntime(ControlRuntime):
             else:self.feedback_window[key]={'origin':pos,'at':time.monotonic()}
 
     def snapshot(self):
-        result=super().snapshot()
-        result.update(version='3.3-whole-and-trial',control_profile=self.control_profile,
-                      preferred_target='preview' if isinstance(self,PreviewRuntime) else 'hardware',
-                      original=self.engine.snapshot(),original_readiness=self.readiness(),
-                      trial_readiness=self.readiness('original_joint'),
-                      whole_robot_setup=self.whole_robot_setup(),hardware_preparation=self.preparation,service_blocked=self.service_blocked)
-        return result
+        with self.io:
+            result=super().snapshot()
+            result.update(version='3.4-guided-calibration',control_profile=self.control_profile,
+                          preferred_target='preview' if isinstance(self,PreviewRuntime) else 'hardware',
+                          original=self.engine.snapshot(),original_readiness=self.readiness(),
+                          trial_readiness=self.readiness('original_joint'),
+                          whole_robot_setup=self.whole_robot_setup(),hardware_preparation=self.preparation,service_blocked=self.service_blocked,
+                          manual_calibration=self.manual_calibration.snapshot())
+            return result
 
 
 class PreviewRuntime(OriginalRuntime):

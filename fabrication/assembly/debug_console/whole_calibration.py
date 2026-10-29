@@ -1,0 +1,386 @@
+"""Observed, torque-off commissioning for the upstream whole-robot mapping.
+
+No synthetic reference pose or range is promoted to a physical measurement.
+All I/O is performed inside OriginalRuntime.io, using its existing bus owner.
+"""
+from __future__ import annotations
+from collections import deque
+from copy import deepcopy
+from dataclasses import dataclass,field
+import json
+import math
+import os
+from pathlib import Path
+import threading
+import time
+import uuid
+
+from .commissioning import configure_measured_range,restore_test_window
+from .control_runtime import EXPECTED_SERIALS,joint_label,now
+from .torque_control import EXPECTED,read_registers,word,write_register
+from .upstream_teleop import O1,O2,encode_velocity
+
+KEYS=tuple(f'{p}:{i}' for p,ids in EXPECTED.items() for i in ids if not(p=='COM4' and i in (9,10)))
+STEPS=('ranges','left_a','left_b','left_c','left_open','left_closed',
+       'right_a','right_b','right_c','right_open','right_closed','base','review','complete')
+DESIGN_GEOMETRY={'radius_m':.0635,'track_m':.25,'geometry_source':'published_design',
+ 'sources':['docs/en/source/hardware/getting_started/assemble_2wheel.md: 5 inch wheel',
+            'software/src/robots/xlerobot_2wheels/config_xlerobot_2wheels.py: wheelbase=0.25'],
+ 'note':'轮径127mm采用0.4装配页；轮距250mm采用双轮控制配置；未做实机尺寸测量'}
+
+
+def atomic_json(path,data):
+    path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
+    temporary=path.with_suffix('.tmp')
+    with temporary.open('w',encoding='utf-8') as f:
+        json.dump(data,f,ensure_ascii=False,indent=2,allow_nan=False);f.flush();os.fsync(f.fileno())
+    os.replace(temporary,path)
+
+
+def signed_homing(raw):
+    return -(raw&0x7ff) if raw&0x800 else raw
+
+
+def encode_homing(value):
+    if not -2047<=value<=2047:raise ValueError('偏移超出STS3215编码范围')
+    return abs(value)|(0x800 if value<0 else 0)
+
+
+@dataclass
+class RangeSample:
+    raw:int
+    at:float
+    current:int=field(init=False)
+    low:int=field(init=False)
+    high:int=field(init=False)
+    count:int=0
+    recent:deque=field(default_factory=lambda:deque(maxlen=4))
+
+    def __post_init__(self):
+        if not 0<=self.raw<=4095:raise ValueError('位置不是12位编码器读数')
+        self.current=self.low=self.high=self.raw
+        self.recent.append((self.at,self.current))
+
+    def update(self,raw,at):
+        if not 0<=raw<=4095:raise ValueError('位置不是12位编码器读数')
+        elapsed=at-self.at
+        if elapsed<0 or elapsed>2:raise ValueError('采样间隔超过2秒，需重新采集，不能猜测跨零')
+        if elapsed==0:
+            if raw!=self.raw:raise ValueError('同一采样时刻读数改变，无法判断移动速度')
+            return
+        delta=(raw-self.raw+2048)%4096-2048
+        if abs(delta)>min(512,900*elapsed+24):raise ValueError('手动移动过快，无法可靠展开编码器，请重新采集')
+        self.current+=delta;self.low=min(self.low,self.current);self.high=max(self.high,self.current)
+        if self.high-self.low>3800:raise ValueError('观察范围接近一整圈，请检查线束和采集方式后重新开始')
+        self.raw=raw;self.at=at;self.count+=1;self.recent.append((at,self.current))
+
+    def stationary(self,at):
+        return (len(self.recent)>=3 and at-self.at<.6 and self.at-self.recent[0][0]<1.5
+                and max(x[1] for x in self.recent)-min(x[1] for x in self.recent)<=5)
+
+    def snapshot(self):
+        return {'position':self.raw,'unwrapped':self.current,'min':self.low,'max':self.high,
+                'span_raw':self.high-self.low,'span_deg':round((self.high-self.low)*360/4096,1),'samples':self.count}
+
+
+def recentered(sample,old_homing,margin=8):
+    """p=encoder-homing modulo 4096; center the *observed* unwrapped arc."""
+    if sample.high-sample.low<48:raise ValueError('实测行程不足48计数，不能作为完整操作行程')
+    mid=round((sample.low+sample.high)/2)
+    offset=(signed_homing(old_homing)+mid-2047+2048)%4096-2048
+    if offset==-2048:mid+=1;offset=-2047
+    convert=lambda value:value-mid+2047
+    return {'min':convert(sample.low)+margin,'max':convert(sample.high)-margin,
+            'homing_raw':encode_homing(offset),'position':convert(sample.current),'mid':mid}
+
+
+def build_profile(samples,captures,backup,wheels,confirmed_keys):
+    if set(confirmed_keys)!=set(KEYS):raise ValueError('需要逐项确认14个关节均已走过完整可用行程')
+    needed=set(STEPS[1:11])
+    if not needed<=set(captures):raise ValueError('双臂A/B/C与夹爪端点尚未完整采集')
+    if not wheels.get('verified'):raise ValueError('底盘方向与停车尚未完成现场确认')
+    data={'schema':3,'kind':'observed_manual_whole_robot_calibration','serials':EXPECTED_SERIALS,
+          'full_manual_range_verified':True,'captured_at':now(),'wheels':deepcopy(wheels),'joints':{},
+          'method':'torque_off_unwrapped_range_and_geometric_ABC','raw_captures':deepcopy(captures)}
+    for key in KEYS:
+        sample=samples[key];entry=recentered(sample,word(backup[key],31))
+        if not entry['min']<=entry['position']<=entry['max']:
+            raise ValueError(joint_label(*split_key(key))+'当前在采集端点，请手动回到范围中部再保存')
+        entry.update(observed_range=sample.snapshot(),full_range_confirmed=True,verified=True)
+        data['joints'][key]=entry
+    for side,port in [('left','COM3'),('right','COM4')]:
+        a,b,c=[captures[side+'_'+pose]['positions'] for pose in ('a','b','c')]
+        # A: upper link vertical, forearm horizontal. B: upper link 45deg
+        # outward, forearm horizontal. C: keep B links, tilt tool upward 45deg.
+        for i,delta_deg,ref_deg in [(2,45,-math.degrees(O1)),(3,-45,math.degrees(O2))]:
+            key=f'{port}:{i}';delta=b[key]-a[key]
+            if not 285<=abs(delta)<=740:raise ValueError(joint_label(port,i)+'的A→B应约45°，请重采参考姿态')
+            if abs(c[key]-b[key])>80:raise ValueError('姿态C请保持上臂和前臂不动，只抬夹爪尖端')
+            entry=data['joints'][key]
+            entry.update(reference_raw=a[key]-entry['mid']+2047,reference_deg=ref_deg,
+                         direction=1 if delta*delta_deg>0 else -1)
+        key=f'{port}:4';delta=c[key]-b[key]
+        if not 285<=abs(delta)<=740 or abs(a[key]-b[key])>80:
+            raise ValueError(side+'腕俯仰参考变化不符，请按A/B/C示意重采')
+        entry=data['joints'][key]
+        entry.update(reference_raw=b[key]-entry['mid']+2047,reference_deg=0.,direction=-1 if delta>0 else 1)
+        entry=data['joints'][f'{port}:6']
+        opened=captures[side+'_open']['positions'][f'{port}:6']-entry['mid']+2047
+        closed=captures[side+'_closed']['positions'][f'{port}:6']-entry['mid']+2047
+        direction=1 if opened>closed else -1
+        entry.update(open_raw=opened-direction*8,closed_raw=closed+direction*8)
+        if (abs(entry['open_raw']-entry['closed_raw'])<24 or
+            not all(entry['min']<=v<=entry['max'] for v in (entry['open_raw'],entry['closed_raw']))):
+            raise ValueError(side+'夹爪端点过近或不在实测范围内，请重采')
+    # Relative channels need no absolute angle; still store a valid observed
+    # local origin to keep the calibration contract uniform.
+    for key,entry in data['joints'].items():
+        if key.endswith(':6'):continue
+        entry.setdefault('reference_raw',entry['position']);entry.setdefault('reference_deg',0.)
+        entry.setdefault('direction',1)
+    return data
+
+
+def split_key(key):
+    port,i=key.split(':');return port,int(i)
+
+
+class WholeCalibration:
+    def __init__(self,runtime,path,profile_path):
+        self.runtime=runtime;self.path=Path(path);self.profile_path=Path(profile_path)
+        self.active=False;self.step='ranges';self.error=None;self.id=None
+        self.samples={};self.captures={};self.backup={};self.confirmed_keys=[]
+        self.wheels={};self.base_tests={};self.base_running=None;self.timer=None
+        self.last_save=0.;self.applied=False;self.busy=False
+
+    def persist(self):
+        atomic_json(self.path,{'id':self.id,'serials':EXPECTED_SERIALS,'updated_at':now(),
+          'active':self.active,'step':self.step,'error':self.error,'applied':self.applied,
+          'register_backup':self.backup,'ranges':{k:v.snapshot() for k,v in self.samples.items()},
+          'captures':self.captures,'confirmed_keys':self.confirmed_keys,'wheels':self.wheels,
+          'base_tests':self.base_tests})
+        self.last_save=time.monotonic()
+
+    def start(self,confirmed):
+        r=self.runtime
+        if not confirmed:raise ValueError('请先托住双臂重量并确认开始手动标定')
+        if self.active:raise ValueError('已有手动标定进行中')
+        if r.controller['controller']=='online':raise ValueError('请先结束接管，再开始手动标定')
+        r.scan();self.id=uuid.uuid4().hex;self.path=self.path.parent/(self.id+'.json')
+        self.backup={f'{p}:{i}':read_registers(r.session.ports[p],i) for p,ids in EXPECTED.items() for i in ids}
+        for key,reg in self.backup.items():
+            wheel=key in ('COM4:9','COM4:10')
+            if (word(reg,3)!=777 or reg[33]!=(1 if wheel else 0) or
+                not 10<=reg[62]/10<=13 or reg[63]>=50 or reg[65]):
+                raise ValueError(key+'的型号/模式/供电/温度/状态不满足标定')
+        self.error=None;self.step='ranges';self.captures={};self.samples={};self.applied=False
+        self.confirmed_keys=[];self.wheels={};self.base_tests={};self.base_running=None
+        self.persist()  # Durable original register bytes precede every write.
+        try:
+            self.release_all()
+            r.moving={};r.feedback_window={};r.direct_targets={};r.wheels_commanded=False;r.wheel_goals=[0,0]
+            r.scan();stamp=time.monotonic()
+            self.samples={f'{p["port"]}:{m["id"]}':RangeSample(m['position'],stamp)
+                          for p in r.report['ports'] for m in p['motors'] if f'{p["port"]}:{m["id"]}' in KEYS}
+            if set(self.samples)!=set(KEYS):raise ValueError('没有完整读到14个位置关节')
+            self.active=True;self.persist()
+            r.log('whole_calibration','已备份16颗寄存器并关闭扭矩，开始手动采集；未发送位置目标',id=self.id)
+        except Exception as exc:
+            self.error=str(exc)
+            try:self.release_all()
+            except Exception as cleanup:self.error+='；释放未确认：'+str(cleanup)
+            self.active=False;self.persist();raise RuntimeError(self.error) from exc
+        return self.snapshot()
+
+    def release_all(self):
+        failures=[]
+        for p,ids in EXPECTED.items():
+            for i in ids:
+                try:
+                    if p=='COM4' and i in (9,10):write_register(self.runtime.session.ports[p],i,46,0,2)
+                    write_register(self.runtime.session.ports[p],i,40,0,1)
+                    reg=read_registers(self.runtime.session.ports[p],i)
+                    if reg[40]!=0 or (p=='COM4' and i in (9,10) and word(reg,46)!=0):
+                        raise RuntimeError('关扭矩/轮速0回读不符')
+                except Exception as exc:failures.append(f'{p}:{i} {exc}')
+        if failures:raise RuntimeError('；'.join(failures))
+
+    def observe(self,report):
+        if not self.active or self.error or self.busy:return
+        try:
+            stamp=time.monotonic()
+            motors={f'{p["port"]}:{m["id"]}':m for p in report['ports'] for m in p['motors']}
+            for key,sample in self.samples.items():
+                m=motors[key];before=self.backup[key]
+                if m['torque']!=0 or m['mode']!=0:raise ValueError(m['label']+'采集期间扭矩/模式改变')
+                if any(m[k]!=v for k,v in [('min',word(before,9)),('max',word(before,11)),('homing_raw',word(before,31))]):
+                    raise ValueError(m['label']+'采集期间坐标参数改变')
+                sample.update(m['position'],stamp)
+            if stamp-self.last_save>2:self.persist()
+        except Exception as exc:self.fail(str(exc))
+
+    def fail(self,message):
+        if self.active:
+            self.error=message
+            try:self.release_all()
+            except Exception as exc:self.error+='；关闭未确认：'+str(exc)
+            self.persist()
+
+    def require_active(self):
+        if not self.active:raise ValueError('先开始手动标定')
+        if self.error:raise ValueError(self.error+'；请结束后重新采集')
+        if self.base_running:raise ValueError('等待底盘短脉冲测试停车')
+
+    def capture(self,step,confirmed_keys=None):
+        self.require_active()
+        if step not in STEPS or step!=self.step or step not in STEPS[:11]:raise ValueError('采集步骤与页面不一致')
+        self.runtime.scan();self.require_active()
+        if step=='ranges':
+            keys=list(confirmed_keys or [])
+            if set(keys)!=set(KEYS):raise ValueError('请逐项确认14个关节都已缓慢走过完整可用行程')
+            for key,sample in self.samples.items():
+                if sample.high-sample.low<48:raise ValueError(joint_label(*split_key(key))+'尚未采到有效行程')
+            self.confirmed_keys=keys
+        else:
+            port='COM3' if step.startswith('left_') else 'COM4'
+            ids=(6,) if step.endswith(('_open','_closed')) else (2,3,4)
+            if not all(self.samples[f'{port}:{i}'].stationary(time.monotonic()) for i in ids):
+                raise ValueError('请保持姿态不动约1秒，等待编码器稳定后再采集')
+            positions={key:sample.current for key,sample in self.samples.items()}
+            # Reject bad A/B/C immediately, before asking for subsequent poses.
+            if step.endswith('_b'):
+                a=self.captures[step[:-1]+'a']['positions']
+                for i in (2,3):
+                    if not 285<=abs(positions[f'{port}:{i}']-a[f'{port}:{i}'])<=740:
+                        raise ValueError('A→B的肩和肘都应改变约45°，请对照示意调整')
+                if abs(positions[f'{port}:4']-a[f'{port}:4'])>80:raise ValueError('A→B保持夹爪水平，腕俯仰相对前臂不变')
+            if step.endswith('_c'):
+                b=self.captures[step[:-1]+'b']['positions']
+                if (not 285<=abs(positions[f'{port}:4']-b[f'{port}:4'])<=740 or
+                    any(abs(positions[f'{port}:{i}']-b[f'{port}:{i}'])>80 for i in (2,3))):
+                    raise ValueError('C只抬夹爪尖端约45°；上臂和前臂保持B姿态')
+            self.captures[step]={'captured_at':now(),'positions':positions}
+        self.step=STEPS[STEPS.index(step)+1];self.persist()
+        return self.snapshot()
+
+    def rewind(self,step):
+        self.require_active()
+        if step not in STEPS[:11] or STEPS.index(step)>=STEPS.index(self.step):raise ValueError('只能返回已经采集过的步骤')
+        self.captures={k:v for k,v in self.captures.items() if STEPS.index(k)<STEPS.index(step)}
+        if step=='ranges':self.confirmed_keys=[]
+        self.step=step;self.persist();return self.snapshot()
+
+    def base_test(self,kind,left_sign,right_sign,confirmed):
+        self.require_active()
+        if self.step!='base' or kind not in ('forward','left') or not confirmed:
+            raise ValueError('请在底盘步骤确认周围有空间，再测试')
+        if left_sign not in (-1,1) or right_sign not in (-1,1):raise ValueError('轮子方向必须为±1')
+        if self.wheels.get('left_sign')!=left_sign or self.wheels.get('right_sign')!=right_sign:self.base_tests={}
+        self.wheels={**DESIGN_GEOMETRY,'left_sign':left_sign,'right_sign':right_sign}
+        p=self.runtime.session.ports['COM4'];before={}
+        try:
+            self.runtime.scan();self.require_active()
+            for i in (9,10):
+                reg=read_registers(p,i)
+                if reg[33]!=1 or reg[40]!=0 or not 10<=reg[62]/10<=13 or reg[63]>=50:raise ValueError('轮子速度模式/释放/供电/温度不满足短测')
+                before[i]=word(reg,56);write_register(p,i,46,0,2)
+            self.base_running=kind
+            # Independent expiry thread is started before any nonzero velocity.
+            self.timer=threading.Timer(.18,self._finish_base,args=(kind,before));self.timer.daemon=True;self.timer.start()
+            signs=[left_sign,right_sign] if kind=='forward' else [-left_sign,right_sign]
+            for i,sign in zip((9,10),signs):
+                write_register(p,i,40,1,1);write_register(p,i,46,encode_velocity(160*sign),2)
+        except Exception:
+            if self.timer:self.timer.cancel()
+            self.base_running=None;self.release_all();raise
+        return self.snapshot()
+
+    def _finish_base(self,kind,before):
+        with self.runtime.io:
+            if not self.active or self.base_running!=kind:return
+            try:
+                p=self.runtime.session.ports['COM4'];failures=[];results=[]
+                for i in (9,10):
+                    # Try every stop even if its peer has a lost ACK.
+                    try:write_register(p,i,46,0,2)
+                    except Exception as exc:failures.append(str(exc))
+                    try:write_register(p,i,40,0,1)
+                    except Exception as exc:failures.append(str(exc))
+                if failures:raise RuntimeError('；'.join(failures))
+                time.sleep(.05)
+                for i in (9,10):
+                    reg=read_registers(p,i);delta=(word(reg,56)-before[i]+2048)%4096-2048
+                    if word(reg,46)!=0 or reg[40]!=0 or (word(reg,58)&0x7fff)>3:raise RuntimeError('轮子停车回读不符')
+                    if abs(delta)<2:raise RuntimeError('轮子编码器未记录到有效位移')
+                    results.append({'id':i,'delta':delta,'goal_velocity':0,'speed':word(reg,58),'torque':0})
+                self.base_tests[kind]={'at':now(),'results':results};self.persist()
+            except Exception as exc:self.fail('底盘短测失败：'+str(exc))
+            finally:self.base_running=None;self.timer=None
+
+    def confirm_base(self,forward_observed,left_observed):
+        self.require_active()
+        if self.step!='base' or not all(k in self.base_tests for k in ('forward','left')):
+            raise ValueError('请先分别完成前进和左转短测')
+        if not forward_observed or not left_observed:raise ValueError('请按现场真实方向确认；若反向先修改方向并重新测试')
+        self.wheels.update(verified=True,direction_observed=True,stop_verified=True,
+                           tests=deepcopy(self.base_tests),confirmed_at=now())
+        self.step='review';self.persist();return self.snapshot()
+
+    def apply(self,confirmed):
+        self.require_active()
+        if self.step!='review' or not confirmed:raise ValueError('请完成全部步骤并确认保存实测标定')
+        r=self.runtime;r.scan();self.require_active()
+        if not all(s.stationary(time.monotonic()) for s in self.samples.values()):raise ValueError('请让全部关节静止约1秒再保存')
+        profile=build_profile(self.samples,self.captures,self.backup,self.wheels,self.confirmed_keys)
+        # Backup the previous portable file before changing any device bytes.
+        old_profile=self.profile_path.read_text(encoding='utf-8') if self.profile_path.exists() else None
+        atomic_json(self.path.with_name(self.id+'-apply-backup.json'),
+                    {'registers':self.backup,'previous_profile':old_profile,'proposed':profile})
+        changed=[];self.busy=True
+        try:
+            for key in KEYS:
+                port,i=split_key(key);entry=profile['joints'][key];changed.append(key)
+                before=read_registers(r.session.ports[port],i)
+                if before[40]!=0 or abs((word(before,56)-self.samples[key].raw+2048)%4096-2048)>5:
+                    raise ValueError(joint_label(port,i)+'保存期间移动或扭矩发生变化')
+                configure_measured_range(r.session.ports[port],i,self.backup[key],entry['min'],entry['max'],entry['homing_raw'],entry['position'])
+            # Verify the entire transaction, including unchanged wheels.
+            for key in KEYS:
+                port,i=split_key(key);reg=read_registers(r.session.ports[port],i);entry=profile['joints'][key]
+                if reg[40]!=0 or any(word(reg,a)!=entry[k] for a,k in [(9,'min'),(11,'max'),(31,'homing_raw')]):
+                    raise RuntimeError(key+'整机标定最终回读失败')
+            self.release_all();atomic_json(self.profile_path,profile)
+            self.applied=True;self.active=False;self.step='complete';self.persist()
+            r.capture_profile();r.log('whole_calibration','完整行程、双臂参考、夹爪与底盘标定已保存；扭矩仍关闭',id=self.id)
+        except Exception as exc:
+            failures=[]
+            for key in reversed(changed):
+                port,i=split_key(key)
+                try:restore_test_window(r.session.ports[port],i,self.backup[key])
+                except Exception as cleanup:failures.append(key+' '+str(cleanup))
+            if old_profile is not None:
+                try:atomic_json(self.profile_path,json.loads(old_profile))
+                except Exception as cleanup:failures.append('恢复旧标定文件 '+str(cleanup))
+            elif self.profile_path.exists():
+                try:self.profile_path.unlink()
+                except OSError as cleanup:failures.append(str(cleanup))
+            self.active=True;self.applied=False
+            self.error=str(exc)+('；回滚未确认：'+'；'.join(failures) if failures else '；已回滚，保持扭矩关闭')
+            try:self.release_all()
+            except Exception as cleanup:self.error+='；释放未确认：'+str(cleanup)
+            self.persist();raise RuntimeError(self.error) from exc
+        finally:self.busy=False
+        return self.snapshot()
+
+    def cancel(self):
+        if self.timer:self.timer.cancel();self.timer=None
+        if self.active:self.release_all()
+        self.active=False;self.base_running=None;self.persist()
+        return self.snapshot()
+
+    def snapshot(self):
+        return {'active':self.active,'id':self.id,'step':self.step,'error':self.error,'applied':self.applied,
+                'ranges':[{'key':key,'label':joint_label(*split_key(key)),**s.snapshot()} for key,s in self.samples.items()],
+                'captured':list(self.captures),'confirmed_keys':self.confirmed_keys,
+                'base_running':self.base_running,'base_tests':deepcopy(self.base_tests),'wheels':self.wheels,
+                'design_geometry':DESIGN_GEOMETRY}

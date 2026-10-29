@@ -63,6 +63,23 @@ class OriginalStartCommand(BaseModel):
     target:str='hardware'
     confirmed:bool=False
 
+class WholeCalibrationCommand(BaseModel):
+    confirmed:bool=False
+    step:str|None=None
+    confirmed_keys:list[str]|None=None
+    kind:str|None=None
+    left_sign:int=-1
+    right_sign:int=1
+    forward_observed:bool=False
+    left_observed:bool=False
+
+@app.post('/api/whole-calibration/{action}')
+def whole_calibration_command(action:str,payload:WholeCalibrationCommand):
+    try:return runtime.calibration_command(action,payload.model_dump())
+    except Exception as exc:
+        runtime.log('calibration_error','整机标定：'+str(exc))
+        raise HTTPException(409,str(exc)) from exc
+
 @app.post('/api/hardware/prepare')
 def prepare_hardware(payload:OriginalStartCommand):
     try:return runtime.prepare_hardware(payload.confirmed)

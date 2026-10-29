@@ -54,12 +54,39 @@ def restore_test_window(port,motor_id,before):
         _zero_output(port,motor_id)
         expected=(word(before,9),word(before,11))
         _limits(port,motor_id,*expected)
+        write_register(port,motor_id,31,word(before,31),2)
         for address in (21,22):
             write_register(port,motor_id,address,before[address],1)
         return _finish_off(port,motor_id,before,expected,word(before,46))
     except Exception:
         # If restoration cannot be verified, retain zero output rather than
         # re-enable an uncertain configuration through a later goal write.
+        _zero_output(port,motor_id)
+        raise
+
+
+def configure_measured_range(port,motor_id,before,low,high,homing,expected_position):
+    """Apply a measured coordinate system with no actuator output at any point.
+
+    The caller persists the complete bus backup before invoking this function
+    and rolls back *every* touched servo if any member of the batch fails.
+    Homing is STS sign-magnitude (bit 11), not a signed 16-bit integer.
+    """
+    if not 0<=low<high<=4095 or not 0<=homing<=4095 or homing==4096:
+        raise ValueError('实测范围或偏移编码无效')
+    try:
+        r=_zero_output(port,motor_id)
+        if r[33]!=0 or word(r,3)!=777:raise ValueError('实测行程仅支持位置模式STS3215')
+        _limits(port,motor_id,low,high)
+        write_register(port,motor_id,31,homing,2)
+        r=read_registers(port,motor_id)
+        if abs(word(r,56)-expected_position)>5:
+            raise RuntimeError('偏移写入后的坐标回读不符；保持零输出')
+        configured=list(before);configured[31:33]=[homing&255,homing>>8]
+        final=_finish_off(port,motor_id,configured,(low,high),60)
+        if abs(word(final,56)-expected_position)>5:raise RuntimeError('标定写入期间关节移动')
+        return final
+    except Exception:
         _zero_output(port,motor_id)
         raise
 

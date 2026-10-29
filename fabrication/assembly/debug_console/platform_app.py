@@ -422,6 +422,7 @@ async def camera_frame(camera:int):
 # A fixed route allowlist prevents the gateway becoming a generic HTTP proxy.
 PROXY_GET={'original/status','status','events','log/download'}
 PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','torque','calibration/read','hardware/prepare'}
+PROXY_POST.update('whole-calibration/'+a for a in ('start','capture','rewind','base-test','base-confirm','apply','cancel'))
 
 async def proxy(request,path,stream=False):
     try:
@@ -431,7 +432,7 @@ async def proxy(request,path,stream=False):
             return StreamingResponse(response.aiter_bytes(),status_code=response.status_code,
                 media_type=response.headers.get('content-type'),background=BackgroundTask(response.aclose))
         response=await service.client.request(request.method,UPSTREAM+path,content=await request.body(),
-            headers={'Content-Type':request.headers.get('content-type','application/json'),'Origin':UPSTREAM},timeout=8)
+            headers={'Content-Type':request.headers.get('content-type','application/json'),'Origin':UPSTREAM},timeout=45 if path.startswith('/api/whole-calibration/') else 8)
         headers={k:response.headers[k] for k in ('content-disposition',) if k in response.headers}
         return Response(response.content,status_code=response.status_code,media_type=response.headers.get('content-type'),headers=headers)
     except httpx.HTTPError as exc:raise HTTPException(503,'控制服务未响应，接管状态请以控制器为准') from exc
@@ -451,7 +452,7 @@ async def camera_proxy(camera:int,request:Request):
 @app.get('/static/{path:path}')
 async def runtime_static(path:str):
     # Only the exact shipped runtime files needed by the two console pages.
-    if path not in ('mapping.css','original.css','original.js','app.js','style.css','bringup.css'):raise HTTPException(404)
+    if path not in ('mapping.css','original.css','original.js','whole-calibration.js','app.js','style.css','bringup.css'):raise HTTPException(404)
     if path=='mapping.css':
         css=(ROOT/'static'/path).read_text(encoding='utf-8')
         # The workbench remains usable offline; inherited Google Fonts are optional.
