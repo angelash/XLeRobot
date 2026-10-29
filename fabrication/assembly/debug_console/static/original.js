@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let latest=null,busy=false,refreshing=false,seq=0,eventRows=[],lastStatus=0,selected='lx';
-let mappingSignature='';
+let mappingSignature='',targetInitialized=false;
 const modeNames={position:'伸缩 / 平面高度',pan:'肩水平旋转',wrist:'腕俯仰 / 旋转'};
 const channelNames={left_position:'左臂末端',right_position:'右臂末端',left_pan:'左肩旋转',right_pan:'右肩旋转',left_pitch:'左腕俯仰',right_pitch:'右腕俯仰',left_roll:'左腕旋转',right_roll:'右腕旋转',left_grip:'左夹爪',right_grip:'右夹爪',head_7:'头部水平',head_8:'头部俯仰',base:'双轮底盘'};
 Object.assign(channelNames,{left_lift:'左肩抬升',right_lift:'右肩抬升',left_elbow:'左肘',right_elbow:'右肘'});
@@ -13,17 +13,20 @@ function mapValue(m,s){if(m.group==='system')return '系统不提供';if(!s.game
 function renderMapping(s){const map=s.control_map||[];const signature=JSON.stringify(map);if(mappingSignature!==signature){$('mapping').innerHTML=map.map(m=>`<button class="mapping-card" data-key="${esc(m.key)}"><span class="card-head"><strong>${esc(m.name)}</strong><span class="input-pill" id="value-${m.key}"></span></span><b>${esc(m.role)}</b><p>${esc(m.gesture)}</p><small>${esc(m.target)}</small></button>`).join('');mappingSignature=signature;}
 for(const m of map){const value=mapValue(m,s);$('value-'+m.key).textContent=value;const pressed=s.gamepad.connected&&s.input_age_ms<500&&(m.axis!==null&&m.axis!==undefined?Math.abs(s.gamepad.axes?.[m.axis]||0)>.15:!!s.gamepad.buttons?.[m.index]);document.querySelector(`[data-key="${m.key}"]`)?.classList.toggle('pressed',pressed);}
 const m=map.find(m=>m.key===selected)||map[0];if(m)$('mapping-detail').innerHTML=`<h3>${esc(m.name)} · ${esc(m.role)}</h3><dl><dt>怎么操作</dt><dd>${esc(m.gesture)}</dd><dt>预期结果</dt><dd>${esc(m.result)}</dd><dt>生效条件</dt><dd>${esc(m.requirement)}</dd></dl>`;}
-function render(s){latest=s;const c=s.controller,active=c.controller==='online',ours=s.control_profile?.startsWith('original_'),paused=!!c.paused,neutral=isNeutral(s);if(active&&ours)$('target').value=s.control_profile==='original_hardware'?'hardware':s.control_profile==='original_joint'?'joint':'preview';const target=$('target').value;const hardwareReady=s.ports.length===2&&s.ports.reduce((n,p)=>n+(p.motors?.length||0),0)===16&&!s.error;
+function render(s){latest=s;const c=s.controller,active=c.controller==='online',ours=s.control_profile?.startsWith('original_'),paused=!!c.paused,neutral=isNeutral(s);if(!targetInitialized){$('target').value=s.preferred_target||(s.preview_only?'preview':'hardware');targetInitialized=true;}if(active&&ours)$('target').value=s.control_profile==='original_hardware'?'hardware':s.control_profile==='original_joint'?'joint':'preview';const target=$('target').value;const hardwareReady=s.ports.length===2&&s.ports.reduce((n,p)=>n+(p.motors?.length||0),0)===16&&!s.error;const setup=s.whole_robot_setup,wholeReady=!!setup?.ready;
 $('session-state').textContent=active?(ours?(paused?'接管保留 · 动作暂停':'原版映射接管中'):'单关节调试接管保留'):'接管未开启';
 $('session-description').textContent=active?(ours?(paused?c.pause_reason:'拨杆直接动作；LB/RB切腕姿，Menu暂停，View结束。'):'当前有单关节会话，请由你在原页面结束后再切换。'):'先选择预览或实机。输入回中后开启，启动不自动归零。';
 $('target').disabled=active||busy;$('confirm').disabled=active||busy;
 if(s.preview_only){$('target').querySelector('option[value="hardware"]').disabled=true;$('target').querySelector('option[value="joint"]').disabled=true;}
-$('prepare').hidden=target==='preview';$('prepare').disabled=busy||active||!hardwareReady||!$('confirm').checked||s.preview_only;
+$('prepare').hidden=target!=='joint';$('prepare').disabled=busy||active||!hardwareReady||!$('confirm').checked||s.preview_only;
 $('confirm-label').textContent=target==='preview'?'我确认当前只运行运动学预览':'我确认周围安全，按现有限位和已验证通道操作实机';
-$('start').disabled=busy||active||!neutral||!$('confirm').checked||(target!=='preview'&&(!hardwareReady||!s.controller.torque));$('start').hidden=active;
+$('start').textContent=target==='hardware'?'开启整机控制':'开启接管';
+$('start').disabled=busy||active||!neutral||!$('confirm').checked||(target==='hardware'&&(!hardwareReady||!wholeReady))||(target==='joint'&&(!hardwareReady||!s.controller.torque));$('start').hidden=active;
 $('pause').disabled=busy||!active||!ours||paused;$('stop').disabled=busy||!active||!ours;
 $('resume').hidden=!active||!ours||!paused;$('resume').disabled=busy||!neutral;
-$('blocker').textContent=active?'':target!=='preview'&&!hardwareReady?'实机未就绪：需要双板16电机在线；当前可使用运动学预览':!s.gamepad.connected?'请连接Xbox手柄':!neutral?'请松开所有按键/扳机并将摇杆回中':!$('confirm').checked?'请确认上方控制目标':target!=='preview'&&!s.controller.torque?'先点准备实机，保持当前位置并回读扭矩，再开启接管':'条件满足，可以开启；之后拨杆即可控制';
+$('blocker').textContent=active?'':target!=='preview'&&!hardwareReady?'实机未就绪：需要双板16电机在线；当前可使用运动学预览':!s.gamepad.connected?'请连接Xbox手柄':!neutral?'请松开所有按键/扳机并将摇杆回中':target==='hardware'&&!wholeReady?'整机初始化未完成，请处理下方清单；部分关节可动还不等于双臂联动可用':!$('confirm').checked?'请确认上方控制目标':target==='joint'&&!s.controller.torque?'先点准备实机，保持当前位置并回读扭矩，再开启接管':'条件满足，可以开启；之后拨杆即可控制';
+$('whole-setup').hidden=target!=='hardware';$('setup-title').textContent=wholeReady?'整机初始化已完成':'完成整机初始化后，使用与模拟相同的完整映射';
+$('setup-checks').innerHTML=(setup?.checks||[]).map(c=>`<div class="readiness-row ${c.ready?'ready':'blocked'}"><strong>${esc(c.label)} · ${c.ready?'就绪':'待完成'}</strong><small>${esc((c.reasons||[]).join('；'))}</small></div>`).join('');
 $('notice').hidden=!s.notice&&!paused;$('notice').className='notice'+(paused?' error':'');$('notice').textContent=paused?c.pause_reason:s.notice?.message||'';
 $('pad').textContent=s.gamepad.connected?(s.gamepad.name||'Xbox在线'):'手柄离线';$('input-age').textContent=`原生输入 ${s.input_age_ms??'—'}ms`;
 $('backend').textContent=s.preview_only?'隔离预览 · 无串口访问':s.control_profile==='original_joint'?'关节实机 · 起点±2.8° / 双轮短脉冲':s.control_profile==='original_hardware'?'实机 · 按通道门控':s.control_profile==='diagnostic'?'设备监控 · 未开启原版接管':'运动学预览 · 不向硬件发送目标';

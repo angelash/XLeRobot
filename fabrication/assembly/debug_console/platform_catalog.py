@@ -13,7 +13,7 @@ def guide(id,title,kicker,summary,diagram,steps,sources,limits,category='操作�
 GUIDES=[
  guide('start','从连接到第一次动作','START HERE','先知道自己控制的是实机还是预览，再把每一次输入变成可解释的反馈。','bringup',[
   ['连接与观测','两块CH343控制板按USB序列号识别，逻辑COM3/COM4分别表示左臂与右臂总线；Windows实际端口可以不同。设备页各8个电机；三路UVC的物理对应需遮挡确认。'],
-  ['选择控制目标','控制中心默认运动学预览。先让手柄全部回中，确认目标再开启。切换目标前由你主动结束旧接管。'],
+  ['选择控制目标','控制中心默认整机实机，完整映射与模拟一致。首次先完成真实行程、双臂参考、夹爪端点和底盘初始化清单；回中并确认后，一次开启完成当前位置保持、扭矩准备及接管。隔离预览服务仍只预览。'],
   ['小范围实机','实机通道依赖实际行程、扭矩/模式和标定。触限保留接管；Menu暂停，View结束。不要把预览图中的末端位置当作实测。'],
   ['建立可重复的任务','固定相机、物体和篮子位置。先录制一次状态轨迹，检查动作，再进入训练数据采集。']],
  [DOC+'XLeRobot_teleop.md','fabrication/assembly/debug_console/ORIGINAL_XBOX_ZH.md','fabrication/assembly/BRINGUP_CHECKLIST_ZH.md'],

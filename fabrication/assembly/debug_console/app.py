@@ -60,7 +60,7 @@ def original_status():
             'preview_only':isinstance(runtime,PreviewRuntime)}
 
 class OriginalStartCommand(BaseModel):
-    target:str='preview'
+    target:str='hardware'
     confirmed:bool=False
 
 @app.post('/api/hardware/prepare')
@@ -72,7 +72,7 @@ def prepare_hardware(payload:OriginalStartCommand):
 
 @app.post('/api/original/start')
 def start_original(payload:OriginalStartCommand):
-    try:return {'controller':runtime.begin_original(payload.target,payload.confirmed)}
+    try:return {'controller':runtime.begin_whole_robot(payload.confirmed) if payload.target=='hardware' else runtime.begin_original(payload.target,payload.confirmed)}
     except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/original/pause')

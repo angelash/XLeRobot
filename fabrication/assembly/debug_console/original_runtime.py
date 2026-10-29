@@ -98,6 +98,11 @@ class OriginalRuntime(ControlRuntime):
         self.control_profile='diagnostic'
         return super().begin(confirmed)
 
+    def capture_profile(self):
+        result=super().capture_profile()
+        self.load_kinematic_profile()
+        return result
+
     def select(self,name,motor_id):
         if self.control_profile!='diagnostic' and self.controller['controller']=='online':
             raise ValueError('原版映射按左右臂控制；请先由你结束接管再使用单关节选择')
@@ -154,10 +159,11 @@ class OriginalRuntime(ControlRuntime):
         if not motor['torque']:reasons.append(f'{label}扭矩关闭')
         return reasons
 
-    def readiness(self):
+    def readiness(self,profile=None):
+        profile=profile or self.control_profile
         channels={};motors=self.motors()
         for side,port in [('left','COM3'),('right','COM4')]:
-            arm_channels=([('lift',[2],False),('elbow',[3],False)] if self.control_profile=='original_joint'
+            arm_channels=([('lift',[2],False),('elbow',[3],False)] if profile=='original_joint'
                           else [('position',[2,3,4],True)])
             for channel,ids,needs_ref in arm_channels+[('pan',[1],False),('pitch',[4],False),('roll',[5],False),('grip',[6],True)]:
                 reasons=[]
@@ -166,7 +172,7 @@ class OriginalRuntime(ControlRuntime):
                     if not m or not e:reasons.append(f'{port}:{i}未读取');continue
                     reasons.extend(self.joint_readiness_reasons(m,e))
                     if f'{port}:{i}' in self.service_blocked:reasons.append(self.service_blocked[f'{port}:{i}'])
-                    if needs_ref and self.control_profile!='original_joint' and not self.reference(port,i):reasons.append(f'{m["label"]}运动学零位/方向未确认')
+                    if needs_ref and profile!='original_joint' and not self.reference(port,i):reasons.append(f'{m["label"]}运动学零位/方向未确认')
                 channels[f'{side}_{channel}']={'ready':not reasons,'reasons':reasons}
         for i in (7,8):
             m=motors.get(('COM3',i));e=self.envelopes.get(('COM3',i),{})
@@ -175,7 +181,7 @@ class OriginalRuntime(ControlRuntime):
             else:reasons.extend(self.joint_readiness_reasons(m,e))
             channels[f'head_{i}']={'ready':not reasons,'reasons':reasons}
         reasons=[]
-        if self.control_profile!='original_joint' and not self.kinematic_profile.get('wheels',{}).get('verified'):
+        if profile!='original_joint' and not self.kinematic_profile.get('wheels',{}).get('verified'):
             reasons.append('双轮离地模式/方向/零速尚未验收')
         for i in (9,10):
             m=motors.get(('COM4',i))
@@ -183,7 +189,46 @@ class OriginalRuntime(ControlRuntime):
         channels['base']={'ready':not reasons,'reasons':reasons}
         return channels
 
-    def begin_original(self,target,confirmed):
+    def whole_robot_setup(self):
+        channels=self.readiness('original_hardware')
+        checks=[]
+        for side,label,keys in [('left','左臂联动与夹爪',['position','pan','pitch','roll','grip']),
+                                ('right','右臂联动与夹爪',['position','pan','pitch','roll','grip'])]:
+            reasons=[]
+            for key in keys:
+                reasons.extend(r for r in channels[side+'_'+key]['reasons'] if not r.endswith('扭矩关闭'))
+            checks.append({'key':side,'label':label,'ready':not reasons,'reasons':list(dict.fromkeys(reasons))})
+        wheels=self.kinematic_profile.get('wheels',{})
+        reasons=[]
+        if not wheels.get('verified'):reasons.append('需实测轮径、轮距、物理方向及停车，不使用示例几何代替')
+        for i in (9,10):
+            motor=self.motors().get(('COM4',i))
+            if not motor:reasons.append(f'COM4:{i}未读取')
+            elif motor.get('mode')!=1:reasons.append(f'COM4:{i}未处于速度模式')
+        checks.append({'key':'base','label':'底盘连续遥控','ready':not reasons,'reasons':reasons})
+        full_range=self.kinematic_profile.get('full_manual_range_verified') is True
+        checks.append({'key':'range','label':'完整操作行程','ready':full_range,
+                       'reasons':[] if full_range else ['当前保存的是局部测试窗口；需人工逐关节采集真实可用行程']})
+        return {'ready':all(c['ready'] for c in checks),'checks':checks}
+
+    def begin_whole_robot(self,confirmed):
+        """The normal real-robot entry must never report a partial takeover."""
+        with self.io:
+            if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不能控制实机')
+            if not confirmed:raise ValueError('请确认整机遥操作与周围安全')
+            if self.controller['controller']=='online':raise ValueError('先结束当前接管，再开启整机遥操作')
+            if time.monotonic()-self.pad_time>.5 or not neutral(self.gamepad):
+                raise ValueError('请连接手柄并将全部输入回中松开')
+            self.capture_profile();self.load_kinematic_profile()
+            setup=self.whole_robot_setup()
+            if not setup['ready']:
+                missing=[c['label']+'：'+'；'.join(c['reasons']) for c in setup['checks'] if not c['ready']]
+                raise ValueError('整机初始化未完成。'+' | '.join(missing))
+            prepared=self.prepare_hardware(True)
+            if prepared['blocked']:raise ValueError('整机准备仍有未通过项，请查看初始化清单')
+            return self.begin_original('hardware',True,full_range=True)
+
+    def begin_original(self,target,confirmed,full_range=False):
         with self.io:
             if target not in ('preview','hardware','joint'):raise ValueError('未知控制目标')
             if self.controller['controller']=='online':raise ValueError('请先由你结束当前接管，再切换控制方式')
@@ -197,6 +242,10 @@ class OriginalRuntime(ControlRuntime):
                 if target=='joint':
                     for key,e in self.envelopes.items():
                         e['min']=max(e['min'],e['initial']-32);e['max']=min(e['max'],e['initial']+32)
+                elif full_range:
+                    if not self.whole_robot_setup()['ready']:raise ValueError('完整行程和整机通道未确认')
+                    for e in self.envelopes.values():
+                        e['min']=e['device_min'];e['max']=e['device_max']
             self.control_profile='original_'+target
             angles=None
             if target=='hardware':
@@ -493,8 +542,10 @@ class OriginalRuntime(ControlRuntime):
 
     def snapshot(self):
         result=super().snapshot()
-        result.update(version='3.1-joint-commissioning',control_profile=self.control_profile,
-                      original=self.engine.snapshot(),original_readiness=self.readiness(),hardware_preparation=self.preparation,service_blocked=self.service_blocked)
+        result.update(version='3.2-whole-robot-default',control_profile=self.control_profile,
+                      preferred_target='preview' if isinstance(self,PreviewRuntime) else 'hardware',
+                      original=self.engine.snapshot(),original_readiness=self.readiness(),
+                      whole_robot_setup=self.whole_robot_setup(),hardware_preparation=self.preparation,service_blocked=self.service_blocked)
         return result
 
 

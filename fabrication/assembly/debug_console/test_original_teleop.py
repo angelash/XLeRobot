@@ -111,6 +111,52 @@ def step(r,p):
     r.tick_time-=.06;r.process_input(p)
 
 
+def whole_profile(r):
+    r.capture_profile()
+    data={'serials':mod.EXPECTED_SERIALS,'full_manual_range_verified':True,
+          'wheels':{'verified':True,'radius_m':.05,'track_m':.25},'joints':{}}
+    for port in ('COM3','COM4'):
+        for i in (2,3,4,6):
+            motor=r.motors()[(port,i)]
+            ref={'verified':True,**{k:motor[k] for k in ('min','max','homing_raw')}}
+            if i==6:ref.update(open_raw=2300,closed_raw=1800)
+            else:ref.update(reference_raw=2050,reference_deg={2:0,3:2,4:-2}[i],direction=1)
+            data['joints'][f'{port}:{i}']=ref
+    orig.KINEMATIC_PROFILE.write_text(json.dumps(data),encoding='utf-8')
+    for i in (9,10):r.session.ports['COM4'].regs[i][33]=1
+
+
+def test_whole_robot_entry_rejects_partial_setup_before_any_torque_or_motion(runtime):
+    with pytest.raises(ValueError,match='整机初始化未完成'):runtime.begin_whole_robot(True)
+    assert runtime.controller['controller']=='offline'
+    assert all(not port.writes for port in runtime.session.ports.values())
+    assert not runtime.whole_robot_setup()['ready']
+
+
+def test_whole_robot_entry_prepares_all_and_uses_measured_full_range(runtime):
+    whole_profile(runtime)
+    for port in runtime.session.ports.values():
+        for regs in port.regs.values():regs[40]=0
+    runtime.begin_whole_robot(True)
+    assert runtime.control_profile=='original_hardware' and runtime.controller['controller']=='online'
+    assert runtime.whole_robot_setup()['ready']
+    assert runtime.envelopes[('COM3',2)]['min']==1800 and runtime.envelopes[('COM3',2)]['max']==2300
+    assert all(regs[40]==1 for port in runtime.session.ports.values() for regs in port.regs.values())
+    assert all(mod.word(runtime.session.ports['COM4'].regs[i],46)==0 for i in (9,10))
+    step(runtime,pad([0,-.5,0,-.5,0,0]))
+    assert any(i in (2,3) and addr==42 for p in runtime.session.ports.values() for i,addr,_ in p.writes)
+
+
+def test_default_api_means_complete_real_robot_and_never_silently_partial(runtime,monkeypatch):
+    from fastapi.testclient import TestClient
+    from fabrication.assembly.debug_console import app as web
+    monkeypatch.setattr(web,'runtime',runtime);client=TestClient(web.app)
+    response=client.post('/api/original/start',json={'confirmed':True})
+    assert response.status_code==409 and '整机初始化' in response.json()['detail']
+    assert runtime.controller['controller']=='offline'
+    assert client.get('/api/original/status').json()['preferred_target']=='hardware'
+
+
 def test_preview_never_writes_any_hardware(runtime):
     runtime.begin_original('preview',True)
     for p in [pad([1,-1,1,-1,1,1],buttons=(0,2),hat=(1,1)),pad(buttons=(4,5,8,9)),pad()]:step(runtime,p)

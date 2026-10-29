@@ -43,3 +43,16 @@ context.s.controller={controller:'offline',torque:false};
 context.s.ports=[{port:'COM3',motors:Array(8).fill({id:1})},{port:'COM4',motors:Array(8).fill({id:1})}];
 node('confirm').checked=true;render();
 assert(node('start').disabled);assert.match(node('blocker').textContent,/先点准备实机/);
+
+// A fresh Monitor page must default to whole-robot hardware, even when only
+// diagnostic torque is currently available; it must expose actual setup gaps.
+const wholeContext=vm.createContext({document:context.document,console,setInterval(){},fetch:(url,options)=>{requests.push({url,options});return new Promise(()=>{});}});
+vm.runInContext(fs.readFileSync(__dirname+'/static/original.js','utf8'),wholeContext);
+wholeContext.s={...context.s,preferred_target:'hardware',control_profile:'diagnostic',
+  whole_robot_setup:{ready:false,checks:[{key:'left',label:'左臂联动与夹爪',ready:false,reasons:['需要真实行程与参考姿态']}]}};
+vm.runInContext('render(s)',wholeContext);
+assert.equal(node('target').value,'hardware');assert.match(node('start').textContent,/整机控制/);
+assert(node('start').disabled);assert.match(node('blocker').textContent,/整机初始化未完成/);
+assert.match(node('setup-checks').innerHTML,/真实行程与参考姿态/);
+assert.equal(node('prepare').hidden,true,'Whole-robot startup includes position hold and torque preparation');
+assert(html.includes('<option value="hardware" selected>'));
