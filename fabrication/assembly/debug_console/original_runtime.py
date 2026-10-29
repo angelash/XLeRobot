@@ -59,6 +59,7 @@ class OriginalRuntime(ControlRuntime):
             c=self.manual_calibration
             if action=='start':return c.start(payload.get('confirmed',False))
             if action=='recover':return c.recover(payload.get('session_id'),payload.get('confirmed',False))
+            if action=='merge-checkpoint':return c.merge_checkpoint(payload.get('session_id'),payload.get('confirmed',False))
             if action=='capture':return c.capture(payload.get('step'),payload.get('confirmed_keys'))
             if action=='capture-item':return c.capture_item(payload.get('item'),payload.get('confirmed',False))
             if action=='delete-item':return c.delete_capture(payload.get('item'))

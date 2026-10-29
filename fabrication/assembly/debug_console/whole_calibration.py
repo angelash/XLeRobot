@@ -227,8 +227,21 @@ class WholeCalibration:
                                    'observed_joints':count,'total_span':sum(v['span_raw'] for v in ranges.values())})
             except (OSError,ValueError,KeyError,TypeError):continue
         self.recoverable=max(candidates,key=lambda c:(c['observed_joints'],c['total_span'],c['updated_at']),default=None)
+        if self.recoverable and self.active and self.step=='cards' and not self.captures:
+            self.recoverable['merge_checkpoint_id']=self._best_card_checkpoint()
         self.recovery_checked=stamp
         return self.recoverable
+
+    def _best_card_checkpoint(self):
+        best=None;best_count=0
+        for path in self.path.parent.glob('*-before-recovery-*.json'):
+            try:
+                data=json.loads(path.read_text(encoding='utf-8'))
+                captures=data.get('captures',{})
+                if data.get('serials')!=EXPECTED_SERIALS or len(captures)<=best_count:continue
+                best=path.stem;best_count=len(captures)
+            except (OSError,ValueError,TypeError,json.JSONDecodeError):continue
+        return best
 
     def recover(self,session_id,confirmed):
         """Re-anchor within an observed arc; reset only unresolvable joints.
@@ -291,6 +304,28 @@ class WholeCalibration:
         r.log('calibration_recovered','已恢复可确认的实测行程；仅补采当前位置超出旧记录的关节',
               id=session_id,reset=[x['key'] for x in reset])
         return self.snapshot()
+
+    def merge_checkpoint(self,session_id,confirmed):
+        """Merge independent cards from a previously verified checkpoint."""
+        self.require_active()
+        if not confirmed:raise ValueError('请确认合并已保存的采集卡片')
+        if not isinstance(session_id,str) or not re.fullmatch(r'[0-9a-f]{32}-before-recovery-[0-9a-f]{8}',session_id):
+            raise ValueError('备份记录编号无效')
+        data=json.loads((self.path.parent/(session_id+'.json')).read_text(encoding='utf-8'))
+        if data.get('serials')!=EXPECTED_SERIALS:raise ValueError('备份不属于当前机器人')
+        ports=self.runtime.arm_ports();valid={'left_a','left_b','left_c','left_open','left_closed',
+            'right_a','right_b','right_c','right_open','right_closed'}
+        merged=[]
+        for item,value in data.get('captures',{}).items():
+            if item not in valid or 'positions' not in value:continue
+            side=item.split('_',1)[0];port=value.get('port') or ports[side]
+            missing=[key for key in self.samples if key not in value['positions']]
+            if missing:continue
+            self.captures[item]={**value,'port':port};merged.append(item)
+        self.confirmed_keys=list(dict.fromkeys([*self.confirmed_keys,*data.get('confirmed_keys',[])]))
+        self.step='cards';ok=self.persist()
+        warnings=['历史备份未能写入磁盘：'+self.persistence_error] if not ok else []
+        return IndependentResult(self.snapshot(),warnings)
 
     def release_all(self):
         failures=[]

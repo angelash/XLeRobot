@@ -341,3 +341,15 @@ def test_chassis_failure_is_isolated_and_does_not_end_manual_collection(runtime)
     c.base_running='forward';c._chassis_failure('停车回读不符')
     assert c.active and c.error is None and 'left_a' in c.captures
     assert not c.wheels['verified'] and c.step_warnings
+
+
+def test_merge_checkpoint_restores_completed_pose_cards_without_motor_io(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    positions={key:s.current for key,s in c.samples.items()}
+    c.captures={'left_a':{'captured_at':'old','port':'COM3','positions':positions}}
+    c.persist();backup=c.path.with_name(c.id+'-before-recovery-12345678.json')
+    atomic=cal.atomic_json;atomic(backup,json.loads(c.path.read_text(encoding='utf-8')))
+    c.captures={};writes=sum(len(p.writes) for p in runtime.session.ports.values())
+    result=c.merge_checkpoint(backup.stem,True)
+    assert 'left_a' in c.captures and c.captures['left_a']['positions']==positions
+    assert sum(len(p.writes) for p in runtime.session.ports.values())==writes
