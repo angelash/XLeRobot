@@ -395,7 +395,10 @@ class ControlRuntime:
                     last_signature=signature
                 if axes!=last_axis:
                     self.log('axes','摇杆/扳机状态变化',axes=raw['axes']);last_axis=axes
-                if not self.diagnostic_replay:self.process_input(raw)
+                # Offline preparation can hold the serial lock for a while.
+                # Keep XInput fresh without waiting on a controller that has
+                # no active session; the next sample handles a newly started one.
+                if not self.diagnostic_replay and self.controller['controller']=='online':self.process_input(raw)
             except Exception as exc:
                 with self.io:
                     if self.controller['controller']=='online':self._pause('手柄输入异常：'+str(exc))

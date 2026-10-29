@@ -1,5 +1,6 @@
 """Behavioral tests: real packet bytes with a fake STS bus, never hardware."""
 import time
+import threading
 import pytest
 from fabrication.assembly.debug_console import control_runtime as mod
 from fabrication.assembly.debug_console.torque_control import EXPECTED
@@ -58,6 +59,26 @@ def frame(lb=False,hat=(0,0),b=False,view=False):
 
 def test_start_never_enables_or_moves(runtime):
     assert all(not p.writes for p in runtime.session.ports.values())
+
+
+def test_native_input_stays_fresh_while_offline_preparation_holds_serial_lock(runtime,monkeypatch):
+    from fabrication.assembly.debug_console import gamepad_input
+    runtime.stop();second_sample=threading.Event();calls=[]
+    class Reader:
+        def read(self):
+            calls.append(time.monotonic())
+            if len(calls)>=2:second_sample.set()
+            return {'connected':True,'buttons':[False]*17,'hat':[0,0],'axes':[0]*6}
+    monkeypatch.setattr(gamepad_input,'XboxReader',Reader)
+    thread=threading.Thread(target=runtime._pad_loop)
+    try:
+        with runtime.io:
+            thread.start()
+            assert second_sample.wait(.5),'The native reader must not wait for the serial preparation lock while offline'
+            assert time.monotonic()-runtime.pad_time<.2
+    finally:
+        runtime.stop_event.set();thread.join(timeout=1)
+    assert not thread.is_alive()
 
 
 def test_real_input_edges_drive_same_path_and_stop(runtime):

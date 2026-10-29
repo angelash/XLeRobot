@@ -151,6 +151,7 @@ def test_default_api_means_complete_real_robot_and_never_silently_partial(runtim
     from fastapi.testclient import TestClient
     from fabrication.assembly.debug_console import app as web
     monkeypatch.setattr(web,'runtime',runtime);client=TestClient(web.app)
+    runtime.pad_time=time.monotonic()
     response=client.post('/api/original/start',json={'confirmed':True})
     assert response.status_code==409 and '整机初始化' in response.json()['detail']
     assert runtime.controller['controller']=='offline'
