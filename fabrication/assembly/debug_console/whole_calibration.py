@@ -597,4 +597,5 @@ class WholeCalibration:
                 'base_running':self.base_running,'base_tests':deepcopy(self.base_tests),'wheels':self.wheels,
                 'design_geometry':DESIGN_GEOMETRY,'recovery_reset':self.recovery_reset,
                 'recoverable':self.find_recoverable() if not self.active or self.error else None,
+                'merge_checkpoint_id':self._best_card_checkpoint() if self.active and self.step=='cards' and not self.captures else None,
                 'step_warnings':self.step_warnings,'persistence_error':self.persistence_error}
