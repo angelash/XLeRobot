@@ -70,6 +70,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\remote\enable-remote-s
 
 隧道存活时，工作端打开`http://127.0.0.1:18770`进入远端平台；本机原8770平台可同时保留。隧道断开、退出SSH或关闭工作端不会自动结束用户接管，原控制器会按既有心跳规则暂停。Shell连接和Web隧道是两个进程，可分别建立；隧道要保持运行。
 
+### 按新机IP直接访问Studio
+
+如果希望直接打开`http://新机IP:8770`，在机器人笔记本的管理员PowerShell运行`configure-studio-network.ps1`，传入笔记本当前IPv4和获准访问的工作端IPv4。以下文档地址需替换成实际地址：
+
+```powershell
+.\deployment\windows\configure-studio-network.ps1 -ListenAddress 192.0.2.20 -ClientAddress 192.0.2.1 -Apply
+```
+
+脚本将网络配置保存到本机忽略目录`.local-deploy/studio-network.json`：Studio监听IPv4，操作接口仅额外接受配置的精确来源URL；Windows防火墙只允许指定工作端访问该新机地址的TCP8770。控制服务8765继续通过Studio代理使用。没有通配来源、全网放行或关闭防火墙。
+
+应用配置后，仅重启Studio网关：先确认未录制，再运行`debug_console/stop-platform.ps1`和`debug_console/start-platform.ps1`（位于`fabrication/assembly/`下）。控制服务与接管独立保留。交互式登录任务仍调用相同启动入口，下一次启动会读取该网络配置并显示新机URL。新机IP或获准工作端IP变化时重新运行配置脚本；旧URL不会自动假定可达。
+
+验收须从工作端访问新机IP，检查主页、资源、内嵌控制页、状态与带新机Origin的POST，不能仅以新机上的localhost检查或SSH隧道成功代替直连验收。
+
 若工作端Windows自带OpenSSH 9.5的`ssh-keyscan`遇到新机OpenSSH 10，可能协商到它不支持的混合密钥交换算法并报`unsupported KEX method`。`trust-robot.ps1`会在主扫描器无结果时尝试已安装Git for Windows中的新版扫描器，也可用`-KeyScanExecutable`指定路径；仍须逐一核对用户提供的Ed25519主机指纹，扫描失败不会保存信任。
 
 ## 部署顺序

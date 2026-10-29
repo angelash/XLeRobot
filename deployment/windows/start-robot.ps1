@@ -14,6 +14,6 @@ if ($listener) {
 if ($Mode -eq 'Preview') { $env:XLEROBOT_PREVIEW_ONLY = '1' }
 else { Remove-Item Env:\XLEROBOT_PREVIEW_ONLY -ErrorAction SilentlyContinue }
 & (Join-Path $repo 'fabrication\assembly\debug_console\start.ps1')
-& (Join-Path $repo 'fabrication\assembly\debug_console\start-platform.ps1')
-Write-Output "Mode=$Mode. Startup does not start takeover or enable torque. Web: http://127.0.0.1:8770"
-if ($OpenBrowser) { Start-Process 'http://127.0.0.1:8770' }
+$platformUrl = (& (Join-Path $repo 'fabrication\assembly\debug_console\start-platform.ps1') | Select-Object -Last 1)
+Write-Output "Mode=$Mode. Startup does not start takeover or enable torque. Web: $platformUrl"
+if ($OpenBrowser) { Start-Process $platformUrl }

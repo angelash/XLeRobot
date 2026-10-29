@@ -26,6 +26,36 @@ def client(tmp_path,monkeypatch):
     with TestClient(mod.app) as c:yield c
 
 
+def test_lan_origin_allows_tools_and_proxy_without_changing_takeover(client,tmp_path,monkeypatch):
+    config=tmp_path/'studio-network.json'
+    config.write_text(json.dumps({'allowed_origins':['http://192.0.2.20:8770']}),encoding='utf-8')
+    monkeypatch.setattr(mod,'ALLOWED_ORIGINS',mod.studio_origins(config))
+    before=client.get('/api/platform/status').json()['runtime']
+    allowed={'Origin':'http://192.0.2.20:8770'}
+    assert client.post('/api/platform/sandbox/reset',json={},headers=allowed).status_code==200
+    requests=[]
+    def reply(request):
+        requests.append(request)
+        return httpx.Response(200,json={'controller':'offline'})
+    mod.service.client=httpx.AsyncClient(transport=httpx.MockTransport(reply))
+    assert client.post('/api/controller/heartbeat',json={},headers=allowed).status_code==200
+    assert requests[0].headers['origin']==mod.UPSTREAM
+    for origin in ('http://192.0.2.21:8770','http://192.0.2.20:8765','https://foreign.example'):
+        assert client.post('/api/platform/sandbox/reset',json={},headers={'Origin':origin}).status_code==403
+    assert client.get('/api/platform/status').json()['runtime']==before
+    for name in ('original','diagnostic'):
+        html=client.get('/runtime/'+name).text
+        assert 'href="http://127.0.0.1:8770/' not in html
+
+
+@pytest.mark.parametrize('origin',['*','http://0.0.0.0:8770','file:///tmp/studio','http://user:password@192.0.2.20:8770',
+                                 'http://192.0.2.20:8770/other','http://192.0.2.20:8770?x=1','http://192.0.2.20:8765',None])
+def test_invalid_lan_origin_never_expands_workbench_access(tmp_path,origin):
+    config=tmp_path/'studio-network.json'
+    config.write_text(json.dumps({'allowed_origins':[origin]}),encoding='utf-8')
+    with pytest.raises((ValueError,TypeError)):mod.studio_origins(config)
+
+
 def test_catalog_resolves_all_sources_and_media(client):
     c=client.get('/api/platform/catalog').json()
     assert len(c['capabilities'])==20 and len(c['guides'])==14

@@ -13,6 +13,8 @@ import time
 import threading
 import uuid
 import zipfile
+from urllib.parse import urlsplit
+import ipaddress
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -31,6 +33,31 @@ UPSTREAM='http://127.0.0.1:8765'
 ID_RE=re.compile(r'^[a-f0-9]{32}$')
 FILE_LOCK=threading.RLock()
 STATE_LABELS={'integrated':'平台已接入','adaptation':'示例待适配','guide':'图文流程','reference':'社区参考'}
+LOCAL_ORIGINS=frozenset(('http://127.0.0.1:8770','http://localhost:8770',
+                         'http://127.0.0.1:18770','http://localhost:18770'))
+
+
+def studio_origins(path=None):
+    """Load explicit LAN origins; never reflect arbitrary Host/Origin headers."""
+    path=Path(path) if path is not None else REPO/'.local-deploy/studio-network.json'
+    if not path.exists():return LOCAL_ORIGINS
+    config=json.loads(path.read_text(encoding='utf-8-sig'))
+    extra=config.get('allowed_origins',[])
+    if not isinstance(extra,list):raise ValueError('allowed_origins must be a list')
+    allowed=set(LOCAL_ORIGINS)
+    for origin in extra:
+        if not isinstance(origin,str):raise ValueError('Each Studio origin must be a URL')
+        parsed=urlsplit(origin)
+        if (parsed.scheme not in ('http','https') or parsed.port!=8770
+                or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment):
+            raise ValueError('Studio origins require an exact HTTP(S) address on port 8770')
+        address=ipaddress.ip_address(parsed.hostname or '')
+        if address.is_unspecified or address.is_multicast:raise ValueError('Studio origin must name a host address')
+        allowed.add(origin)
+    return frozenset(allowed)
+
+
+ALLOWED_ORIGINS=studio_origins()
 
 
 def stamp():return datetime.now().astimezone().isoformat()
@@ -267,11 +294,8 @@ app.mount('/assets',StaticFiles(directory=STATIC),name='platform-assets')
 @app.middleware('http')
 async def local_only(request,call_next):
     origin=request.headers.get('origin')
-    if request.method not in ('GET','HEAD') and origin and origin not in (
-        'http://127.0.0.1:8770','http://localhost:8770',
-        'http://127.0.0.1:18770','http://localhost:18770',  # SSH loopback tunnel
-    ):
-        return Response('Only this local workbench may change state',403)
+    if request.method not in ('GET','HEAD') and origin and origin not in ALLOWED_ORIGINS:
+        return Response('Only a configured workbench origin may change state',403)
     response=await call_next(request)
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
@@ -440,6 +464,7 @@ async def runtime_page(name:str):
     content=(ROOT/'static'/('original.html' if name=='original' else 'index.html')).read_text(encoding='utf-8')
     content=content.replace('</head>','<link rel="stylesheet" href="/assets/embed.css"></head>')
     content=content.replace('href="http://127.0.0.1:8765/diagnostic"','href="/runtime/diagnostic"').replace('href="/original"','href="/runtime/original"')
+    content=content.replace('href="http://127.0.0.1:8770/"','href="/"')
     return HTMLResponse(content)
 
 if __name__=='__main__':
