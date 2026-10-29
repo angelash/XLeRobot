@@ -68,6 +68,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\remote\enable-remote-s
 
 隧道存活时，工作端打开`http://127.0.0.1:18770`进入远端平台；本机原8770平台可同时保留。隧道断开、退出SSH或关闭工作端不会自动结束用户接管，原控制器会按既有心跳规则暂停。Shell连接和Web隧道是两个进程，可分别建立；隧道要保持运行。
 
+若工作端Windows自带OpenSSH 9.5的`ssh-keyscan`遇到新机OpenSSH 10，可能协商到它不支持的混合密钥交换算法并报`unsupported KEX method`。`trust-robot.ps1`会在主扫描器无结果时尝试已安装Git for Windows中的新版扫描器，也可用`-KeyScanExecutable`指定路径；仍须逐一核对用户提供的Ed25519主机指纹，扫描失败不会保存信任。
+
 ## 部署顺序
 
 1. 校验包SHA-256，解压迁移包。在新机运行顶层`install-kit.ps1`先显示计划，指定空目标目录后加`-Apply`。安装器默认当前用户安装Python，建立全新隔离`.venv-debug`并离线安装锁定依赖；不会覆盖已有工程/环境，也不会启动机器人服务。
