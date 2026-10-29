@@ -290,8 +290,7 @@ class OriginalRuntime(ControlRuntime):
         if self.control_profile in ('original_hardware','original_joint'):
             for (port,i) in list(self.moving):
                 try:
-                    p=self.session.ports[port];r=read_registers(p,i)
-                    write_register(p,i,42,word(r,56),2);self.moving.pop((port,i),None)
+                    self._hold_one((port,i))
                 except Exception as exc:failures.append(f'{port}:{i} '+str(exc))
             if self.wheels_commanded:
                 for i in (9,10):
@@ -432,10 +431,15 @@ class OriginalRuntime(ControlRuntime):
         pos=word(r,56);expected=self.moving[key]
         command=self.last_command if self.last_command and (self.last_command.get('port'),self.last_command.get('id'))==key else {}
         origin=self.feedback_window.get(key,{}).get('origin',command.get('origin',pos))
-        write_register(self.session.ports[port],i,42,pos,2)
-        self.log('feedback',f'{port}:{i}回中保持，实测{pos}',port=port,id=i,position=pos,target=expected,moved=abs(pos-origin)>=1)
+        released=r[40]==0
+        if not released:
+            if r[33]!=0 or not word(r,9)<=pos<=word(r,11):
+                raise ValueError(f'{port}:{i}当前位置/模式不能确认保持，未重发目标')
+            write_register(self.session.ports[port],i,42,pos,2)
+        message=f'{port}:{i}扭矩已关闭，保留关闭状态' if released else f'{port}:{i}回中保持，实测{pos}'
+        self.log('torque_off' if released else 'feedback',message,port=port,id=i,position=pos,target=expected,moved=abs(pos-origin)>=1)
         if self.last_command and self.last_command.get('port')==port and self.last_command.get('id')==i:
-            self.last_command.update(position=pos,outcome='feedback' if abs(pos-origin)>=1 else 'interrupted',moved=abs(pos-origin)>=1,reached=abs(pos-expected)<=6)
+            self.last_command.update(position=pos,outcome='torque_off' if released else 'feedback' if abs(pos-origin)>=1 else 'interrupted',moved=abs(pos-origin)>=1,reached=abs(pos-expected)<=6)
         self.moving.pop(key,None);self.feedback_window.pop(key,None)
 
     def _goal(self,port,i,value):

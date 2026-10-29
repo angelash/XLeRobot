@@ -28,7 +28,10 @@ class ServoPort:
         if op==2:data=r[p[5]:p[5]+p[6]]
         elif op==3:
             addr=p[5];values=p[6:-1];r[addr:addr+len(values)]=values;self.writes.append((i,addr,list(values)))
-            if addr==42 and self.follow and r[40] and (r[46]+256*r[47])>0:r[56:58]=r[42:44]
+            # Reproduced on the actual 3.10 servos: writing a position also
+            # enables torque. Zero Torque_Limit prevents output independently.
+            if addr==42:r[40]=1
+            if addr==42 and self.follow and r[40] and (r[46]+256*r[47])>0 and (r[48]+256*r[49])>0:r[56:58]=r[42:44]
         body=[i,len(data)+2,0,*data]
         self.reply=bytes([255,255,*body,(~sum(body))&255])
     def close(self):self.is_open=False
@@ -125,6 +128,31 @@ def test_disconnect_holds_and_disarms(runtime):
     assert runtime.controller['controller']=='online'
     assert runtime.controller['paused']
     assert not runtime.controller['armed']
+
+
+def test_stop_preserves_a_servo_released_after_motion(runtime):
+    runtime.process_input(frame(True));runtime.process_input(frame(True,(0,1)))
+    port=runtime.session.ports['COM4'];port.regs[1][40]=0
+    count=len(port.writes)
+    runtime.stop()
+    assert port.regs[1][40]==0 and len(port.writes)==count
+    assert runtime.last_command['outcome']=='torque_off'
+    assert runtime.active is None and runtime.pending is None
+
+
+def test_hold_refuses_to_energize_a_position_outside_saved_limits(runtime):
+    runtime.process_input(frame(True));runtime.process_input(frame(True,(0,1)))
+    port=runtime.session.ports['COM4'];port.regs[1][56:58]=[0,0]
+    count=len(port.writes)
+    with pytest.raises(ValueError,match='不能确认保持'):runtime._hold()
+    assert len(port.writes)==count and runtime.active is not None
+
+
+def test_explicit_torque_on_rejects_out_of_range_goal_before_writing(runtime):
+    runtime.stop();port=runtime.session.ports['COM4'];port.regs[1][40]=0
+    port.regs[1][56:58]=[0,0];count=len(port.writes)
+    with pytest.raises(ValueError,match='超出设备范围'):runtime.torque(True,{'COM4':[1]})
+    assert port.regs[1][40]==0 and len(port.writes)==count
 
 
 def test_start_requires_fresh_input_and_new_lb(runtime):

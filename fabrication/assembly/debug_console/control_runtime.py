@@ -205,14 +205,23 @@ class ControlRuntime:
             return self.controller.copy()
 
     def _hold(self):
+        released=False
         if self.active:
             name,motor_id=self.active
             p=self.session.ports[name]
             r=read_registers(p,motor_id)
-            write_register(p,motor_id,42,word(r,56),2)
+            released=r[40]==0
+            # Firmware 3.10 enables torque on a Goal_Position write, including
+            # an unchanged goal. A stop must preserve an already released arm.
+            if not released:
+                pos=word(r,56)
+                if r[33]!=0 or not word(r,9)<=pos<=word(r,11):
+                    raise ValueError('当前位置/模式不能确认保持，未重发目标')
+                write_register(p,motor_id,42,pos,2)
             self.active=None
         if self.pending and self.last_command:
-            self.last_command.update(outcome='interrupted',message='动作已停止并保持，未把中断当作完成')
+            self.last_command.update(outcome='torque_off' if released else 'interrupted',
+                message='实测扭矩已关闭，保留关闭状态' if released else '动作已停止并保持，未把中断当作完成')
         self.pending=None
         self.controller['active_joint']=None
 
@@ -301,8 +310,8 @@ class ControlRuntime:
             return None
         if r[33]!=0: raise ValueError('关节不是位置模式，未自动修改模式')
         # No old target is ever energized: latch current position first.
-        write_register(p,motor_id,42,origin,2)
         write_register(p,motor_id,46,self.speed_raw,2)
+        write_register(p,motor_id,42,origin,2)
         if r[40]!=1: write_register(p,motor_id,40,1,1)
         write_register(p,motor_id,42,target,2)
         self.active=self.selected
@@ -416,7 +425,12 @@ class ControlRuntime:
                 for i in ids:
                     p=self.session.ports[name];r=read_registers(p,i)
                     if enabled:
-                        if r[33]==0:write_register(p,i,42,word(r,56),2)
+                        if r[33]==0:
+                            pos=word(r,56)
+                            if not word(r,9)<=pos<=word(r,11):
+                                raise ValueError(f'{name}:{i}当前位置超出设备范围，未开启扭矩')
+                            write_register(p,i,46,60,2)
+                            write_register(p,i,42,pos,2)
                         elif name=='COM4' and i in (9,10):write_register(p,i,46,0,2)
                         else:raise ValueError('未知关节模式，未开启')
                     write_register(p,i,40,int(enabled),1)

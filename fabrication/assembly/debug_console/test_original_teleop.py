@@ -463,6 +463,20 @@ def test_final_goal_ack_failure_still_holds_that_motor(runtime,monkeypatch):
     assert not runtime.moving and runtime.controller['paused']
 
 
+@pytest.mark.parametrize('stop_kind',['neutral','pause','stop'])
+def test_original_stop_never_reenables_a_released_motor(runtime,stop_kind):
+    runtime.begin_original('hardware',True)
+    step(runtime,pad([0,0,1,0,0,0],buttons=(9,)))
+    assert ('COM4',1) in runtime.moving
+    port=runtime.session.ports['COM4'];port.regs[1][40]=0;count=len(port.writes)
+    if stop_kind=='neutral':step(runtime,pad())
+    elif stop_kind=='pause':runtime._pause('released during motion')
+    else:runtime.stop()
+    assert port.regs[1][40]==0 and len(port.writes)==count
+    assert not runtime.moving and not runtime.feedback_window
+    assert runtime.last_command['outcome']=='torque_off'
+
+
 def test_resume_does_not_reopen_a_previously_operated_gripper(runtime):
     runtime.capture_profile()
     m=runtime.motors()[('COM4',6)]
