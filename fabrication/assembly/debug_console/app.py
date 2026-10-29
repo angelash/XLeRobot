@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .control_runtime import ControlRuntime, LOG_DIR
 from .control_mapping import CONTROL_MAP
-from .original_mapping import ORIGINAL_MAP,JOINT_MAP
+from .original_mapping import ORIGINAL_MAP,JOINT_MAP,PRESET_MAP
 from .original_runtime import OriginalRuntime, PreviewRuntime
 
 ROOT = Path(__file__).resolve().parent
@@ -58,13 +58,15 @@ def original_index():
 def original_status():
     # Status polling is not a hardware mutation. Resuming a previously verified
     # torque-off checkpoint only reopens observation after a clean restart.
-    if not isinstance(runtime,PreviewRuntime) and not runtime.manual_calibration.active and runtime.manual_calibration.recoverable:
+    pending=None if isinstance(runtime,PreviewRuntime) else runtime.manual_calibration.recoverable
+    if pending and not pending.get('dismissed') and not runtime.manual_calibration.active:
         try:
             if runtime.controller['controller']=='offline' and not any(m['torque'] for p in runtime.report['ports'] for m in p['motors']):
                 runtime.calibration_command('resume',{})
         except Exception:pass
-    return {**runtime.snapshot(),'control_map':JOINT_MAP if runtime.control_profile=='original_joint' else ORIGINAL_MAP,
-            'trial_control_map':JOINT_MAP,'preview_only':isinstance(runtime,PreviewRuntime)}
+    maps={'original_joint':JOINT_MAP,'original_preset':PRESET_MAP}
+    return {**runtime.snapshot(),'control_map':maps.get(runtime.control_profile,ORIGINAL_MAP),
+            'trial_control_map':JOINT_MAP,'preset_control_map':PRESET_MAP,'preview_only':isinstance(runtime,PreviewRuntime)}
 
 class OriginalStartCommand(BaseModel):
     target:str='hardware'
@@ -82,21 +84,26 @@ class WholeCalibrationCommand(BaseModel):
     left_observed:bool=False
     item:str|None=None
     wheels_verified:bool=False
-    wheel_mapping:str='normal'
+    base_forward:str|None=None
+    base_turn:str|None=None
     axis_overrides:dict[str,dict[str,float|int]]={}
 
 class ControllerSettingsCommand(BaseModel):
-    arm_mapping:str='normal'
-    joint_rate_deg_s:float=12
-    grip_raw_s:int=120
-    wheel_max_raw:int=800
-    follow_delta_raw:int=96
-    wheel_mapping:str='normal'
-    axis_overrides:dict[str,dict[str,float|int]]={}
+    # Partial patch: omitted fields keep their saved values, so two panels
+    # cannot overwrite each other with stale form state.
+    arm_mapping:str|None=None
+    joint_rate_deg_s:float|None=None
+    grip_raw_s:int|None=None
+    wheel_max_raw:int|None=None
+    follow_delta_raw:int|None=None
+    wheel_mapping:str|None=None
+    base_forward:str|None=None
+    base_turn:str|None=None
+    axis_overrides:dict[str,dict[str,float|int]]|None=None
 
 @app.post('/api/control-settings')
 def update_control_settings(payload:ControllerSettingsCommand):
-    try:return runtime.update_controller_settings(payload.model_dump())
+    try:return runtime.update_controller_settings(payload.model_dump(exclude_none=True))
     except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/whole-calibration/{action}')

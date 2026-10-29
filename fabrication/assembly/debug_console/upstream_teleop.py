@@ -57,8 +57,10 @@ def intentions(raw):
         result[side]={'mode':mode,'h':get(offset),'v':get(offset+1),
                       'trigger':max(0,min(1,float(a[trigger]))) if trigger<len(a) else 0.}
     h=raw.get('hat',[0,0])
-    # Executed upstream get_base_action: up -> k (back), down -> i (forward).
-    result['base']={'v':-.04*h[1],'omega':-.25*h[0]}
+    # Upstream's comment says D-pad up is "Forward" but it inserts key 'k',
+    # which xlerobot_2wheels maps to backward. The operator defines the
+    # chassis front by a field short test (+v), so up drives that front.
+    result['base']={'v':.04*h[1],'omega':-.25*h[0]}
     result['head']={'pan':int(pressed(2))-int(pressed(1)),
                     'tilt':int(pressed(0))-int(pressed(3))}
     result['stop']=pressed(6)
@@ -81,8 +83,8 @@ def encode_velocity(value):
 
 
 class UpstreamTeleop:
-    def __init__(self,angles=None,radius=.05,track=.25):
-        self.radius=radius;self.track=track
+    def __init__(self,angles=None,radius=.05,track=.25,max_raw=500):
+        self.radius=radius;self.track=track;self.max_raw=max_raw
         self.q=deepcopy(angles or {s:dict(zip(JOINTS,[0,0,2,-2,0,90])) for s in ('left','right')})
         self.head=[0.,0.];self.base=[0.,0.,0.];self.wheels=[0.,0.]
         self.speed_level=1;self.last_bumpers=[False,False]
@@ -132,7 +134,7 @@ class UpstreamTeleop:
             if bumpers[1] and not self.last_bumpers[1]:self.speed_level=min(3,self.speed_level+1)
         self.last_bumpers=bumpers
         v=intent['base']['v']*self.speed_level;w=intent['base']['omega']*self.speed_level
-        self.wheels=wheel_raw(v,w,self.radius,self.track)
+        self.wheels=wheel_raw(v,w,self.radius,self.track,self.max_raw)
         self.base[0]+=v*math.cos(self.base[2])*dt
         self.base[1]+=v*math.sin(self.base[2])*dt
         self.base[2]+=w*dt

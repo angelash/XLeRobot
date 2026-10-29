@@ -64,11 +64,11 @@ def test_upstream_abxy_head_and_trigger_release():
     assert not intentions(pad(buttons=(1,)))['stop']  # B remains head control
 
 
-def test_original_dpad_and_mirrored_wheels():
+def test_dpad_up_is_forward_and_wheels_stay_mirrored():
     e=UpstreamTeleop();e.step(pad(hat=(0,1)),.1)
-    assert e.base[0]<0 and e.wheels[0]>0 and e.wheels[1]<0
+    assert e.base[0]>0 and e.wheels[0]<0 and e.wheels[1]>0
     e.step(pad(hat=(0,-1)),.1)
-    assert e.wheels[0]<0 and e.wheels[1]>0
+    assert e.wheels[0]>0 and e.wheels[1]<0
     e.step(pad(hat=(-1,0)),.1)
     assert e.wheels[0]>0 and e.wheels[1]>0
     assert encode_velocity(-15)==0x800f
@@ -195,7 +195,8 @@ def test_default_api_means_complete_real_robot_and_never_silently_partial(runtim
     response=client.post('/api/original/start',json={'confirmed':True})
     assert response.status_code==409 and '整机初始化' in response.json()['detail']
     assert runtime.controller['controller']=='offline'
-    assert client.get('/api/original/status').json()['preferred_target']=='hardware'
+    # Until the whole mapping is ready, the page opens on direct preset control.
+    assert client.get('/api/original/status').json()['preferred_target']=='preset'
 
 
 def test_preview_never_writes_any_hardware(runtime):
@@ -465,21 +466,19 @@ def test_original_api_mapping_and_profile_gates(runtime,monkeypatch):
     assert runtime.controller['paused'] and runtime.controller['controller']=='online'
 
 
-def test_verified_wheels_use_sign_magnitude_then_stop_on_release_and_permission_loss(runtime):
+def test_wheels_drive_without_field_verification_and_stop_on_release_and_torque_loss(runtime):
     for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
     runtime.begin_original('hardware',True)
-    runtime.kinematic_profile={'wheels':{'verified':True,'radius_m':.05,'track_m':.25}}
     assert runtime.readiness()['base']['ready']
-    step(runtime,pad(hat=(0,-1)))
+    step(runtime,pad(hat=(0,1)))
     p=runtime.session.ports['COM4']
     raw=lambda i:p.regs[i][46]+256*p.regs[i][47]
     assert raw(9)&0x8000 and 0<raw(10)<0x8000
     assert runtime.wheels_commanded
     step(runtime,pad())
     assert raw(9)==raw(10)==0 and not runtime.wheels_commanded
-    step(runtime,pad(hat=(0,-1)))
-    runtime.kinematic_profile={}
-    step(runtime,pad(hat=(0,-1)))
+    for i in (9,10):p.regs[i][40]=0
+    runtime.scan();step(runtime,pad(hat=(0,1)))
     assert raw(9)==raw(10)==0
 
 

@@ -10,10 +10,32 @@ from pathlib import Path
 DEFAULTS={
     'arm_mapping':'normal','joint_rate_deg_s':12.0,'grip_raw_s':120,
     'wheel_max_raw':800,'follow_delta_raw':96,'wheel_mapping':'normal',
-    'axis_overrides':{}}
+    'base_forward':'a','base_turn':'normal','axis_overrides':{}}
+# Direct trial is meant to reveal real behaviour, so the user-facing ceilings
+# are generous. STS3215 goal velocity is additionally capped at 1000 raw/s.
 LIMITS={
-    'joint_rate_deg_s':(1.0,30.0),'grip_raw_s':(20,400),
-    'wheel_max_raw':(100,3000),'follow_delta_raw':(16,256)}
+    'joint_rate_deg_s':(1.0,90.0),'grip_raw_s':(20,800),
+    'wheel_max_raw':(100,3000),'follow_delta_raw':(16,512)}
+# Field-observed chassis directions for a mirrored differential drive.
+# base_forward flips only translation, base_turn flips only rotation, so a
+# wrong forward test and a wrong turn test each have one independent fix.
+MAPPING_KEYS=('arm_mapping','wheel_mapping','base_forward','base_turn')
+
+
+def migrate_legacy(data):
+    """Old files stored only wheel_mapping (forward default "a").
+
+    Old (mapping, forward) produced motor commands equivalent to new
+    (forward=f*m, turn=f). With forward "a", swapped == forward reversed.
+    """
+    data=dict(data or {})
+    if 'base_turn' not in data:
+        f=-1 if data.get('base_forward')=='reverse' else 1
+        m=-1 if data.get('wheel_mapping')=='swapped' else 1
+        data['base_forward']='a' if f*m==1 else 'reverse'
+        data['base_turn']='normal' if f==1 else 'reverse'
+        data['wheel_mapping']='normal'
+    return data
 
 
 class ControllerSettings:
@@ -23,10 +45,12 @@ class ControllerSettings:
         data={**DEFAULTS,**(data or {})}
         if data.get('arm_mapping') not in ('normal','swapped'):raise ValueError('双臂映射必须为normal或swapped')
         if data.get('wheel_mapping') not in ('normal','swapped'):raise ValueError('左右轮映射必须为normal或swapped')
+        if data.get('base_forward') not in ('a','reverse'):raise ValueError('车身前进定义必须为a或reverse')
+        if data.get('base_turn') not in ('normal','reverse'):raise ValueError('转向方向必须为normal或reverse')
         overrides=data.get('axis_overrides') or {}
         if not isinstance(overrides,dict):raise ValueError('逐轴设置必须是对象')
         allowed={'joint_rate_deg_s','direction','follow_delta_raw','grip_raw_s'}
-        valid_keys={f'{port}:{i}' for port in ('COM3','COM4') for i in range(1,7)}
+        valid_keys={f'{port}:{i}' for port in ('COM3','COM4') for i in range(1,7)}|{'COM3:7','COM3:8'}
         checked={}
         for key,value in overrides.items():
             if key not in valid_keys or not isinstance(value,dict) or not set(value)<=allowed:raise ValueError('逐轴设置键无效')
@@ -38,7 +62,7 @@ class ControllerSettings:
                 if key_name in value:
                     try:number=float(value[key_name])
                     except (TypeError,ValueError):raise ValueError('逐轴速度必须是数字') from None
-                    if not low<=number<=high:raise ValueError('逐轴数值超出范围')
+                    if not low<=number<=high:raise ValueError(f'{key}的{key_name}需在{low:g}–{high:g}')
                     item[key_name]=int(number) if key_name!='joint_rate_deg_s' else number
             checked[key]=item
         data['axis_overrides']=checked
@@ -50,7 +74,7 @@ class ControllerSettings:
         return data
 
     def load(self):
-        try:return self.validate(json.loads(self.path.read_text(encoding='utf-8')))
+        try:return self.validate(migrate_legacy(json.loads(self.path.read_text(encoding='utf-8'))))
         except (OSError,ValueError,TypeError,json.JSONDecodeError):return dict(DEFAULTS)
 
     def save(self,data):
@@ -62,8 +86,20 @@ class ControllerSettings:
 
     def snapshot(self):
         ports=self.arm_ports()
-        return {**self.data,'logical_ports':ports,'logical_wheels':self.wheel_ids(),
+        return {**self.data,'logical_ports':ports,'logical_wheels':self.wheel_ids(),'limits':LIMITS,
                 'description':'机械臂装反时选择swapped：手柄左杆控制物理左侧，换到另一块控制板'}
+
+    def base_signs(self):
+        """(translation_sign, rotation_sign) applied before wheel kinematics."""
+        return (-1 if self.data.get('base_forward')=='reverse' else 1,
+                -1 if self.data.get('base_turn')=='reverse' else 1)
+
+    def merged(self,patch):
+        """Partial update: omitted fields keep their saved values."""
+        data={**self.data,**{k:v for k,v in (patch or {}).items() if v is not None}}
+        if 'axis_overrides' in (patch or {}) and patch['axis_overrides'] is not None:
+            data['axis_overrides']=patch['axis_overrides']
+        return data
 
     def arm_ports(self):
         if self.data['arm_mapping']=='swapped':return {'left':'COM4','right':'COM3'}

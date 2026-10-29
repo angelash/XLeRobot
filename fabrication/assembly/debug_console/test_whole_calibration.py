@@ -111,6 +111,8 @@ def test_manual_collection_excludes_all_torque_and_takeover_entries(runtime,acti
 
 def test_range_confirmation_and_pose_steps_require_real_samples(runtime):
     c=runtime.manual_calibration;c.start(True)
+    assert c.step=='cards','A new session opens free collection, not the old wizard'
+    c.step='ranges'  # The legacy step API remains guarded.
     with pytest.raises(ValueError,match='逐项'):c.capture('ranges',[])
     with pytest.raises(ValueError,match='有效行程'):c.capture('ranges',list(cal.KEYS))
     with pytest.raises(ValueError,match='步骤'):c.capture('left_a')
@@ -187,7 +189,7 @@ def test_base_needs_motion_stop_and_human_direction_observation(runtime,monkeypa
     monkeypatch.setattr(cal.threading,'Timer',ManualTimer)
     c=runtime.manual_calibration;c.start(True);c.step='base'
     for kind in ('forward','left'):
-        c.base_test(kind,-1,1,True)
+        c.base_test(kind,True)
         with pytest.raises(ValueError,match='停车'):c.confirm_base(True,True)
         p=runtime.session.ports['COM4']
         for i in (9,10):set_word(p.regs[i],56,word(p.regs[i],56)+10)
@@ -198,12 +200,15 @@ def test_base_needs_motion_stop_and_human_direction_observation(runtime,monkeypa
     assert c.step=='review' and c.wheels['stop_verified']
 
 
-def test_change_wheel_sign_discards_previous_direction_tests(runtime,monkeypatch):
+def test_change_wheel_direction_discards_tests_and_drives_with_new_setting(runtime,monkeypatch):
     monkeypatch.setattr(cal.threading,'Timer',ManualTimer)
     c=runtime.manual_calibration;c.start(True);c.step='base'
-    c.wheels={'left_sign':-1,'right_sign':1};c.base_tests={'forward':{'results':[]}}
-    c.base_test('left',1,1,True)
-    assert not c.base_tests
+    c.wheels={**cal.DESIGN_GEOMETRY,'base_forward':'a','base_turn':'normal'};c.base_tests={'forward':{'results':[]}}
+    runtime.calibration_command('base-test',{'kind':'left','confirmed':True,'base_turn':'reverse'})
+    assert not c.base_tests and runtime.settings.data['base_turn']=='reverse'
+    p=runtime.session.ports['COM4']
+    # Normal left turn commands both wheels positive; reversed turn is negative.
+    assert word(p.regs[9],46)&0x8000 and word(p.regs[10],46)&0x8000
     c.cancel();assert all(reg[40]==0 for p in runtime.session.ports.values() for reg in p.regs.values())
 
 
@@ -244,11 +249,11 @@ def test_large_observed_gripper_range_obeys_raw_slew_limit(runtime):
     assert 0<before-after<=12,'Normalized grip changes must respect the configured physical raw rate'
 
 
-def test_confirmed_wheel_signs_drive_continuously_and_release_stops(runtime):
+def test_forward_setting_drives_continuously_and_release_stops(runtime):
     c=runtime.manual_calibration;c.start(True);completed_measurements(c)
-    c.wheels.update(left_sign=1,right_sign=-1);c.apply(True)
+    runtime.update_controller_settings({'base_forward':'reverse'});c.apply(True)
     runtime.pad_time=time.monotonic();runtime.begin_whole_robot(True)
-    step(runtime,pad(hat=(0,-1)))
+    step(runtime,pad(hat=(0,1)))
     p=runtime.session.ports['COM4']
     assert 0<word(p.regs[9],46)<32768 and word(p.regs[10],46)>32768
     assert runtime.engine.wheels[0]>0 and runtime.engine.wheels[1]<0

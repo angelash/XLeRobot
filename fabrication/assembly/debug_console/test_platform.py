@@ -217,12 +217,12 @@ def test_guided_calibration_proxy_only_exposes_explicit_actions(client):
         requests.append(request)
         return httpx.Response(200,json={'active':True,'step':'ranges'})
     mod.service.client=httpx.AsyncClient(transport=httpx.MockTransport(reply))
-    for action in ('start','recover','merge-checkpoint','capture','capture-item','delete-item','rewind','base-test','base-confirm','wheels','apply','cancel'):
+    for action in ('start','recover','merge-checkpoint','capture','capture-item','delete-item','rewind','base-test','base-confirm','wheels','apply','apply-ranges','cancel'):
         assert client.post('/api/whole-calibration/'+action,json={'confirmed':True}).status_code==200
         assert requests[-1].headers['origin']==mod.UPSTREAM
         assert requests[-1].extensions['timeout']['read']==45
     assert client.post('/api/whole-calibration/exec',json={}).status_code==404
     assert client.get('/static/whole-calibration.js').status_code==200
-    assert '/static/whole-calibration.js?v=38' in client.get('/runtime/original').text
+    assert '/static/whole-calibration.js?v=39' in client.get('/runtime/original').text
     assert client.post('/api/control-settings',json={}).status_code==200
     assert requests[-1].url.path=='/api/control-settings'

@@ -34,7 +34,7 @@ def joint_label(port: str, motor_id: int) -> str:
     if motor_id <= 6:
         return ('左臂' if port == 'COM3' else '右臂') + JOINT_LABELS[motor_id-1]
     if port == 'COM3':
-        return '头部' + str(motor_id-6)
+        return '头部水平' if motor_id == 7 else '头部俯仰'
     return '左轮' if motor_id == 9 else '右轮'
 
 

@@ -54,9 +54,15 @@ def test_wheel_mapping_swaps_logical_ids_without_relabeling_motors(runtime):
     assert [p.regs for p in runtime.session.ports.values()]==before
 
 
-def test_settings_are_blocked_during_takeover(runtime):
-    runtime.controller['controller']='online'
-    with pytest.raises(ValueError,match='结束接管'):runtime.update_controller_settings(DEFAULTS)
+def test_takeover_allows_live_tuning_but_not_mapping_changes(runtime):
+    runtime.capture_profile();runtime.controller['controller']='online'
+    with pytest.raises(ValueError,match='结束接管'):runtime.update_controller_settings({'arm_mapping':'swapped'})
+    with pytest.raises(ValueError,match='结束接管'):runtime.update_controller_settings({'base_turn':'reverse'})
+    runtime.envelopes[('COM3',2)]['min']=5
+    result=runtime.update_controller_settings({'joint_rate_deg_s':40,'wheel_max_raw':1500})
+    assert result['joint_rate_deg_s']==40 and result['arm_mapping']=='normal'
+    # Live tuning keeps the active profile's widened envelope.
+    assert runtime.envelopes[('COM3',2)]['min']==5 and runtime.engine.max_raw==1500
 
 
 def test_changed_rates_apply_to_next_joint_command(runtime):

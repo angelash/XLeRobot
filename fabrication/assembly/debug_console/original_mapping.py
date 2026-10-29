@@ -11,10 +11,10 @@ ORIGINAL_MAP=[
  entry('rs','RS按住','右肩水平旋转','右臂肩水平','按住右摇杆再左右拨','只调右肩水平；RB优先于RS','当前关节需有可用行程',9),
  entry('lt','LT','左夹爪','左臂夹爪','压过75%关闭，松开打开','沿用原脚本压下关闭/松开打开，执行有速度限制','实机端点/方向未确认时仅提示；启动不自动开爪',10,4),
  entry('rt','RT','右夹爪','右臂夹爪','压过75%关闭，松开打开','沿用原脚本压下关闭/松开打开，执行有速度限制','实机端点/方向未确认时仅提示；启动不自动开爪',11,5),
- entry('up','十字键 ↑','底盘后退','双轮差速底盘','按住↑','执行原代码get_base_action：↑对应k，后退','保留原版实际映射；轮模式及离地验收通过后才发轮速',12),
- entry('down','十字键 ↓','底盘前进','双轮差速底盘','按住↓','执行原代码get_base_action：↓对应i，前进','这是源码实际方向；不按直觉擅自调换',13),
- entry('left','十字键 ←','底盘左转','双轮差速底盘','按住←','双轮差速左转','松开方向键发双轮零速；受限位/验收门控',14),
- entry('right','十字键 →','底盘右转','双轮差速底盘','按住→','双轮差速右转','同上；不会切换关节',15),
+ entry('up','十字键 ↑','底盘前进','双轮差速底盘','按住↑','向你定义的车身正前方行驶；松开立即零速','方向反了：控制设置 → 前进方向 → 反向。上游脚本此键实际发k(后退)，与其注释相反，这里按注释改为前进',12),
+ entry('down','十字键 ↓','底盘后退','双轮差速底盘','按住↓','向车身后方行驶；松开立即零速','与↑同一套前进方向设置',13),
+ entry('left','十字键 ←','底盘左转','双轮差速底盘','按住←','双轮差速原地左转','转向反了：控制设置 → 转向方向 → 反向',14),
+ entry('right','十字键 →','底盘右转','双轮差速底盘','按住→','双轮差速原地右转','与←同一套转向设置；不会切换关节',15),
  entry('x','X','头部水平增加','头部1','按住X','对应原版head_motor_1+','不切换手臂模式',2),
  entry('b','B','头部水平减少','头部1','按住B','对应原版head_motor_1−；B不再是停止键','暂停用Menu或页面暂停，结束用View',1),
  entry('a','A','头部俯仰增加','头部2','按住A','对应原版head_motor_2+','不是查看说明快捷键',0),
@@ -39,3 +39,22 @@ for item in JOINT_MAP:
                     requirement='未确认完整开合端点，不执行全开全关')
     elif item['key'] in ('up','down','left','right'):
         item.update(result='双轮最多180ms低速短脉冲，松开方向键后才可再次触发',requirement='双轮已零速准备；此模式不作距离控制')
+
+# Preset direct control: the upstream button layout, each stick axis driving
+# one joint over its saved servo limit. Tuning applies on the next motion.
+PRESET_MAP=[dict(item) for item in ORIGINAL_MAP]
+TUNE='方向反了或快慢不合适：在“控制设置 · 逐轴调参”改，接管中保存即时生效'
+for item in PRESET_MAP:
+    if item['key'] in ('lx','rx'):
+        item.update(role='肩抬升 / 肩水平 / 腕旋转',gesture='直接左右拨杆转肩抬升；按住LS/RS转肩水平；按住LB/RB转腕旋转',
+                    result='对应关节按设定速度持续转动，回中即停，到舵机限位自动停住',requirement=TUNE)
+    elif item['key'] in ('ly','ry'):
+        item.update(role='肘 / 腕俯仰',gesture='直接前后拨杆转肘；按住LB/RB前后拨转腕俯仰',
+                    result='对应关节按设定速度持续转动，回中即停',requirement=TUNE)
+    elif item['key'] in ('ls','rs'):
+        item.update(result='只转肩水平；LB/RB优先于LS/RS',requirement=TUNE)
+    elif item['key'] in ('lt','rt'):
+        item.update(role='夹爪',gesture='首次压过75%后接入：压下闭合，松开张开',
+                    result='按夹爪速度移动，到限位停住',requirement='开合反了：逐轴调参把夹爪设为反向')
+    elif item['key'] in ('x','b','a','y'):
+        item.update(requirement=TUNE)
