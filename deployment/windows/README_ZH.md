@@ -80,6 +80,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\remote\enable-remote-s
 
 脚本将网络配置保存到本机忽略目录`.local-deploy/studio-network.json`：Studio监听IPv4，操作接口仅额外接受配置的精确来源URL；Windows防火墙只允许指定工作端访问该新机地址的TCP8770。控制服务8765继续通过Studio代理使用。没有通配来源、全网放行或关闭防火墙。
 
+若Windows已有当前Python的全端口TCP拒绝规则，它会覆盖新增允许规则。配置脚本仅从该规则中排除Studio的8770，保留其他TCP端口及UDP限制，并增加此端口对未授权客户端的拒绝规则；改动前的端口范围与规则名保存在本机忽略目录。随后仍须从工作端实测直连。
+
 应用配置后，仅重启Studio网关：先确认未录制，再运行`debug_console/stop-platform.ps1`和`debug_console/start-platform.ps1`（位于`fabrication/assembly/`下）。控制服务与接管独立保留。交互式登录任务仍调用相同启动入口，下一次启动会读取该网络配置并显示新机URL。新机IP或获准工作端IP变化时重新运行配置脚本；旧URL不会自动假定可达。
 
 验收须从工作端访问新机IP，检查主页、资源、内嵌控制页、状态与带新机Origin的POST，不能仅以新机上的localhost检查或SSH隧道成功代替直连验收。
