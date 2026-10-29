@@ -7,7 +7,9 @@ const Studio = (() => {
   const date=s=>s?new Date(s).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
   const fmt=n=>Number(n||0).toFixed(1), badge=s=>`<span class="tag ${s}">${labels[s]||esc(s)}</span>`;
   let catalog,status,library={recordings:[],poses:[],experiments:[]},route='home',routeVersion=0,sourceRaw='',capState='all',capGroup='all',player=null,playerFrame=0,playing=false,playStart=0,playOrigin=0,sandbox=null,hold=null,holdBusy=false,qualityBlob=null,pollBusy=false;
-  let toastTimer;
+  let toastTimer,lastControlStatus=0;
+  function heartbeatAllowed(s,page,visible,age){return page==='control'&&visible&&age<2500&&s?.upstream_connected&&s.runtime?.controller?.controller==='online'&&!s.runtime.controller.paused;}
+  async function controlHeartbeat(){if(heartbeatAllowed(status,route,!document.hidden,Date.now()-lastControlStatus))await api('/api/controller/heartbeat',{}).catch(()=>{});}
   async function api(path,payload,raw=false){
     const options=payload===undefined?{}:raw?{method:'POST',body:payload,headers:{'Content-Type':payload.type||'application/octet-stream'}}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)};
     const res=await fetch(path,options);let data;
@@ -77,7 +79,7 @@ const Studio = (() => {
   function updateStatusUI(){
     if(!status)return;const r=status.runtime||{},c=r.controller||{},info=sessionInfo(status),motors=(r.ports||[]).reduce((a,p)=>a+(p.motors?.length||0),0);
     $('connection-dot').classList.toggle('online',!!status.upstream_connected);$('connection-text').textContent=status.upstream_connected?'服务已连接':'服务未连接';
-    const strip=$('session-strip');strip.classList.toggle('warn',info.warn);strip.innerHTML=`<strong>${esc(info.text)}</strong><span>${esc(info.detail)}</span><span class="tag">${r.control_profile==='original_preview'?'运动学预览':r.control_profile==='original_hardware'?'受限实机':'未选择目标'}</span>`;
+    const strip=$('session-strip');strip.classList.toggle('warn',info.warn);strip.innerHTML=`<strong>${esc(info.text)}</strong><span>${esc(info.detail)}</span><span class="tag">${r.control_profile==='original_preview'?'运动学预览':r.control_profile==='original_joint'?'关节实机 · 起点±2.8°':r.control_profile==='original_hardware'?'末端实机':r.control_profile==='diagnostic'?'单关节调试 · LB＋方向键':'未选择目标'}</span>`;
     $('global-pause').disabled=!status.upstream_connected||c.controller!=='online'||c.paused;
     if(route==='home'){$('stat-service').textContent=status.upstream_connected?'已连接':'离线';$('stat-session').textContent=info.text;$('stat-motors').textContent=motors;$('stat-assets').textContent=Object.values(status.counts||{}).reduce((a,b)=>a+b,0);}
     if(route==='devices')renderDevices(r);
@@ -153,7 +155,7 @@ const Studio = (() => {
   }
   async function openSource(id){$('source-dialog').showModal();$('source-title').textContent='正在读取…';$('source-content').textContent='';$('source-path').textContent='';try{const s=await api('/api/platform/sources/'+id);sourceRaw=s.content;$('source-title').textContent=s.path.split('/').pop();$('source-path').textContent=s.path;$('source-kind').textContent=s.kind==='md'?'REPOSITORY MANUAL':'SOURCE CODE / READ ONLY';$('source-content').innerHTML=s.kind==='md'?markdown(s.content):`<pre><code>${esc(s.content)}</code></pre>`;}catch(e){$('source-content').textContent=e.message;}}
   function search(q){q=q.trim().toLowerCase();const results=[...catalog.capabilities.filter(c=>(c.title+c.summary).toLowerCase().includes(q)).map(c=>({title:c.title,desc:labels[c.state]+' · '+c.summary,href:c.route==='manual'?'manual/'+c.guide:c.route})),...catalog.guides.filter(g=>(g.title+g.summary).toLowerCase().includes(q)).map(g=>({title:g.title,desc:'图文手册 · '+g.kicker,href:'manual/'+g.id})),...catalog.sources.filter(s=>s.path.toLowerCase().includes(q)).map(s=>({title:s.name,desc:s.path,source:s.id}))].slice(0,40);$('search-results').innerHTML=results.map(x=>`<button class="search-result" ${x.source?`data-search-source="${x.source}"`:`data-search-route="${x.href}"`}><strong>${esc(x.title)}</strong><small>${esc(x.desc)}</small></button>`).join('')||empty('未找到匹配内容','试试手柄、数据、训练、PICO或源文件名。');}
-  async function refresh(){if(pollBusy)return;pollBusy=true;try{status=await api('/api/platform/status');updateStatusUI();}catch(e){if(status)status.upstream_connected=false;$('connection-text').textContent='平台连接中断';$('session-strip').textContent='平台暂未响应，控制器状态未知；不会自动取消你的接管。';$('global-pause').disabled=true;}finally{pollBusy=false;}}
+  async function refresh(){if(pollBusy)return;pollBusy=true;try{status=await api('/api/platform/status');lastControlStatus=Date.now();updateStatusUI();}catch(e){if(status)status.upstream_connected=false;$('connection-text').textContent='平台连接中断';$('session-strip').textContent='平台暂未响应，控制器状态未知；不会自动取消你的接管。';$('global-pause').disabled=true;}finally{pollBusy=false;}}
   function experimentOutput(x){return `<div class="notice">${esc(x.note)}</div><h3>${esc(x.name)} <span class="tag">未执行</span></h3><pre class="code">${esc(x.command)}</pre><button class="button compact" data-copy-experiment="${x.id}">复制命令</button>`;}
   async function setQuality(blob){if(blob.size>8000000)throw new Error('图片需小于8MB');qualityBlob=blob;const img=$('quality-preview');if(img.dataset.objectUrl)URL.revokeObjectURL(img.dataset.objectUrl);const url=URL.createObjectURL(blob);img.dataset.objectUrl=url;img.src=url;img.hidden=false;$('quality-analyze').disabled=false;$('quality-result').innerHTML='<p class="subtle">画面已就绪，点击检查画面质量。</p>';}
   async function clicked(e){
@@ -207,13 +209,13 @@ const Studio = (() => {
     document.addEventListener('pointerdown',e=>{const b=e.target.closest('[data-hold]');if(!b)return;e.preventDefault();cancelDemo();hold=b.dataset.hold;b.classList.add('pressed');b.setPointerCapture?.(e.pointerId);holdTick();});
     document.addEventListener('pointerup',stopHold);document.addEventListener('pointercancel',stopHold);window.addEventListener('blur',stopHold);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopHold();});
     document.addEventListener('keydown',e=>{const b=e.target.closest('[data-hold]');if(!b||![' ','Enter'].includes(e.key)||e.repeat)return;e.preventDefault();cancelDemo();hold=b.dataset.hold;b.classList.add('pressed');holdTick();});document.addEventListener('keyup',e=>{if([' ','Enter'].includes(e.key))stopHold();});
-    window.addEventListener('hashchange',navigate);setInterval(holdTick,90);setInterval(refresh,1500);
+    window.addEventListener('hashchange',navigate);setInterval(holdTick,90);setInterval(refresh,1500);setInterval(controlHeartbeat,600);
   }
   async function init(){
     $('navigation').innerHTML=pages.map(([id,t,n])=>`<a href="#${id}">${StudioVisuals.icon(id)}<span>${t}</span><small>${n}</small></a>`).join('');
     try{catalog=await api('/api/platform/catalog');wire();await refresh();await navigate();}catch(e){$('page').innerHTML=`<div class="error-box">工作台加载失败：${esc(e.message)}<p>请确认8770平台服务已启动，然后刷新页面。</p></div>`;}
   }
-  return {init,esc,markdown,sessionInfo,sandboxInput,deviceConnections};
+  return {init,esc,markdown,sessionInfo,sandboxInput,deviceConnections,heartbeatAllowed};
 })();
 if(typeof document!=='undefined')Studio.init();
 if(typeof module!=='undefined')module.exports=Studio;

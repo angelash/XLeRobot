@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .control_runtime import ControlRuntime, LOG_DIR
 from .control_mapping import CONTROL_MAP
-from .original_mapping import ORIGINAL_MAP
+from .original_mapping import ORIGINAL_MAP,JOINT_MAP
 from .original_runtime import OriginalRuntime, PreviewRuntime
 
 ROOT = Path(__file__).resolve().parent
@@ -56,12 +56,19 @@ def original_index():
 
 @app.get('/api/original/status')
 def original_status():
-    return {**runtime.snapshot(),'control_map':ORIGINAL_MAP,
+    return {**runtime.snapshot(),'control_map':JOINT_MAP if runtime.control_profile=='original_joint' else ORIGINAL_MAP,
             'preview_only':isinstance(runtime,PreviewRuntime)}
 
 class OriginalStartCommand(BaseModel):
     target:str='preview'
     confirmed:bool=False
+
+@app.post('/api/hardware/prepare')
+def prepare_hardware(payload:OriginalStartCommand):
+    try:return runtime.prepare_hardware(payload.confirmed)
+    except Exception as exc:
+        runtime.log('error','实机准备失败：'+str(exc))
+        raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/original/start')
 def start_original(payload:OriginalStartCommand):

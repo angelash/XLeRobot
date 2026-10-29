@@ -100,6 +100,7 @@ def runtime(tmp_path,monkeypatch):
     monkeypatch.setattr(mod,'LOG_DIR',tmp_path)
     monkeypatch.setattr(mod,'PROFILE',tmp_path/'device.json')
     monkeypatch.setattr(orig,'KINEMATIC_PROFILE',tmp_path/'kinematic.json')
+    monkeypatch.setattr(orig,'SERVICE_PROFILE',tmp_path/'hardware-service.json')
     r=OriginalRuntime(Session());r._check_ports=lambda:None
     r.gamepad=pad();r.pad_time=time.monotonic()
     return r
@@ -137,6 +138,127 @@ def test_readiness_distinguishes_saved_range_torque_and_mode(runtime):
     assert any('实测2050超出设备范围1000–2000' in r for r in reasons)
     assert '左肩当前模式1，需要位置模式0' in reasons
     assert not any('扭矩关闭' in r for r in reasons)
+
+
+def test_explicit_preparation_latches_current_before_torque_and_retains_mode_limits(runtime):
+    for port in runtime.session.ports.values():
+        for r in port.regs.values():r[40]=0
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    result=runtime.prepare_hardware(True)
+    assert len(result['ready'])==16 and not result['blocked']
+    for name,port in runtime.session.ports.items():
+        for i in port.regs:
+            writes=[(address,data) for motor_id,address,data in port.writes if motor_id==i]
+            assert all(address in (40,42,46) for address,_ in writes)
+            if name=='COM4' and i in (9,10):assert writes==[(46,[0,0]),(40,[1])]
+            else:assert writes==[(46,[60,0]),(42,[2,8]),(40,[1])]
+    runtime.begin_original('joint',True)
+    with pytest.raises(ValueError):runtime.prepare_hardware(True)
+
+
+def test_preparation_skips_narrow_or_outside_limits_and_preview_rejects(runtime):
+    runtime.session.ports['COM3'].regs[1][9:13]=[252,7,3,8]
+    result=runtime.prepare_hardware(True)
+    assert any(x['port']=='COM3' and x['id']==1 for x in result['blocked'])
+    assert not any(i==1 for i,_,_ in runtime.session.ports['COM3'].writes)
+    with pytest.raises(ValueError):PreviewRuntime().prepare_hardware(True)
+
+
+def test_hardware_start_cannot_report_success_when_all_torque_is_off(runtime):
+    for port in runtime.session.ports.values():
+        for r in port.regs.values():r[40]=0
+    with pytest.raises(ValueError,match='准备实机'):runtime.begin_original('joint',True)
+    with pytest.raises(ValueError,match='准备实机'):runtime.begin_original('hardware',True)
+    assert runtime.controller['controller']=='offline'
+    assert all(not port.writes for port in runtime.session.ports.values())
+
+
+def test_maintenance_exclusions_survive_restart_and_cover_diagnostic_torque_and_joint(runtime):
+    orig.SERVICE_PROFILE.write_text(json.dumps({'serials':mod.EXPECTED_SERIALS,
+        'blocked_motors':{'COM4:1':'机械检修待验收'}}),encoding='utf-8')
+    # No preparation call: this is the first capture after a service restart.
+    runtime.begin(True)
+    assert not runtime.envelopes[('COM4',1)]['available']
+    assert runtime.envelopes[('COM4',1)]['maintenance_blocked']
+    assert not any('行程不足' in reason for reason in runtime.readiness()['right_pan']['reasons'])
+    assert runtime.selected!=('COM4',1)
+    with pytest.raises(ValueError,match='机械检修'):runtime.select('COM4',1)
+    runtime.stop()
+    with pytest.raises(ValueError,match='检修关节'):runtime.torque(True,{'COM4':[1]})
+    with pytest.raises(ValueError,match='检修关节'):runtime.torque(True)
+    assert all(not port.writes for port in runtime.session.ports.values())
+    runtime.begin_original('joint',True)
+    step(runtime,pad([0,0,1,0,0,0],buttons=(9,)))
+    assert not runtime.session.ports['COM4'].writes
+    with pytest.raises(ValueError,match='机械检修'):runtime._goal('COM4',1,2060)
+    runtime.stop();runtime.torque(False,{'COM4':[1]})
+    assert runtime.session.ports['COM4'].regs[1][40]==0
+
+
+def test_invalid_maintenance_identity_blocks_motion_but_allows_torque_off(runtime):
+    orig.SERVICE_PROFILE.write_text(json.dumps({'serials':{'COM4':'other-board'},'blocked_motors':{}}),encoding='utf-8')
+    with pytest.raises(ValueError,match='USB身份'):runtime.begin_original('joint',True)
+    assert runtime.controller['controller']=='offline'
+    assert all(not port.writes for port in runtime.session.ports.values())
+    runtime.torque(False)
+    assert all(r[40]==0 for port in runtime.session.ports.values() for r in port.regs.values())
+
+
+def test_joint_mode_moves_without_fabricating_kinematic_references_and_bounds_at_32(runtime):
+    runtime.begin_original('joint',True)
+    for _ in range(30):step(runtime,pad([1,0,0,0,0,0]))
+    assert runtime.motors()[('COM3',2)]['position']==2050 # Snapshot scans separately.
+    p=runtime.session.ports['COM3']
+    assert 2050<mod.word(p.regs[2],56)<=2082
+    assert not runtime.kinematic_profile
+    assert not any(i in (3,4) for i,_,_ in p.writes)
+    runtime.stop()
+
+
+def test_joint_wrist_input_updates_visible_mode_without_computing_fake_pose(runtime):
+    runtime.begin_original('joint',True)
+    before=runtime.engine.snapshot()['arms']['right']['joints']
+    step(runtime,pad([0,0,1,0,0,0],buttons=(5,)))
+    assert runtime.engine.snapshot()['arms']['right']['mode']=='wrist'
+    assert runtime.engine.snapshot()['arms']['right']['joints']==before
+    assert mod.word(runtime.session.ports['COM4'].regs[5],56)>2050
+    assert 'right_lift' in runtime.readiness() and 'right_elbow' in runtime.readiness()
+
+
+def test_joint_wheel_pulse_stops_and_cannot_repeat_until_dpad_release(runtime,monkeypatch):
+    class Timer:
+        def __init__(self,delay,callback):self.delay=delay;self.callback=callback
+        def start(self):pass
+        def cancel(self):pass
+    monkeypatch.setattr(orig.threading,'Timer',Timer)
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    runtime.begin_original('joint',True)
+    step(runtime,pad(hat=(0,-1)))
+    timer=runtime.wheel_pulse_timer;assert timer.delay==.18
+    assert runtime.wheels_commanded
+    assert max(abs(v) for v in runtime.wheel_goals)==160
+    timer.callback();assert not runtime.wheels_commanded
+    p=runtime.session.ports['COM4'];count=len(p.writes)
+    step(runtime,pad(hat=(0,-1)));assert len(p.writes)==count
+    assert all(mod.word(p.regs[i],46)==0 for i in (9,10))
+    step(runtime,pad());step(runtime,pad(hat=(0,-1)));assert runtime.wheels_commanded
+    runtime.stop();assert not runtime.wheels_commanded
+
+
+def test_joint_wheel_stop_lost_ack_retries_both_wheels_and_pauses(runtime,monkeypatch):
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    runtime.begin_original('joint',True)
+    runtime.wheels_commanded=True
+    original=orig.write_register;attempts=[]
+    def fail_first_stop(port,i,address,value,length):
+        attempts.append((i,address,value))
+        if len(attempts)==1:raise RuntimeError('stop ACK lost')
+        return original(port,i,address,value,length)
+    monkeypatch.setattr(orig,'write_register',fail_first_stop)
+    runtime._stop_wheel_pulse()
+    assert runtime.controller['paused'] and runtime.controller['controller']=='online'
+    assert attempts.count((9,46,0))==2 and attempts.count((10,46,0))==2
+    assert not runtime.wheels_commanded
 
 
 def test_hardware_blocks_uncalibrated_ik_grip_and_position_mode_wheels(runtime):
@@ -179,6 +301,26 @@ def test_no_encoder_motion_pauses_original_hardware(runtime):
     for window in runtime.feedback_window.values():window['at']-=1
     runtime._check_feedback()
     assert runtime.controller['paused'] and runtime.controller['controller']=='online'
+
+
+def test_reached_joint_limit_does_not_become_false_stall_and_reverse_is_still_monitored(runtime):
+    runtime.begin_original('joint',True)
+    port=runtime.session.ports['COM4']
+    for _ in range(20):step(runtime,pad([0,0,1,0,0,0],buttons=(5,)))
+    key=('COM4',5);target=runtime.moving[key]
+    # Match the live failure: the servo rests four counts short of the goal.
+    port.regs[5][56:58]=list((target-4).to_bytes(2,'little'))
+    runtime.feedback_window[key]={'origin':target-4,'at':time.monotonic()-1}
+    runtime._check_feedback()
+    assert not runtime.controller['paused'] and key not in runtime.feedback_window
+    assert runtime.last_command['reached']
+    runtime._check_feedback();assert not runtime.controller['paused']
+    # A fresh target in the opposite direction must open a new feedback window.
+    port.follow=False
+    for _ in range(15):step(runtime,pad([0,0,-1,0,0,0],buttons=(5,)))
+    assert key in runtime.feedback_window
+    runtime.feedback_window[key]['at']-=1
+    runtime._check_feedback();assert runtime.controller['paused']
 
 
 def test_verified_kinematic_profile_and_group_execution(runtime):

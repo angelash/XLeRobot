@@ -24,3 +24,18 @@ ORIGINAL_MAP=[
  entry('xbox','Xbox系统键','系统保留','Windows','系统处理','XInput不提供状态','不会伪造输入',16,group='system'),
  entry('paddles','Elite背键','沿用主键映射','已配置主键','按下背键','主键映射与上述功能一致','无独立背键身份',group='system'),
 ]
+
+# Explicit fallback for commissioning; these are encoder directions, not Cartesian motion.
+JOINT_MAP=[dict(item) for item in ORIGINAL_MAP]
+for item in JOINT_MAP:
+    if item['key'] in ('lx','rx'):
+        item.update(role='肩抬升计数 / 肩水平 / 腕旋转',gesture='直接拨杆调肩抬升；LS/RS调肩水平；LB/RB调腕旋转',
+                    result='仅控制对应单关节；方向以编码器正负为准',requirement='本轮起点±32计数；无需猜测末端零位')
+    elif item['key'] in ('ly','ry'):
+        item.update(role='肘关节计数 / 腕俯仰',gesture='直接前后拨杆调肘；LB/RB时调腕俯仰',
+                    result='仅控制对应单关节；不是末端伸缩',requirement='本轮起点±32计数，保存限位内')
+    elif item['key'] in ('lt','rt'):
+        item.update(role='夹爪局部计数测试',gesture='首次压过75%接入；压下向高计数，松开向低计数',result='限于本轮小范围，开合方向尚待现场核对',
+                    requirement='未确认完整开合端点，不执行全开全关')
+    elif item['key'] in ('up','down','left','right'):
+        item.update(result='双轮最多180ms低速短脉冲，松开方向键后才可再次触发',requirement='双轮已零速准备；此模式不作距离控制')

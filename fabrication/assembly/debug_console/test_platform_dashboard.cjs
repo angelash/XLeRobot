@@ -28,6 +28,12 @@ connections=studio.deviceConnections({preview_only:false,error:'USB identity mis
 assert.equal(connections[0].state,'读取失败');
 assert.equal(connections[0].connected,false);
 assert.equal(studio.deviceConnections({},false)[0].state,'服务离线');
+const live={upstream_connected:true,runtime:{controller:{controller:'online',paused:false}}};
+assert(studio.heartbeatAllowed(live,'control',true,1000));
+assert(!studio.heartbeatAllowed(live,'devices',true,1000));
+assert(!studio.heartbeatAllowed(live,'control',false,1000));
+assert(!studio.heartbeatAllowed(live,'control',true,3000));
+assert(!studio.heartbeatAllowed({...live,upstream_connected:false},'control',true,1000));
 const nodes={'sandbox-side':{value:'both'},'sandbox-mode':{value:'position'}};
 context.document={getElementById:id=>nodes[id]};
 let input=studio.sandboxInput('extend');assert.equal(input.axes[1],-.8);assert.equal(input.axes[3],-.8);

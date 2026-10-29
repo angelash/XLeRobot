@@ -31,3 +31,15 @@ context.s.preview_only=false;render();assert.match(node('backend').textContent,/
 context.s.control_profile='original_hardware';context.s.controller={controller:'online',paused:false};node('target').value='preview';render();
 assert.equal(node('target').value,'hardware','A reloaded page must show the actual active execution target');
 assert.match(node('confirm-label').textContent,/操作实机/);
+
+context.s.control_profile='original_joint';context.s.controller={controller:'online',paused:false};render();
+assert.equal(node('target').value,'joint');assert.match(node('backend').textContent,/关节实机/);
+assert.equal(node('prepare').disabled,true);
+assert.equal(node('joint-help').hidden,false);assert.equal(node('arm-preview').hidden,true);
+assert.match(node('right-position').textContent,/实测计数/);
+assert(!node('right-position').textContent.includes('mm'));
+assert.match(node('right-grip').textContent,/未确认全开全关/);
+context.s.controller={controller:'offline',torque:false};
+context.s.ports=[{port:'COM3',motors:Array(8).fill({id:1})},{port:'COM4',motors:Array(8).fill({id:1})}];
+node('confirm').checked=true;render();
+assert(node('start').disabled);assert.match(node('blocker').textContent,/先点准备实机/);

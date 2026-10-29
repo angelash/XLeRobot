@@ -4,6 +4,7 @@ let latest=null,busy=false,refreshing=false,seq=0,eventRows=[],lastStatus=0,sele
 let mappingSignature='';
 const modeNames={position:'伸缩 / 平面高度',pan:'肩水平旋转',wrist:'腕俯仰 / 旋转'};
 const channelNames={left_position:'左臂末端',right_position:'右臂末端',left_pan:'左肩旋转',right_pan:'右肩旋转',left_pitch:'左腕俯仰',right_pitch:'右腕俯仰',left_roll:'左腕旋转',right_roll:'右腕旋转',left_grip:'左夹爪',right_grip:'右夹爪',head_7:'头部水平',head_8:'头部俯仰',base:'双轮底盘'};
+Object.assign(channelNames,{left_lift:'左肩抬升',right_lift:'右肩抬升',left_elbow:'左肘',right_elbow:'右肘'});
 async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});const data=await r.json();if(!r.ok)throw new Error(data.detail||'请求失败');return data;}
 function isNeutral(s){return s.gamepad.connected&&s.input_age_ms!==null&&s.input_age_ms<500&&!s.gamepad.buttons?.some(Boolean)&&!s.gamepad.hat?.some(Boolean)&&!(s.gamepad.axes||[]).slice(0,4).some(v=>Math.abs(v)>.15)&&!(s.gamepad.axes||[]).slice(4,6).some(v=>v>.12);}
 function point(q,origin){const a=(90-q.lift)*Math.PI/180-Math.atan2(.028,.11257),b=(q.elbow+90)*Math.PI/180-(Math.atan2(.0052,.1349)+Math.atan2(.028,.11257));const k=850;const e=[origin[0]+.1159*Math.cos(a)*k,origin[1]-.1159*Math.sin(a)*k];return [e,[e[0]+.135*Math.cos(a-b)*k,e[1]-.135*Math.sin(a-b)*k]];}
@@ -12,29 +13,43 @@ function mapValue(m,s){if(m.group==='system')return '系统不提供';if(!s.game
 function renderMapping(s){const map=s.control_map||[];const signature=JSON.stringify(map);if(mappingSignature!==signature){$('mapping').innerHTML=map.map(m=>`<button class="mapping-card" data-key="${esc(m.key)}"><span class="card-head"><strong>${esc(m.name)}</strong><span class="input-pill" id="value-${m.key}"></span></span><b>${esc(m.role)}</b><p>${esc(m.gesture)}</p><small>${esc(m.target)}</small></button>`).join('');mappingSignature=signature;}
 for(const m of map){const value=mapValue(m,s);$('value-'+m.key).textContent=value;const pressed=s.gamepad.connected&&s.input_age_ms<500&&(m.axis!==null&&m.axis!==undefined?Math.abs(s.gamepad.axes?.[m.axis]||0)>.15:!!s.gamepad.buttons?.[m.index]);document.querySelector(`[data-key="${m.key}"]`)?.classList.toggle('pressed',pressed);}
 const m=map.find(m=>m.key===selected)||map[0];if(m)$('mapping-detail').innerHTML=`<h3>${esc(m.name)} · ${esc(m.role)}</h3><dl><dt>怎么操作</dt><dd>${esc(m.gesture)}</dd><dt>预期结果</dt><dd>${esc(m.result)}</dd><dt>生效条件</dt><dd>${esc(m.requirement)}</dd></dl>`;}
-function render(s){latest=s;const c=s.controller,active=c.controller==='online',ours=s.control_profile?.startsWith('original_'),paused=!!c.paused,neutral=isNeutral(s);if(active&&ours)$('target').value=s.control_profile==='original_hardware'?'hardware':'preview';const target=$('target').value;const hardwareReady=s.ports.length===2&&s.ports.reduce((n,p)=>n+(p.motors?.length||0),0)===16&&!s.error;
+function render(s){latest=s;const c=s.controller,active=c.controller==='online',ours=s.control_profile?.startsWith('original_'),paused=!!c.paused,neutral=isNeutral(s);if(active&&ours)$('target').value=s.control_profile==='original_hardware'?'hardware':s.control_profile==='original_joint'?'joint':'preview';const target=$('target').value;const hardwareReady=s.ports.length===2&&s.ports.reduce((n,p)=>n+(p.motors?.length||0),0)===16&&!s.error;
 $('session-state').textContent=active?(ours?(paused?'接管保留 · 动作暂停':'原版映射接管中'):'单关节调试接管保留'):'接管未开启';
 $('session-description').textContent=active?(ours?(paused?c.pause_reason:'拨杆直接动作；LB/RB切腕姿，Menu暂停，View结束。'):'当前有单关节会话，请由你在原页面结束后再切换。'):'先选择预览或实机。输入回中后开启，启动不自动归零。';
 $('target').disabled=active||busy;$('confirm').disabled=active||busy;
-if(s.preview_only)$('target').querySelector('option[value="hardware"]').disabled=true;
+if(s.preview_only){$('target').querySelector('option[value="hardware"]').disabled=true;$('target').querySelector('option[value="joint"]').disabled=true;}
+$('prepare').hidden=target==='preview';$('prepare').disabled=busy||active||!hardwareReady||!$('confirm').checked||s.preview_only;
 $('confirm-label').textContent=target==='preview'?'我确认当前只运行运动学预览':'我确认周围安全，按现有限位和已验证通道操作实机';
-$('start').disabled=busy||active||!neutral||!$('confirm').checked||(target==='hardware'&&!hardwareReady);$('start').hidden=active;
+$('start').disabled=busy||active||!neutral||!$('confirm').checked||(target!=='preview'&&(!hardwareReady||!s.controller.torque));$('start').hidden=active;
 $('pause').disabled=busy||!active||!ours||paused;$('stop').disabled=busy||!active||!ours;
 $('resume').hidden=!active||!ours||!paused;$('resume').disabled=busy||!neutral;
-$('blocker').textContent=active?'':target==='hardware'&&!hardwareReady?'实机未就绪：需要双板16电机在线；当前可使用运动学预览':!s.gamepad.connected?'请连接Xbox手柄':!neutral?'请松开所有按键/扳机并将摇杆回中':!$('confirm').checked?'请确认上方控制目标':'条件满足，可以开启；之后拨杆即可控制';
+$('blocker').textContent=active?'':target!=='preview'&&!hardwareReady?'实机未就绪：需要双板16电机在线；当前可使用运动学预览':!s.gamepad.connected?'请连接Xbox手柄':!neutral?'请松开所有按键/扳机并将摇杆回中':!$('confirm').checked?'请确认上方控制目标':target!=='preview'&&!s.controller.torque?'先点准备实机，保持当前位置并回读扭矩，再开启接管':'条件满足，可以开启；之后拨杆即可控制';
 $('notice').hidden=!s.notice&&!paused;$('notice').className='notice'+(paused?' error':'');$('notice').textContent=paused?c.pause_reason:s.notice?.message||'';
 $('pad').textContent=s.gamepad.connected?(s.gamepad.name||'Xbox在线'):'手柄离线';$('input-age').textContent=`原生输入 ${s.input_age_ms??'—'}ms`;
-$('backend').textContent=s.preview_only?'隔离预览 · 无串口访问':s.control_profile==='original_hardware'?'实机 · 按通道门控':s.control_profile==='diagnostic'?'设备监控 · 未开启原版接管':'运动学预览 · 不向硬件发送目标';
+$('backend').textContent=s.preview_only?'隔离预览 · 无串口访问':s.control_profile==='original_joint'?'关节实机 · 起点±2.8° / 双轮短脉冲':s.control_profile==='original_hardware'?'实机 · 按通道门控':s.control_profile==='diagnostic'?'设备监控 · 未开启原版接管':'运动学预览 · 不向硬件发送目标';
 $('version').textContent=s.version;$('service-mode').textContent=s.preview_only?'当前服务只预览，现有实机接管保持':'单串口所有者';
-const o=s.original;if(o){$('kind').textContent=s.control_profile==='original_hardware'?'计划值示意':'运动学预览';$('arm-view').innerHTML=armDiagram(o);$('speed').textContent=`底盘档位 ${o.speed_level}/3`;
+const o=s.original;if(o){$('kind').textContent=s.control_profile==='original_joint'?'单关节编码器模式 · 示意非实测姿态':s.control_profile==='original_hardware'?'计划值示意':'运动学预览';$('arm-view').innerHTML=armDiagram(o);$('speed').textContent=`底盘档位 ${o.speed_level}/3`;
 for(const side of ['left','right']){const a=o.arms[side];$(side+'-mode').textContent=modeNames[a.mode];$(side+'-position').textContent=`径向 ${(a.plane_m[0]*1000).toFixed(1)}mm · 高度 ${(a.plane_m[1]*1000).toFixed(1)}mm`;$(side+'-grip').textContent=`夹爪目标 ${a.joints.grip.toFixed(1)} / 100 · 松扳机打开`;}
 const yaw=o.base_pose[2]*180/Math.PI;$('base-view').innerHTML=`<path d="M20 105H340 M180 10V200" stroke="var(--line)"/><g transform="translate(180,105) rotate(${-yaw})"><rect x="-50" y="-43" width="100" height="86" rx="10" fill="var(--paper)" stroke="var(--green)" stroke-width="2"/><rect x="-37" y="-56" width="32" height="16" fill="var(--ink)"/><rect x="-37" y="40" width="32" height="16" fill="var(--ink)"/><path d="M-15 0H35L21 -12 M35 0L21 12" fill="none" stroke="var(--green)" stroke-width="3"/></g><text x="20" y="195" font-size="12" fill="var(--muted)">X ${o.base_pose[0].toFixed(2)}m · Y ${o.base_pose[1].toFixed(2)}m · ${yaw.toFixed(1)}°</text>`;
 $('wheel-state').textContent=`左右轮目标 ${o.wheel_raw.join(' / ')} raw（左轮已镜像反号）`;$('head-state').textContent=`头部目标：水平 ${o.head_deg[0].toFixed(1)}° / 俯仰 ${o.head_deg[1].toFixed(1)}°`;}
 $('readiness').innerHTML=Object.entries(s.original_readiness||{}).map(([key,v])=>`<div class="readiness-row ${v.ready?'ready':'blocked'}"><strong>${esc(channelNames[key]||key)} · ${v.ready?'可受限测试':'未开放'}</strong><small>${v.ready?'仍受设备与本轮小范围限制':esc(v.reasons.join('；'))}</small></div>`).join('');
 const cmd=s.last_command;$('latest-command').textContent=cmd?`最近实机命令 ${cmd.port}:${cmd.id} · ${cmd.origin}→${cmd.target} · ${cmd.outcome}${cmd.position!==undefined?' · 实测 '+cmd.position:''}`:'尚无实机动作命令；预览不代表实机移动。';
+const joint=s.control_profile==='original_joint';$('joint-help').hidden=!joint;$('arm-preview').hidden=joint;
+if(joint){
+  $('speed').textContent='关节≤5°/s · 双轮160raw / 180ms短脉冲';
+  for(const [side,port]of[['left','COM3'],['right','COM4']]){
+    const motors=s.ports.find(p=>p.port===port)?.motors||[],pos=id=>motors.find(m=>m.id===id)?.position??'—';
+    $(side+'-mode').textContent=o?.arms[side].mode==='position'?'肩抬升 / 肘计数':modeNames[o?.arms[side].mode]||'';
+    $(side+'-position').textContent=`实测计数：肩水平 ${pos(1)} · 肩抬升 ${pos(2)} · 肘 ${pos(3)} · 腕俯仰 ${pos(4)} · 腕旋转 ${pos(5)}`;
+    $(side+'-grip').textContent=`夹爪实测 ${pos(6)}计数 · 仅局部测试，未确认全开全关`;
+  }
+  const heads=s.ports.find(p=>p.port==='COM3')?.motors||[];
+  $('head-state').textContent=`头部实测计数：${[7,8].map(id=>heads.find(m=>m.id===id)?.position??'—').join(' / ')}`;
+}
 $('hardware-time').textContent=s.updated_at||'未访问串口';$('motors').innerHTML=(s.ports||[]).map(p=>`<h3>${esc(p.port)}</h3><table class="motor-table"><thead><tr><th>关节</th><th>实测</th><th>目标</th><th>设备范围</th><th>模式</th></tr></thead><tbody>${p.motors.map(m=>`<tr><td>${esc(m.label)}</td><td>${m.position}</td><td>${m.goal}</td><td>${m.min}–${m.max}</td><td>${m.mode}</td></tr>`).join('')}</tbody></table>`).join('');renderMapping(s);}
 async function refresh(){if(refreshing)return;refreshing=true;try{render(await api('/api/original/status'));lastStatus=Date.now();const r=await api('/api/events?after='+seq);if(r.last_seq<seq){seq=0;eventRows=[];}for(const e of r.events){seq=Math.max(seq,e.seq);if(!['input','axes'].includes(e.kind))eventRows.unshift(e);}eventRows.length=Math.min(80,eventRows.length);$('events').innerHTML=eventRows.map(e=>`<li><time>${new Date(e.time).toLocaleTimeString('zh-CN')}</time><span>${esc(e.kind)}</span><span>${esc(e.message)}</span></li>`).join('');}catch(e){lastStatus=0;$('message').textContent='状态不可用：'+e.message;$('start').disabled=true;$('resume').disabled=true;}finally{refreshing=false;}}
 async function command(path,body={}){busy=true;$('message').textContent='正在处理…';try{await api(path,body);$('message').textContent='已处理';}catch(e){$('message').textContent='未执行：'+e.message;}finally{busy=false;await refresh();}}
+$('prepare').onclick=()=>command('/api/hardware/prepare',{confirmed:$('confirm').checked});
 $('start').onclick=()=>command('/api/original/start',{target:$('target').value,confirmed:$('confirm').checked});$('pause').onclick=()=>command('/api/original/pause');$('resume').onclick=()=>command('/api/controller/resume');$('stop').onclick=()=>command('/api/controller/stop');
 $('target').onchange=()=>{$('confirm').checked=false;if(latest)render(latest);};$('confirm').onchange=()=>{if(latest)render(latest);};$('mapping').onclick=e=>{const key=e.target.closest('[data-key]')?.dataset.key;if(key){selected=key;renderMapping(latest);$('mapping-detail').scrollIntoView({behavior:'smooth',block:'center'});}};
 setInterval(refresh,250);setInterval(()=>{if(!document.hidden&&lastStatus&&Date.now()-lastStatus<1500)api('/api/controller/heartbeat',{}).catch(()=>{});},600);refresh();
