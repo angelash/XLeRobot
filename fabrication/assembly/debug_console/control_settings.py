@@ -9,7 +9,7 @@ from pathlib import Path
 
 DEFAULTS={
     'arm_mapping':'normal','joint_rate_deg_s':12.0,'grip_raw_s':120,
-    'wheel_max_raw':800,'follow_delta_raw':96}
+    'wheel_max_raw':800,'follow_delta_raw':96,'wheel_mapping':'normal'}
 LIMITS={
     'joint_rate_deg_s':(1.0,30.0),'grip_raw_s':(20,400),
     'wheel_max_raw':(100,3000),'follow_delta_raw':(16,256)}
@@ -21,6 +21,7 @@ class ControllerSettings:
     def validate(self,data):
         data={**DEFAULTS,**(data or {})}
         if data.get('arm_mapping') not in ('normal','swapped'):raise ValueError('双臂映射必须为normal或swapped')
+        if data.get('wheel_mapping') not in ('normal','swapped'):raise ValueError('左右轮映射必须为normal或swapped')
         for key,(low,high) in LIMITS.items():
             try:value=float(data[key])
             except (TypeError,ValueError):raise ValueError(f'{key}必须是数字') from None
@@ -41,7 +42,7 @@ class ControllerSettings:
 
     def snapshot(self):
         ports=self.arm_ports()
-        return {**self.data,'logical_ports':ports,
+        return {**self.data,'logical_ports':ports,'logical_wheels':self.wheel_ids(),
                 'description':'机械臂装反时选择swapped：手柄左杆控制物理左侧，换到另一块控制板'}
 
     def arm_ports(self):
@@ -50,6 +51,9 @@ class ControllerSettings:
 
     def side_for_port(self,port):
         return next((side for side,p in self.arm_ports().items() if p==port),port.lower())
+
+    def wheel_ids(self):
+        return {'left':10,'right':9} if self.data['wheel_mapping']=='swapped' else {'left':9,'right':10}
 
 
 def remap_motor_labels(report,settings):

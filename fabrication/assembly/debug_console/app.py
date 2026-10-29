@@ -82,6 +82,7 @@ class WholeCalibrationCommand(BaseModel):
     left_observed:bool=False
     item:str|None=None
     wheels_verified:bool=False
+    wheel_mapping:str='normal'
 
 class ControllerSettingsCommand(BaseModel):
     arm_mapping:str='normal'
@@ -89,6 +90,7 @@ class ControllerSettingsCommand(BaseModel):
     grip_raw_s:int=120
     wheel_max_raw:int=800
     follow_delta_raw:int=96
+    wheel_mapping:str='normal'
 
 @app.post('/api/control-settings')
 def update_control_settings(payload:ControllerSettingsCommand):

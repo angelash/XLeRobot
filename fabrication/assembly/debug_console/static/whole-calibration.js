@@ -1,5 +1,6 @@
 /* First-use commissioning shares the original console's API and state poll. */
 let calibrationOpen=false,calibrationView='',calibrationPending=false,calibrationLatest=null,calibrationRecoveryView='';
+let calibrationPoseItem=null,calibrationPoseView='';
 const calSteps=['ranges','left_a','left_b','left_c','left_open','left_closed','right_a','right_b','right_c','right_open','right_closed','base','review','complete'];
 const calTitles={ranges:'01 · 手动采集可用行程',left_a:'02 · 左臂姿态 A',left_b:'03 · 左臂姿态 B',left_c:'04 · 左臂姿态 C',left_open:'05 · 左夹爪全开',left_closed:'06 · 左夹爪闭合',right_a:'07 · 右臂姿态 A',right_b:'08 · 右臂姿态 B',right_c:'09 · 右臂姿态 C',right_open:'10 · 右夹爪全开',right_closed:'11 · 右夹爪闭合',base:'12 · 底盘方向与停车',review:'13 · 保存实测标定',complete:'标定已保存'};
 const calCheck=(id,text)=>`<label class="cal-check"><input type="checkbox" id="${id}"><span>${text}</span></label>`;
@@ -16,7 +17,7 @@ function calibrationBody(c){
   }
   const short=(c.ranges||[]).filter(x=>x.span_raw<48);
  const blockers=c.apply_blockers||[];const ready=!!c.apply_ready;
- return `<div class="cal-intro-card"><h3>自由采集</h3><p>任意顺序录制；录一项存一项。保存只使用已录项目与实测范围，底盘独立。</p>${blockers.length?`<div class="cal-blockers" role="status"><strong>保存前还缺 ${blockers.length} 项</strong>${blockers.map(x=>`<p>${esc(x.message)}</p>`).join('')}</div>`:'<p class="cal-ok">手臂与行程已齐，可以保存。</p>'}<div class="cal-buttons"><button class="primary" data-cal="capture-range">确认全部14项行程</button><button class="primary" data-cal="apply-cards" ${ready?'':'disabled'}>${ready?'保存当前手臂标定':'补齐上方项目后保存'}</button>${(c.captured||[]).length?'<button class="outline" data-cal="clear-captures">清空姿态并重录</button>':''}</div></div><div class="cal-card-grid">${cards.join('')}</div><div class="cal-reference"><h3>底盘（可选）</h3><p>轮径127mm、轮距250mm沿用资料值。方向、停车和速度可单独设置，不影响双臂录制与保存。</p>${calCheck('cal-base-safe','双臂已放稳，车轮周围有空位，可以测试底盘')}<div class="cal-signs"><label>左轮前进方向<select id="cal-left-sign"><option value="-1">负方向</option><option value="1">正方向</option></select></label><label>右轮前进方向<select id="cal-right-sign"><option value="1">正方向</option><option value="-1">负方向</option></select></label></div><div class="cal-buttons"><button data-cal="base-forward">短测前进</button><button data-cal="base-left">短测左转</button><button data-cal="wheels-unverified">暂不开放底盘</button></div>${calCheck('cal-forward-observed','前进短测方向正确')}${calCheck('cal-left-observed','左转短测方向正确')}<button class="primary" data-cal="wheels-verified">方向与停车正确，开放底盘</button></div>`
+ return `<div class="cal-intro-card"><h3>自由采集</h3><p>任意顺序录制；录一项存一项。保存只使用已录项目与实测范围，底盘独立。</p>${blockers.length?`<div class="cal-blockers" role="status"><strong>保存前还缺 ${blockers.length} 项</strong>${blockers.map(x=>`<button class="cal-blocker-link" data-cal="open-pose" data-item="${esc(x.item||'')}">${esc(x.message)}${x.item?' ↗':''}</button>`).join('')}</div>`:'<p class="cal-ok">手臂与行程已齐，可以保存。</p>'}<div class="cal-buttons"><button class="primary" data-cal="capture-range">确认全部14项行程</button><button class="primary" data-cal="apply-cards" ${ready?'':'disabled'}>${ready?'保存当前手臂标定':'补齐上方项目后保存'}</button>${(c.captured||[]).length?'<button class="outline" data-cal="clear-captures">清空姿态并重录</button>':''}</div></div><div class="cal-card-grid">${cards.join('')}</div><div class="cal-reference"><h3>底盘（可选）</h3><p>轮径127mm、轮距250mm沿用资料值。方向、停车和速度可单独设置，不影响双臂录制与保存。</p><p><strong>你看到的车身正前方定义为“前进”。</strong>若方向相反，直接选择以下前进定义；无需理解正/负编码器。</p>${calCheck('cal-base-safe','双臂已放稳，车轮周围有空位，可以测试底盘')}<div class="cal-signs"><label>前进定义<select id="cal-forward-mode"><option value="a">按当前设定，看到车体向正前方</option><option value="reverse">看到车体后退，需要反向</option></select></label><label>左右轮物理位置<select id="cal-wheel-mapping"><option value="normal">左轮=电机9，右轮=电机10</option><option value="swapped">左轮=电机10，右轮=电机9</option></select></label></div><div class="cal-buttons"><button data-cal="base-forward">短测：前进</button><button data-cal="base-left">短测：左转</button><button data-cal="wheels-unverified">暂不开放底盘</button></div>${calCheck('cal-forward-observed','短测观察：车体朝我选定的正前方移动')}${calCheck('cal-left-observed','短测观察：车体向左侧转动')}<button class="primary" data-cal="wheels-verified">方向与停车正确，开放底盘</button></div>`
  }
  if(!c?.active&&!c?.applied)return `<div class="cal-intro"><div><h3>先释放，再按图摆放。</h3><p>这一步把真实关节角度和行程对应到手柄。开始后会关闭双臂、夹爪、头部和双轮的扭矩；手动移动时不会发送位置目标。另一人或支撑物持续托住双臂重量。</p><p>按顺序完成：14个关节的可用行程 → 左臂三姿态和夹爪 → 右臂 → 底盘。可刷新页面；运行进程内的采集状态仍保留。结束标定会保留扭矩关闭。</p>${calCheck('cal-supported','双臂重量已有支撑，线路留有余量，我准备开始手动标定')}<button class="primary" data-cal="start">备份并关闭扭矩，开始采集</button></div><div class="cal-reference"><b>底盘采用资料参数</b><p>轮径 127 mm · 轮距 250 mm</p><p>轮径来自0.4装配页的5英寸轮；轮距来自双轮源码配置。方向与停车在最后一步现场确认。</p></div></div>`;
  if(c.applied)return `<h3>真实标定已保存，整机模式已重新核对。</h3><p>当前扭矩仍关闭。把手柄回中，在上方确认周围安全并点“开启整机控制”。启动时保持当前位置，然后用完整手柄映射操作。</p><button class="primary" data-cal="done">回到整机控制</button>`;
@@ -29,6 +30,7 @@ function calibrationBody(c){
 }
 function renderCalibration(s){
  const c=s.manual_calibration||{},active=s.controller.controller==='online';calibrationLatest=c;
+ if(calibrationPoseItem)renderPoseDialog(s);
  if(c.active)calibrationOpen=true;
  $('open-calibration').disabled=active||busy||s.preview_only||s.ports.length!==2;
  $('open-calibration').textContent=c.active?'继续整机标定':'开始整机标定向导';
@@ -56,6 +58,32 @@ async function calibrationCommand(action,body={}){
  catch(e){$('cal-message').textContent='未执行：'+e.message;}
  finally{calibrationPending=false;busy=false;await refresh();}
 }
+const poseNames={left_a:'姿态 A · 上臂竖直',left_b:'姿态 B · 上臂外倾45°',left_c:'姿态 C · 夹爪抬高',left_open:'夹爪全开',left_closed:'夹爪闭合',right_a:'姿态 A · 上臂竖直',right_b:'姿态 B · 上臂外倾45°',right_c:'姿态 C · 夹爪抬高',right_open:'夹爪全开',right_closed:'夹爪闭合'};
+const poseHelp={a:['上臂轴线竖直向上。','肩→肘竖直，肘→腕水平朝外，夹爪方向水平。'],
+ b:['上臂向外倾斜约45°。','保持前臂与夹爪水平；肩与肘同时变化。'],
+ c:['保持B，只让夹爪尖端抬高。','上臂和前臂不动；只转腕俯仰，让夹爪尖端向上约45°。'],
+ open:['把这只夹爪打开到可用端点。','不要强推机械止挡；保持约1秒。'],closed:['把这只夹爪闭合到可用端点。','让夹持面轻轻合拢；保持约1秒。']};
+function openPoseDialog(item){
+ if(!item||!poseNames[item])return;
+ calibrationPoseItem=item;calibrationPoseView='';$('pose-dialog-steady').checked=false;$('pose-dialog-message').textContent='';$('pose-dialog').showModal();
+ if(latest)renderPoseDialog(latest);
+}
+function renderPoseDialog(s){
+ const item=calibrationPoseItem;if(!item)return;const c=s.manual_calibration||{},kind=item.slice(item.indexOf('_')+1);
+ const side=item.startsWith('left')?'left':'right',sideName=side==='left'?'左臂':'右臂';const port=c.arm_ports?.[side]||'COM3';
+ const signature=item+':'+(c.ranges||[]).map(x=>x.key+':'+x.position).join(',');
+ if(signature!==calibrationPoseView){calibrationPoseView=signature;
+  $('pose-dialog-title').textContent=sideName+' · '+poseNames[item].replace(/^姿态 [ABC] · /,'');$('pose-dialog-step').textContent='唯一的现场操作入口；打开弹窗本身不会录制或写入数据。';
+  $('pose-dialog-instructions').innerHTML=`<p class="cal-instruction">${poseHelp[kind][0]}</p><p>${poseHelp[kind][1]}</p><p class="fineprint">按肩、肘、腕转轴中心连线摆放。姿态图只提供方向；下方编码器实时值才是这台机器人的真实读数。</p>`;
+  $('pose-dialog-art').innerHTML=['a','b','c'].includes(kind)?calibrationPose(kind):`<div class="cal-grip-symbol" aria-label="夹爪${kind==='open'?'全开':'闭合'}">${kind==='open'?'〈　〉':'〉〈'}</div>`;
+ }
+ const ids=kind==='open'||kind==='closed'?[6]:[2,3,4];
+ $('pose-dialog-live').innerHTML=`<strong>物理 ${esc(port)} 实时编码器</strong>${ids.map(i=>{const r=(c.ranges||[]).find(x=>x.key===port+':'+i);return `<span>${esc(r?.label||port+':'+i)} · <b>${r?.position??'读取中'}</b></span>`;}).join('')}<small>${c.base_running?'底盘测试进行中，暂不能录制':s.input_age_ms<500?'状态刷新中，摆好后保持约1秒':'状态过旧，等待刷新'}</small>`;
+ $('pose-dialog-capture').disabled=calibrationPending||!$('pose-dialog-steady').checked||!!c.error;
+}
+$('pose-dialog-close').onclick=()=>$('pose-dialog').close();
+$('pose-dialog-steady').onchange=()=>{if(latest)renderPoseDialog(latest);};
+$('pose-dialog-capture').onclick=async()=>{if(!calibrationPoseItem)return;await calibrationCommand('capture-item',{item:calibrationPoseItem,confirmed:$('pose-dialog-steady').checked});$('pose-dialog-message').textContent=$('cal-message').textContent;if(!/未执行/.test($('cal-message').textContent)){$('pose-dialog').close();calibrationPoseItem=null;}};
 $('open-calibration').onclick=()=>{calibrationOpen=true;if(latest)renderCalibration(latest);$('calibration-panel').scrollIntoView({behavior:'smooth',block:'start'});};
 $('cal-close').onclick=()=>{if(calibrationLatest?.active)calibrationCommand('cancel');else{calibrationOpen=false;$('calibration-panel').hidden=true;}};
 $('cal-body').onclick=e=>{
@@ -64,14 +92,14 @@ $('cal-body').onclick=e=>{
  if(action==='start')return calibrationCommand('start',{confirmed:$('cal-supported').checked});
  if(action==='capture')return calibrationCommand('capture',{step:c.step,confirmed_keys:Array.from($('cal-body').querySelectorAll('[data-range]:checked')).map(x=>x.dataset.range)});
  if(action==='capture-range')return calibrationCommand('capture-item',{item:'range',confirmed:true});
- if(action==='capture-item')return calibrationCommand('capture-item',{item:e.target.closest('[data-item]').dataset.item,confirmed:true});
+ if(action==='capture-item'||action==='open-pose')return openPoseDialog(e.target.closest('[data-item]').dataset.item);
  if(action==='delete-item')return calibrationCommand('delete-item',{item:e.target.closest('[data-item]').dataset.item});
  if(action==='clear-captures')return calibrationCommand('clear-captures',{confirmed:true});
- if(action==='wheels-unverified')return calibrationCommand('wheels',{left_sign:+$('cal-left-sign').value,right_sign:+$('cal-right-sign').value,confirmed:true,wheels_verified:false});
- if(action==='wheels-verified')return calibrationCommand('wheels',{left_sign:+$('cal-left-sign').value,right_sign:+$('cal-right-sign').value,confirmed:$('cal-forward-observed').checked&&$('cal-left-observed').checked,wheels_verified:true});
+ if(action==='wheels-unverified')return calibrationCommand('wheels',{left_sign:$('cal-forward-mode').value==='reverse'?1:-1,right_sign:$('cal-forward-mode').value==='reverse'?-1:1,confirmed:true,wheels_verified:false,wheel_mapping:$('cal-wheel-mapping').value});
+ if(action==='wheels-verified')return calibrationCommand('wheels',{left_sign:$('cal-forward-mode').value==='reverse'?1:-1,right_sign:$('cal-forward-mode').value==='reverse'?-1:1,confirmed:$('cal-forward-observed').checked&&$('cal-left-observed').checked,wheels_verified:true,wheel_mapping:$('cal-wheel-mapping').value});
  if(action==='apply-cards')return calibrationCommand('apply',{confirmed:true});
  if(action==='back')return calibrationCommand('rewind',{step:calSteps[calSteps.indexOf(c.step)-1]});
- if(action==='base-forward'||action==='base-left')return calibrationCommand('base-test',{kind:action==='base-forward'?'forward':'left',confirmed:$('cal-base-safe').checked,left_sign:+$('cal-left-sign').value,right_sign:+$('cal-right-sign').value});
+ if(action==='base-forward'||action==='base-left')return calibrationCommand('base-test',{kind:action==='base-forward'?'forward':'left',confirmed:$('cal-base-safe').checked,left_sign:$('cal-forward-mode').value==='reverse'?1:-1,right_sign:$('cal-forward-mode').value==='reverse'?-1:1,wheel_mapping:$('cal-wheel-mapping').value});
  if(action==='base-confirm')return calibrationCommand('base-confirm',{forward_observed:$('cal-forward-observed').checked,left_observed:$('cal-left-observed').checked});
  if(action==='apply')return calibrationCommand('apply',{confirmed:$('cal-save-confirm').checked});
 };

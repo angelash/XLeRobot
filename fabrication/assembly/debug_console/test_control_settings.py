@@ -41,10 +41,17 @@ def test_swapped_pose_cards_follow_physical_bus(runtime):
     for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
     c=runtime.manual_calibration;c.start(True)
     positions={key:s.current for key,s in c.samples.items()}
-    c.captures['left_a']={'positions':positions,'port':'COM3'}
+    c.captures['left_a']={'positions':positions,'port':'COM3'};runtime.manual_calibration.active=False
     runtime.update_controller_settings({**DEFAULTS,'arm_mapping':'swapped'})
     assert c.captures['right_a']['port']=='COM3'
     assert 'left_a' not in c.captures
+
+
+def test_wheel_mapping_swaps_logical_ids_without_relabeling_motors(runtime):
+    runtime.capture_profile();before=[deepcopy(p.regs) for p in runtime.session.ports.values()]
+    runtime.update_controller_settings({**DEFAULTS,'wheel_mapping':'swapped'})
+    assert runtime.wheel_ids()=={'left':10,'right':9}
+    assert [p.regs for p in runtime.session.ports.values()]==before
 
 
 def test_settings_are_blocked_during_takeover(runtime):
@@ -59,3 +66,12 @@ def test_changed_rates_apply_to_next_joint_command(runtime):
     assert runtime.settings.data['joint_rate_deg_s']==20
     reg=runtime.session.ports['COM3'].regs[2];speed=reg[46]+256*reg[47]
     assert speed>=60
+
+
+def test_calibration_time_settings_change_is_explicitly_allowed(runtime):
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    runtime.manual_calibration.start(True)
+    runtime._settings_from_calibration=True
+    try:runtime.update_controller_settings({**DEFAULTS,'wheel_mapping':'swapped'})
+    finally:runtime._settings_from_calibration=False
+    assert runtime.wheel_ids()=={'left':10,'right':9}

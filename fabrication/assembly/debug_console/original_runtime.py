@@ -30,13 +30,18 @@ class OriginalRuntime(ControlRuntime):
         self.service_blocked={}
         self.wheel_pulse_timer=None;self.wheel_pulse_latched=False
         self.settings=ControllerSettings(CONTROLLER_SETTINGS)
+        self._settings_from_calibration=False
         self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
 
     def arm_ports(self):return self.settings.arm_ports()
 
+    def wheel_ids(self):return self.settings.wheel_ids()
+
     def update_controller_settings(self,payload):
         with self.io:
             if self.controller['controller']=='online':raise ValueError('先结束接管再修改控制设置')
+            if self.manual_calibration.active and not self._settings_from_calibration:
+                raise ValueError('手动采集中不能直接改速度/映射；请在采集中专门的设置卡片修改')
             old=self.settings.arm_ports();result=self.settings.save(payload)
             remap_motor_labels(self.report,self.settings)
             if old!=self.settings.arm_ports() and self.manual_calibration.captures:
@@ -66,8 +71,22 @@ class OriginalRuntime(ControlRuntime):
             if action=='delete-item':return c.delete_capture(payload.get('item'))
             if action=='clear-captures':return c.clear_captures(payload.get('confirmed',False))
             if action=='rewind':return c.rewind(payload.get('step'))
-            if action=='wheels':return c.set_wheels(payload.get('left_sign'),payload.get('right_sign'),payload.get('wheels_verified',False),payload.get('confirmed',False))
-            if action=='base-test':return c.base_test(payload.get('kind'),payload.get('left_sign',-1),payload.get('right_sign',1),payload.get('confirmed',False))
+            if action=='wheels':
+                if payload.get('wheel_mapping','normal') not in ('normal','swapped'):raise ValueError('左右轮映射必须为normal或swapped')
+                c.set_wheels(payload.get('left_sign'),payload.get('right_sign'),payload.get('wheels_verified',False),payload.get('confirmed',False))
+                if self.settings.data.get('wheel_mapping')!=payload.get('wheel_mapping','normal'):
+                    self._settings_from_calibration=True
+                    try:self.update_controller_settings({**self.settings.data,'wheel_mapping':payload.get('wheel_mapping','normal')})
+                    finally:self._settings_from_calibration=False
+                return c.snapshot()
+            if action=='base-test':
+                mapping=payload.get('wheel_mapping','normal')
+                if mapping not in ('normal','swapped'):raise ValueError('左右轮映射无效')
+                if self.settings.data.get('wheel_mapping')!=mapping:
+                    self._settings_from_calibration=True
+                    try:self.update_controller_settings({**self.settings.data,'wheel_mapping':mapping})
+                    finally:self._settings_from_calibration=False
+                return c.base_test(payload.get('kind'),payload.get('left_sign',-1),payload.get('right_sign',1),payload.get('confirmed',False))
             if action=='base-confirm':return c.confirm_base(payload.get('forward_observed',False),payload.get('left_observed',False))
             if action=='apply':return c.apply(payload.get('confirmed',False))
             if action=='cancel':return c.cancel()
@@ -501,7 +520,8 @@ class OriginalRuntime(ControlRuntime):
             scale=160/max(1,max(abs(v) for v in raw));raw=[round(v*scale) for v in raw]
             self.wheel_pulse_timer=threading.Timer(.18,self._stop_wheel_pulse)
             self.wheel_pulse_timer.daemon=True;self.wheel_pulse_timer.start()
-            for i,value in zip((9,10),raw):
+            for side,i in self.wheel_ids().items():
+                value=raw[0] if side=='left' else raw[1]
                 p=self.session.ports['COM4'];r=read_registers(p,i)
                 if r[33]!=1 or r[40]!=1 or not 10<=r[62]/10<=13 or r[63]>=50:
                     raise ValueError('双轮模式、扭矩、供电或温度变化，未发送脉冲')
@@ -632,6 +652,7 @@ class OriginalRuntime(ControlRuntime):
         raw=list(self.engine.wheels)
         wheels=self.kinematic_profile.get('wheels',{})
         raw=[raw[0]*(-wheels.get('left_sign',-1)),raw[1]*wheels.get('right_sign',1)]
+        raw=[raw[0],raw[1]]
         raw=[max(-self.settings.data['wheel_max_raw'],min(self.settings.data['wheel_max_raw'],round(x))) for x in raw]
         self.engine.wheels=raw
         if any(raw):
@@ -641,7 +662,8 @@ class OriginalRuntime(ControlRuntime):
                     self.wheels_commanded=False;self.wheel_goals=[0,0]
                 self.engine.wheels=[0,0];return
             self.wheels_commanded=True
-            for i,value in zip((9,10),raw):
+            for side,i in self.wheel_ids().items():
+                value=raw[0] if side=='left' else raw[1]
                 r=read_registers(self.session.ports['COM4'],i)
                 if r[33]!=1 or r[40]!=1:raise ValueError('轮子模式/扭矩发生变化')
                 if not 10<=r[62]/10<=13 or r[63]>=55:raise ValueError('轮子供电/温度异常')

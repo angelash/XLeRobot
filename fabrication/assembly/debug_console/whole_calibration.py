@@ -619,7 +619,11 @@ class WholeCalibration:
 
     def snapshot(self):
         required={side+'_'+kind for side in ('left','right') for kind in ('a','b','c','open','closed')}
-        missing_cards=[{'item':item,'message':'尚未录制 '+item} for item in sorted(required-set(self.captures))]
+        labels={'a':'姿态 A · 上臂竖直','b':'姿态 B · 上臂外倾45°','c':'姿态 C · 夹爪抬高',
+                'open':'夹爪全开','closed':'夹爪闭合'}
+        missing_cards=[{'item':item,'label':('左臂' if item.startswith('left') else '右臂')+' '+labels[item.split('_',1)[1]],
+                        'message':'尚未录制：'+('左臂' if item.startswith('left') else '右臂')+' '+labels[item.split('_',1)[1]]}
+                       for item in sorted(required-set(self.captures))]
         short_ranges=[{'key':key,'label':joint_label(*split_key(key)),
                        'message':joint_label(*split_key(key))+'行程不足48计数'}
                       for key in KEYS if self.samples and self.samples[key].high-self.samples[key].low<48]
