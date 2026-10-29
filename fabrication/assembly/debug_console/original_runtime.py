@@ -202,7 +202,7 @@ class OriginalRuntime(ControlRuntime):
 
     def check_watchdog(self):
         super().check_watchdog()
-        if self.control_profile in ('original_hardware','original_joint') and not self.controller['paused'] and self.feedback_window:
+        if self.control_profile in ('original_hardware','original_joint','original_preset') and not self.controller['paused'] and self.feedback_window:
             self._check_feedback()
 
     def motors(self):
@@ -350,6 +350,58 @@ class OriginalRuntime(ControlRuntime):
             if len(prepared['ready'])!=16 or prepared['blocked']:raise ValueError('未完整准备16个部件，请查看准备结果')
             return self.begin_original('joint',True)
 
+    def begin_preset(self,confirmed):
+        """Open the upstream mapping using observed limits, before reference poses.
+
+        This is an explicitly labelled open-loop commissioning mode: direct
+        relative axes, no claim that endpoint IK or claw geometry is calibrated.
+        """
+        with self.io:
+            self._require_not_calibrating()
+            if isinstance(self,PreviewRuntime):raise ValueError('隔离预览不能驱动实机')
+            if not confirmed:raise ValueError('请明确确认预设直控试运行与周围安全')
+            if self.controller['controller']=='online':raise ValueError('先结束当前接管')
+            if time.monotonic()-self.pad_time>.5 or not neutral(self.gamepad):
+                raise ValueError('请连接手柄并全部回中')
+            self.capture_profile();self._make_envelopes();missing=[]
+            motors=self.motors()
+            for port,ids in EXPECTED.items():
+                for i in ids:
+                    m=motors.get((port,i));
+                    if not m:missing.append(f'{port}:{i}未读取');continue
+                    wheel=port=='COM4' and i in (9,10)
+                    if wheel:
+                        if m['mode']!=1:missing.append(m['label']+'未在速度模式')
+                    elif m['mode']!=0 or not m['min']<m['max'] or not m['min']<=m['position']<=m['max']:
+                        missing.append(m['label']+'范围/模式/位置无效')
+                    if not 10<=m['voltage']<=13 or m['temperature']>=50:missing.append(m['label']+'电源/温度异常')
+            if missing:raise ValueError('预设直控未准备好：'+'；'.join(missing))
+            prepared=self.prepare_hardware(True)
+            if prepared['blocked']:raise ValueError('预设直控准备未通过：'+'；'.join(x['reason'] for x in prepared['blocked']))
+            # Preset is deliberately separate from exact hardware mode.
+            self.control_profile='original_preset'
+            angles={s:dict(zip(JOINTS,[0,0,2,-2,0,90])) for s in ('left','right')}
+            self.engine=UpstreamTeleop(angles,.0635,.25);self.engine.arm_ports=self.arm_ports()
+            for side,port in self.arm_ports().items():
+                for i,j in enumerate(JOINTS,1):
+                    e=self.envelopes.get((port,i));m=motors.get((port,i))
+                    if not e or not m:continue
+                    # Use raw safety limits as relative normalized bounds; this
+                    # avoids invented physical angles while honoring the range.
+                    if i<=5:
+                        center=m['position'];span=max(1,min(e['device_max']-center,center-e['device_min']))
+                        self.engine.bounds[side][j]=(-span*360/4096,span*360/4096)
+                    else:self.engine.bounds[side][j]=(2,90)
+            for e in self.envelopes.values():e['min']=e['device_min'];e['max']=e['device_max']
+            self.tick_time=time.monotonic();self.ui_heartbeat=self.tick_time
+            self.direct_targets={};self.feedback_window={};self.moving={}
+            self.grip_touched={'left':False,'right':False};self.last_menu=False
+            self.notice=None;self.last_command=None
+            self.controller.update(controller='online',paused=False,pause_reason=None,armed=True,error=None,
+                last_action='预设直控已接管：相对轴映射，尚未完成精确末端标定',updated_at=now())
+            self.log('controller_start','预设直控：使用设备行程与原版手柄映射；不是精确标定验收',profile=self.control_profile)
+            return self.controller.copy()
+
     def begin_original(self,target,confirmed,full_range=False):
         with self.io:
             self._require_not_calibrating()
@@ -411,7 +463,7 @@ class OriginalRuntime(ControlRuntime):
         if self.wheel_pulse_timer:self.wheel_pulse_timer.cancel();self.wheel_pulse_timer=None
         failures=[]
         # Attempt every active joint and both wheels even if one port fails.
-        if self.control_profile in ('original_hardware','original_joint'):
+        if self.control_profile in ('original_hardware','original_joint','original_preset'):
             for (port,i) in list(self.moving):
                 try:
                     self._hold_one((port,i))
@@ -432,7 +484,7 @@ class OriginalRuntime(ControlRuntime):
             if self.controller['controller']!='online':raise ValueError('先开启接管')
             if not self.controller['paused']:return self.controller.copy()
             if time.monotonic()-self.pad_time>.5 or not neutral(self.gamepad):raise ValueError('先将全部输入回中松开')
-            if self.control_profile in ('original_hardware','original_joint'):self.scan()
+            if self.control_profile in ('original_hardware','original_joint','original_preset'):self.scan()
             self._hold();self.ui_heartbeat=time.monotonic();self.tick_time=self.ui_heartbeat
             if self.control_profile=='original_hardware':
                 for side,port in self.arm_ports().items():
@@ -466,12 +518,52 @@ class OriginalRuntime(ControlRuntime):
             else:self.engine.last_input=intent
             if self.engine.blockers:self.original_notice('limit','；'.join(self.engine.blockers))
             if self.control_profile=='original_joint':self._execute_joint(intent,dt)
+            elif self.control_profile=='original_preset':self._execute_preset(intent,dt)
             elif self.control_profile=='original_hardware':
                 for side in ('left','right'):
                     if not self.grip_touched[side] and intent[side]['trigger']<=.75:
                         self.engine.q[side]['grip']=previous[side]['grip']
                 self._execute(intent,previous,dt)
             self.controller.update(updated_at=now(),last_action='原版Xbox · '+self.control_profile.split('_')[-1]+' · 左'+intent['left']['mode']+' / 右'+intent['right']['mode'])
+
+    def _execute_preset(self,intent,dt):
+        """Open-loop direct axes using the same stick semantics as upstream."""
+        for side,port in self.arm_ports().items():
+            item=intent[side];mode=item['mode']
+            for i,channel in ((1,'pan'),(2,'lift'),(3,'elbow'),(4,'pitch'),(5,'roll')):
+                active=(mode=='pan' and i==1) or (mode=='position' and i in (2,3)) or (mode=='wrist' and i in (4,5))
+                if not active:continue
+                horizontal=item['h'] if i in (1,2,5) else -item['v']
+                if not horizontal:
+                    if (port,i) in self.moving:self._hold_one((port,i))
+                    continue
+                e=self.envelopes.get((port,i));m=self.motors().get((port,i))
+                if not e or not m.get('torque') or m.get('mode')!=0:
+                    if (port,i) in self.moving:self._hold_one((port,i))
+                    self.original_notice('blocked',m.get('label',f'{port}:{i}')+'未准备');continue
+                axis=self.settings.axis(port,i)
+                rate=horizontal*axis['joint_rate_deg_s']*axis['direction']
+                self._direct(port,i,rate,dt)
+            if item['trigger']>.75:self.grip_touched[side]=True
+            if self.grip_touched[side] and self.envelopes.get((port,6),{}).get('available'):
+                axis=self.settings.axis(port,6)
+                self._direct(port,6,(axis['grip_raw_s'] if item['trigger']>.75 else -axis['grip_raw_s'])*axis['direction'],dt)
+        for i,name in ((7,'pan'),(8,'tilt')):
+            if intent['head'][name]:
+                axis=self.settings.axis('COM3',i)
+                self._direct('COM3',i,intent['head'][name]*axis['joint_rate_deg_s']*axis['direction'],dt)
+        raw=self.engine.wheels
+        wheels=self.kinematic_profile.get('wheels',{})
+        if not wheels.get('verified'):raw=[0,0]
+        raw=[raw[0]*(-wheels.get('left_sign',-1)),raw[1]*wheels.get('right_sign',1)]
+        if any(raw):
+            self.wheels_commanded=True
+            for side,i in self.wheel_ids().items():
+                value=raw[0] if side=='left' else raw[1]
+                write_register(self.session.ports['COM4'],i,46,encode_velocity(value),2)
+        elif self.wheels_commanded:
+            for i in self.wheel_ids().values():write_register(self.session.ports['COM4'],i,46,0,2)
+            self.wheels_commanded=False
 
     def _channel(self,key):
         value=self.readiness()[key]
@@ -577,7 +669,8 @@ class OriginalRuntime(ControlRuntime):
         key=(port,i);p=self.session.ports[port];r=read_registers(p,i);pos=word(r,56)
         if r[33]!=0 or r[40]!=1:raise ValueError(e['label']+'模式/扭矩变化，未自动修改')
         if not 10<=r[62]/10<=13 or r[63]>=55:raise ValueError('供电/温度异常')
-        if abs(target-pos)>self.settings.data['follow_delta_raw']:
+        axis=self.settings.axis(port,i)
+        if abs(target-pos)>axis['follow_delta_raw']:
             self.original_notice('blocked',e['label']+'目标跟随滞后，已停止累积')
             # Keep the last bounded goal while awaiting feedback. Resetting
             # to the encoder on every lag would repeatedly create tiny goals
@@ -588,7 +681,7 @@ class OriginalRuntime(ControlRuntime):
         # Track before the final write: a missing ACK can still mean the servo
         # accepted the goal, so the fault handler must attempt a hold here.
         self.moving[key]=target
-        write_register(p,i,46,min(1000,max(60,int(self.settings.data['joint_rate_deg_s']*4096/360))),2)
+        write_register(p,i,46,min(1000,max(60,int(axis['joint_rate_deg_s']*4096/360))),2)
         write_register(p,i,42,target,2)
         self.feedback_window.setdefault(key,{'origin':pos,'at':time.monotonic()})
         self.last_command={'port':port,'id':i,'label':e['label'],'origin':pos,'target':target,'outcome':'pending','time':now()}
@@ -675,7 +768,7 @@ class OriginalRuntime(ControlRuntime):
 
     def _check_feedback(self):
         if self.control_profile=='diagnostic':return super()._check_feedback()
-        if self.control_profile not in ('original_hardware','original_joint'):return
+        if self.control_profile not in ('original_hardware','original_joint','original_preset'):return
         for key,window in list(self.feedback_window.items()):
             if time.monotonic()-window['at']<.8:continue
             port,i=key;pos=word(read_registers(self.session.ports[port],i),56)

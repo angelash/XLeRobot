@@ -83,6 +83,7 @@ class WholeCalibrationCommand(BaseModel):
     item:str|None=None
     wheels_verified:bool=False
     wheel_mapping:str='normal'
+    axis_overrides:dict[str,dict[str,float|int]]={}
 
 class ControllerSettingsCommand(BaseModel):
     arm_mapping:str='normal'
@@ -91,6 +92,7 @@ class ControllerSettingsCommand(BaseModel):
     wheel_max_raw:int=800
     follow_delta_raw:int=96
     wheel_mapping:str='normal'
+    axis_overrides:dict[str,dict[str,float|int]]={}
 
 @app.post('/api/control-settings')
 def update_control_settings(payload:ControllerSettingsCommand):
@@ -120,6 +122,7 @@ def start_original(payload:OriginalStartCommand):
     try:
         if payload.target=='hardware':controller=runtime.begin_whole_robot(payload.confirmed)
         elif payload.target=='joint':controller=runtime.begin_trial(payload.confirmed)
+        elif payload.target=='preset':controller=runtime.begin_preset(payload.confirmed)
         else:controller=runtime.begin_original(payload.target,payload.confirmed)
         return {'controller':controller}
     except Exception as exc:raise HTTPException(409,str(exc)) from exc
