@@ -3,6 +3,8 @@ import json
 import subprocess
 import sys
 import os
+import base64
+import re
 from pathlib import Path
 import httpx
 import pytest
@@ -55,3 +57,20 @@ def test_windows_installer_checks_hashes_and_keeps_reference_calibration_inactiv
     target2=tmp_path/'must not extract';command[-2]=str(target2)
     assert subprocess.run(command,capture_output=True,env=env).returncode!=0
     assert not target2.exists()
+
+
+@pytest.mark.skipif(sys.platform!='win32',reason='Windows PowerShell native argument transport')
+def test_windows_bootstrap_native_python_probes():
+    # Execute the actual installer probes across the real Windows PowerShell 5.1
+    # boundary. Parsing the script alone misses stripped native-command quotes.
+    script=(Path(__file__).parent/'bootstrap.ps1').read_text(encoding='utf-8')
+    probes=re.findall(r"(& \$(?:PythonExe|targetPython) -c '[^'\r\n]*')",script)
+    assert len(probes)==2
+    setup="$ErrorActionPreference='Stop';$PythonExe='"+sys.executable.replace("'","''")+"';$targetPython=$PythonExe;"
+    env={k:v for k,v in os.environ.items() if k.upper()!='PSMODULEPATH'}
+    for probe in probes:
+        code=setup+probe+';exit $LASTEXITCODE'
+        encoded=base64.b64encode(code.encode('utf-16-le')).decode('ascii')
+        result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',encoded],capture_output=True,env=env,timeout=30)
+        assert result.returncode==0,result.stderr.decode(errors='replace')
+        assert result.stdout.strip()

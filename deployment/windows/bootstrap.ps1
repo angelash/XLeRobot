@@ -28,7 +28,9 @@ if (-not $PythonExe) {
         $PythonExe = $candidate
     }
 }
-$runtime = & $PythonExe -c 'import sys,struct;print(f"{sys.version_info.major}.{sys.version_info.minor}/{struct.calcsize(chr(80))*8}")'
+# Windows PowerShell 5.1 removes embedded double quotes from native arguments.
+# Keep these probes free of quoted Python literals so the exact code survives.
+$runtime = & $PythonExe -c 'import sys,struct;print(str(sys.version_info.major)+chr(46)+str(sys.version_info.minor)+chr(47)+str(struct.calcsize(chr(80))*8))'
 if ($LASTEXITCODE -ne 0 -or $runtime -ne '3.11/64') { throw 'The prepared wheelhouse requires Python 3.11 x64. Other architectures need a new kit.' }
 & $PythonExe -m venv $venv
 if ($LASTEXITCODE -ne 0) { throw 'venv creation failed' }
@@ -40,7 +42,7 @@ New-Item -ItemType Directory -Path $tools -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $KitRoot 'tools\ffmpeg.exe') -Destination (Join-Path $tools 'ffmpeg.exe')
 & $targetPython -m pip check
 if ($LASTEXITCODE -ne 0) { throw 'Dependency check failed' }
-& $targetPython -c 'import fastapi,httpx,cv2,numpy,PIL,serial,pydantic;print("Native dependency imports passed")'
+& $targetPython -c 'import fastapi,httpx,cv2,numpy,PIL,serial,pydantic;print(fastapi.__version__,cv2.__version__,numpy.__version__)'
 if ($LASTEXITCODE -ne 0) { throw 'Native import failed. Inspect the error; install the bundled Microsoft VC++ runtime if a DLL is missing.' }
 & (Join-Path $PSScriptRoot 'collect-info.ps1')
 Write-Output 'Core installed. Start with start-robot.ps1 -Mode Preview; hardware motion remains a separate step.'
