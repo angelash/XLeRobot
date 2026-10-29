@@ -74,3 +74,17 @@ def test_windows_bootstrap_native_python_probes():
         result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',encoded],capture_output=True,env=env,timeout=30)
         assert result.returncode==0,result.stderr.decode(errors='replace')
         assert result.stdout.strip()
+
+
+@pytest.mark.skipif(sys.platform!='win32',reason='Windows PowerShell 5.1 file decoding')
+def test_windows_powershell_parses_deployment_entrypoints():
+    root=Path(__file__).resolve().parents[2]
+    paths=sorted((root/'deployment/windows').glob('*.ps1'))+sorted((root/'fabrication/assembly/debug_console').glob('*.ps1'))
+    literals=','.join("'"+str(p).replace("'","''")+"'" for p in paths)
+    code=("$ErrorActionPreference='Stop';$failed=$false;foreach($path in @("+literals+")){"
+          "$tokens=$null;$errors=$null;[void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors);"
+          "if(@($errors).Count){$failed=$true;Write-Output $path;Write-Output $errors}};if($failed){exit 1}")
+    encoded=base64.b64encode(code.encode('utf-16-le')).decode('ascii')
+    env={k:v for k,v in os.environ.items() if k.upper()!='PSMODULEPATH'}
+    result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',encoded],capture_output=True,env=env,timeout=30)
+    assert result.returncode==0,(result.stdout+result.stderr).decode(errors='replace')

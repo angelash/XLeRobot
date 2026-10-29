@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $consoleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pidFile = Join-Path $consoleDir 'platform.pid'
 if (-not (Test-Path -LiteralPath $pidFile)) { Write-Output '没有平台PID文件；不会停止其他服务。'; exit }

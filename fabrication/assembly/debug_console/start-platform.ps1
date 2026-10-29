@@ -1,4 +1,4 @@
-param([switch]$OpenBrowser)
+﻿param([switch]$OpenBrowser)
 $ErrorActionPreference = 'Stop'
 $consoleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = (Resolve-Path (Join-Path $consoleDir '..\..\..')).Path
