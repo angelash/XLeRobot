@@ -354,3 +354,14 @@ def test_merge_checkpoint_restores_completed_pose_cards_without_motor_io(runtime
     result=c.merge_checkpoint(backup.stem,True)
     assert 'left_a' in c.captures and c.captures['left_a']['positions']==positions
     assert sum(len(p.writes) for p in runtime.session.ports.values())==writes
+
+
+def test_recovered_pose_cards_follow_saved_physical_port_not_current_UI_side(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    positions={key:s.current for key,s in c.samples.items()}
+    c.captures={'right_a':{'port':'COM3','positions':positions},'left_a':{'port':'COM4','positions':positions}}
+    c.persist();c.error='interrupt';c.persist()
+    from fabrication.assembly.debug_console.control_settings import DEFAULTS
+    runtime.settings.save({**DEFAULTS, 'arm_mapping':'swapped'})
+    c.recover(c.id,True)
+    assert c.captures['left_a']['port']=='COM4' and c.captures['right_a']['port']=='COM3'

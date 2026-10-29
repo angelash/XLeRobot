@@ -295,14 +295,19 @@ class WholeCalibration:
         self.id=session_id;self.path=path;self.backup=backup;self.samples=samples
         self.captures=deepcopy(data.get('captures',{}));self.confirmed_keys=list(data.get('confirmed_keys',[]))
         self.wheels=deepcopy(data.get('wheels',{}));self.base_tests=deepcopy(data.get('base_tests',{}))
-        # Older checkpoints lack a per-card bus binding. Assign it only when
-        # this robot's current mapping is unambiguous during recover().
+        # Capture cards are evidence for the physical arm, not a mutable UI
+        # side. Rebind inherited cards from the saved record's physical port.
         if self.captures:
-            ports=self.runtime.arm_ports()
+            ports=self.runtime.arm_ports();port_sides={p:s for s,p in ports.items()}
             for side in ('left','right'):
                 for kind in ('a','b','c','open','closed'):
                     item=side+'_'+kind
-                    if item in self.captures:self.captures[item].setdefault('port',ports[side])
+                    if item not in self.captures:continue
+                    port=self.captures[item].get('port')
+                    if port not in EXPECTED:port=ports[side]
+                    target=port_sides.get(port,side);new_item=target+'_'+kind
+                    self.captures[new_item]={**self.captures[item],'port':port}
+                    if new_item!=item:self.captures.pop(item,None)
         self.step='cards'
         self.error=None;self.active=True;self.applied=False;self.recovery_reset=reset
         self.recovery_sources=[session_id];self.recoverable=None;self.persist()
