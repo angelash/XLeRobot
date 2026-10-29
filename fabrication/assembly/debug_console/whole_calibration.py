@@ -454,6 +454,15 @@ class WholeCalibration:
         if item not in self.captures:raise ValueError('该项尚未录制')
         del self.captures[item];self.step_warnings=[];self.persist();return self.snapshot()
 
+    def clear_captures(self,confirmed):
+        """Start a fresh pose pass without deleting ranges or register backup."""
+        self.require_active()
+        if not confirmed:raise ValueError('请确认清除旧姿态引用并保留行程备份')
+        if self.captures:
+            atomic_json(self.path.with_name(self.id+'-captures-before-rerecord-'+uuid.uuid4().hex[:8]+'.json'),
+                        {'id':self.id,'serials':EXPECTED_SERIALS,'captures':deepcopy(self.captures),'cleared_at':now()})
+        self.captures={};self.step='cards';self.step_warnings=[];self.persist();return self.snapshot()
+
     def set_wheels(self,left_sign,right_sign,verified,confirmed):
         self.require_active()
         if left_sign not in (-1,1) or right_sign not in (-1,1) or not confirmed:

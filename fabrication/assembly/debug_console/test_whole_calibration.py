@@ -356,6 +356,16 @@ def test_merge_checkpoint_restores_completed_pose_cards_without_motor_io(runtime
     assert sum(len(p.writes) for p in runtime.session.ports.values())==writes
 
 
+def test_clear_pose_cards_keeps_ranges_and_saves_old_cards_as_separate_evidence(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    positions={key:s.current for key,s in c.samples.items()}
+    c.captures={'left_a':{'port':'COM4','positions':positions}}
+    c.persist();ranges=deepcopy(c.samples);count=len(list(c.path.parent.glob('*captures-before-rerecord*')))
+    c.clear_captures(True)
+    assert not c.captures and c.samples.keys()==ranges.keys()
+    assert len(list(c.path.parent.glob('*captures-before-rerecord*')))==count+1
+
+
 def test_recovered_pose_cards_follow_saved_physical_port_not_current_UI_side(runtime):
     c=runtime.manual_calibration;c.start(True)
     positions={key:s.current for key,s in c.samples.items()}

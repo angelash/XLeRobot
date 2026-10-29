@@ -63,6 +63,7 @@ class OriginalRuntime(ControlRuntime):
             if action=='capture':return c.capture(payload.get('step'),payload.get('confirmed_keys'))
             if action=='capture-item':return c.capture_item(payload.get('item'),payload.get('confirmed',False))
             if action=='delete-item':return c.delete_capture(payload.get('item'))
+            if action=='clear-captures':return c.clear_captures(payload.get('confirmed',False))
             if action=='rewind':return c.rewind(payload.get('step'))
             if action=='wheels':return c.set_wheels(payload.get('left_sign'),payload.get('right_sign'),payload.get('wheels_verified',False),payload.get('confirmed',False))
             if action=='base-test':return c.base_test(payload.get('kind'),payload.get('left_sign',-1),payload.get('right_sign',1),payload.get('confirmed',False))
