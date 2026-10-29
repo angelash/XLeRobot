@@ -101,6 +101,7 @@ def runtime(tmp_path,monkeypatch):
     monkeypatch.setattr(mod,'PROFILE',tmp_path/'device.json')
     monkeypatch.setattr(orig,'KINEMATIC_PROFILE',tmp_path/'kinematic.json')
     monkeypatch.setattr(orig,'SERVICE_PROFILE',tmp_path/'hardware-service.json')
+    monkeypatch.setattr(orig,'CONTROLLER_SETTINGS',tmp_path/'controller-settings.json')
     r=OriginalRuntime(Session());r._check_ports=lambda:None
     r.gamepad=pad();r.pad_time=time.monotonic()
     return r
