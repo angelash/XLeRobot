@@ -228,6 +228,32 @@ class OriginalRuntime(ControlRuntime):
             if prepared['blocked']:raise ValueError('整机准备仍有未通过项，请查看初始化清单')
             return self.begin_original('hardware',True,full_range=True)
 
+    def begin_trial(self,confirmed):
+        """Start bounded joint trials without requiring an IK/full-range file."""
+        with self.io:
+            if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不能准备实机试控')
+            if not confirmed:raise ValueError('请确认手臂有支撑、周围有小幅动作空间')
+            if self.controller['controller']=='online':raise ValueError('先结束当前接管，再开启低速试控')
+            if time.monotonic()-self.pad_time>.5 or not neutral(self.gamepad):
+                raise ValueError('请连接手柄并将全部输入回中松开')
+            self.capture_profile();missing=[]
+            for port in self.report['ports']:
+                name=port['port']
+                for motor in port['motors']:
+                    i=motor['id'];key=f'{name}:{i}';wheel=name=='COM4' and i in (9,10)
+                    if key in self.service_blocked:missing.append(motor['label']+'：'+self.service_blocked[key]);continue
+                    if wheel:
+                        if motor['mode']!=1:missing.append(motor['label']+'需要速度模式')
+                    elif (motor['mode']!=0 or not self.envelopes[(name,i)]['available'] or
+                          not motor['min']<=motor['position']<=motor['max']):
+                        missing.append(motor['label']+'需要有效的当前位置试控窗口')
+                    if not 10<=motor['voltage']<=13 or motor['temperature']>=50:
+                        missing.append(motor['label']+'供电/温度未就绪')
+            if missing:raise ValueError('低速试控尚未就绪：'+'；'.join(missing))
+            prepared=self.prepare_hardware(True)
+            if len(prepared['ready'])!=16 or prepared['blocked']:raise ValueError('未完整准备16个部件，请查看准备结果')
+            return self.begin_original('joint',True)
+
     def begin_original(self,target,confirmed,full_range=False):
         with self.io:
             if target not in ('preview','hardware','joint'):raise ValueError('未知控制目标')
@@ -439,7 +465,7 @@ class OriginalRuntime(ControlRuntime):
         message=f'{port}:{i}扭矩已关闭，保留关闭状态' if released else f'{port}:{i}回中保持，实测{pos}'
         self.log('torque_off' if released else 'feedback',message,port=port,id=i,position=pos,target=expected,moved=abs(pos-origin)>=1)
         if self.last_command and self.last_command.get('port')==port and self.last_command.get('id')==i:
-            self.last_command.update(position=pos,outcome='torque_off' if released else 'feedback' if abs(pos-origin)>=1 else 'interrupted',moved=abs(pos-origin)>=1,reached=abs(pos-expected)<=6)
+            self.last_command.update(position=pos,outcome='torque_off' if released else 'feedback' if abs(pos-origin)>=1 else 'interrupted',moved=abs(pos-origin)>=1,reached=abs(pos-expected)<=(16 if self.control_profile=='original_joint' else 6))
         self.moving.pop(key,None);self.feedback_window.pop(key,None)
 
     def _goal(self,port,i,value):
@@ -453,7 +479,10 @@ class OriginalRuntime(ControlRuntime):
         if not 10<=r[62]/10<=13 or r[63]>=55:raise ValueError('供电/温度异常')
         if abs(target-pos)>32:
             self.original_notice('blocked',e['label']+'目标跟随滞后，已停止累积')
-            self.direct_targets[key]=float(pos);return False
+            # Keep the last bounded goal while awaiting feedback. Resetting
+            # to the encoder on every lag would repeatedly create tiny goals
+            # and could hide a real stall inside the trial tolerance.
+            self.direct_targets[key]=float(self.moving.get(key,pos));return False
         if target==pos or self.moving.get(key)==target:return True
         if key not in self.moving:write_register(p,i,42,pos,2)
         # Track before the final write: a missing ACK can still mean the servo
@@ -534,7 +563,7 @@ class OriginalRuntime(ControlRuntime):
             if time.monotonic()-window['at']<.8:continue
             port,i=key;pos=word(read_registers(self.session.ports[port],i),56)
             expected=self.moving.get(key,pos);delta=abs(pos-window['origin'])
-            reached=abs(pos-expected)<=6
+            reached=abs(pos-expected)<=(16 if self.control_profile=='original_joint' else 6)
             if not reached and abs(expected-window['origin'])>=4 and delta<2:
                 self._pause(f'{port}:{i}原版目标已写入但编码器未变化');return
             self.log('feedback',f'{port}:{i}编码器变化{delta}计数'+('，进入目标容差' if reached else ''),
@@ -546,9 +575,10 @@ class OriginalRuntime(ControlRuntime):
 
     def snapshot(self):
         result=super().snapshot()
-        result.update(version='3.2-whole-robot-default',control_profile=self.control_profile,
+        result.update(version='3.3-whole-and-trial',control_profile=self.control_profile,
                       preferred_target='preview' if isinstance(self,PreviewRuntime) else 'hardware',
                       original=self.engine.snapshot(),original_readiness=self.readiness(),
+                      trial_readiness=self.readiness('original_joint'),
                       whole_robot_setup=self.whole_robot_setup(),hardware_preparation=self.preparation,service_blocked=self.service_blocked)
         return result
 

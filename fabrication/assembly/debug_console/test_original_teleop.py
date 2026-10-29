@@ -133,6 +133,45 @@ def test_whole_robot_entry_rejects_partial_setup_before_any_torque_or_motion(run
     assert not runtime.whole_robot_setup()['ready']
 
 
+def test_trial_entry_automatically_prepares_all_without_invented_ik_references(runtime):
+    for port in runtime.session.ports.values():
+        for r in port.regs.values():r[40]=0
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    runtime.begin_trial(True)
+    assert runtime.control_profile=='original_joint' and runtime.controller['controller']=='online'
+    assert all(m['torque']==1 for m in runtime.motors().values())
+    assert all(v['ready'] for v in runtime.readiness('original_joint').values())
+    assert not runtime.kinematic_profile and not runtime.whole_robot_setup()['ready']
+    assert runtime.envelopes[('COM3',2)]['max']-runtime.envelopes[('COM3',2)]['min']==64
+
+
+def test_trial_preflight_blocks_bad_window_before_enabling_any_motor(runtime):
+    for port in runtime.session.ports.values():
+        for r in port.regs.values():r[40]=0
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    runtime.session.ports['COM4'].regs[4][56:58]=[0,0]
+    with pytest.raises(ValueError,match='试控窗口'):runtime.begin_trial(True)
+    assert all(not p.writes for p in runtime.session.ports.values())
+    assert runtime.controller['controller']=='offline'
+
+
+def test_api_trial_starts_from_torque_off_without_writing_calibration(runtime,monkeypatch):
+    from fastapi.testclient import TestClient
+    from fabrication.assembly.debug_console import app as web
+    monkeypatch.setattr(web,'runtime',runtime);client=TestClient(web.app)
+    for port in runtime.session.ports.values():
+        for r in port.regs.values():r[40]=0
+    for i in (9,10):runtime.session.ports['COM4'].regs[i][33]=1
+    runtime.pad_time=time.monotonic()
+    response=client.post('/api/original/start',json={'target':'joint','confirmed':True})
+    assert response.status_code==200
+    assert runtime.control_profile=='original_joint'
+    assert all(address>=40 for p in runtime.session.ports.values() for _,address,_ in p.writes)
+    status=client.get('/api/original/status').json()
+    assert all(v['ready'] for v in status['trial_readiness'].values())
+    assert '肩抬升' in next(m['role'] for m in status['trial_control_map'] if m['key']=='lx')
+
+
 def test_whole_robot_entry_prepares_all_and_uses_measured_full_range(runtime):
     whole_profile(runtime)
     for port in runtime.session.ports.values():
@@ -368,6 +407,17 @@ def test_reached_joint_limit_does_not_become_false_stall_and_reverse_is_still_mo
     assert key in runtime.feedback_window
     runtime.feedback_window[key]['at']-=1
     runtime._check_feedback();assert runtime.controller['paused']
+
+
+@pytest.mark.parametrize('profile,should_pause',[('joint',False),('hardware',True)])
+def test_trial_tracking_tolerance_is_separate_from_precise_hardware_acceptance(runtime,profile,should_pause):
+    runtime.begin_original(profile,True)
+    runtime._goal('COM4',1,2074)
+    port=runtime.session.ports['COM4'];port.follow=False
+    port.regs[1][56:58]=list((2064).to_bytes(2,'little'))
+    runtime.feedback_window[('COM4',1)]={'origin':2064,'at':time.monotonic()-1}
+    runtime._check_feedback()
+    assert runtime.controller['paused']==should_pause
 
 
 def test_verified_kinematic_profile_and_group_execution(runtime):

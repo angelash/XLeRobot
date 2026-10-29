@@ -57,7 +57,7 @@ def original_index():
 @app.get('/api/original/status')
 def original_status():
     return {**runtime.snapshot(),'control_map':JOINT_MAP if runtime.control_profile=='original_joint' else ORIGINAL_MAP,
-            'preview_only':isinstance(runtime,PreviewRuntime)}
+            'trial_control_map':JOINT_MAP,'preview_only':isinstance(runtime,PreviewRuntime)}
 
 class OriginalStartCommand(BaseModel):
     target:str='hardware'
@@ -72,7 +72,11 @@ def prepare_hardware(payload:OriginalStartCommand):
 
 @app.post('/api/original/start')
 def start_original(payload:OriginalStartCommand):
-    try:return {'controller':runtime.begin_whole_robot(payload.confirmed) if payload.target=='hardware' else runtime.begin_original(payload.target,payload.confirmed)}
+    try:
+        if payload.target=='hardware':controller=runtime.begin_whole_robot(payload.confirmed)
+        elif payload.target=='joint':controller=runtime.begin_trial(payload.confirmed)
+        else:controller=runtime.begin_original(payload.target,payload.confirmed)
+        return {'controller':controller}
     except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/original/pause')

@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),{execFileSync}=require('node:child_process'),path=require('node:path');
 const root=path.resolve(__dirname,'../../..');
-const data=JSON.parse(execFileSync(path.join(root,'.venv-debug/Scripts/python.exe'),['-X','utf8','-c','import json;from fabrication.assembly.debug_console.upstream_teleop import UpstreamTeleop;from fabrication.assembly.debug_console.original_mapping import ORIGINAL_MAP;print(json.dumps(dict(original=UpstreamTeleop().snapshot(),control_map=ORIGINAL_MAP)))'],{cwd:root,encoding:'utf8'}));
+const data=JSON.parse(execFileSync(path.join(root,'.venv-debug/Scripts/python.exe'),['-X','utf8','-c','import json;from fabrication.assembly.debug_console.upstream_teleop import UpstreamTeleop;from fabrication.assembly.debug_console.original_mapping import ORIGINAL_MAP,JOINT_MAP;print(json.dumps(dict(original=UpstreamTeleop().snapshot(),control_map=ORIGINAL_MAP,trial_control_map=JOINT_MAP)))'],{cwd:root,encoding:'utf8'}));
 const html=fs.readFileSync(__dirname+'/static/original.html','utf8'),nodes=new Map(),cards=new Map();
 function node(id){if(!nodes.has(id)){assert(html.includes('id="'+id+'"')||id.startsWith('value-'),'Real HTML id: '+id);nodes.set(id,{innerHTML:'',textContent:'',disabled:false,checked:false,hidden:false,value:id==='target'?'preview':'',className:'',querySelector:()=>({disabled:false}),scrollIntoView(){},classList:{toggle(){}}});}return nodes.get(id);}
 const requests=[];
@@ -42,7 +42,7 @@ assert.match(node('right-grip').textContent,/未确认全开全关/);
 context.s.controller={controller:'offline',torque:false};
 context.s.ports=[{port:'COM3',motors:Array(8).fill({id:1})},{port:'COM4',motors:Array(8).fill({id:1})}];
 node('confirm').checked=true;render();
-assert(node('start').disabled);assert.match(node('blocker').textContent,/先点准备实机/);
+assert.equal(node('start').disabled,false);assert.match(node('blocker').textContent,/开启时先保持当前位置/);
 
 // A fresh Monitor page must default to whole-robot hardware, even when only
 // diagnostic torque is currently available; it must expose actual setup gaps.
@@ -56,3 +56,11 @@ assert(node('start').disabled);assert.match(node('blocker').textContent,/整机�
 assert.match(node('setup-checks').innerHTML,/真实行程与参考姿态/);
 assert.equal(node('prepare').hidden,true,'Whole-robot startup includes position hold and torque preparation');
 assert(html.includes('<option value="hardware" selected>'));
+assert(html.includes('<option value="joint">低速试控'));
+assert.equal(node('trial').disabled,false);
+const beforeTrial=requests.length;node('trial').onclick();
+assert.equal(node('target').value,'joint');assert.equal(node('confirm').checked,false);
+assert.equal(requests.length,beforeTrial,'Selecting the trial must not move, prepare or start hardware');
+assert.equal(node('prepare').hidden,true);assert.match(node('start').textContent,/低速试控/);
+assert.match(node('mapping-detail').innerHTML,/肩抬升/);
+assert.equal(node('arm-preview').hidden,true,'Before startup, trial selection must already show encoder controls');
