@@ -41,6 +41,7 @@ class OriginalRuntime(ControlRuntime):
             if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不访问实机标定')
             c=self.manual_calibration
             if action=='start':return c.start(payload.get('confirmed',False))
+            if action=='recover':return c.recover(payload.get('session_id'),payload.get('confirmed',False))
             if action=='capture':return c.capture(payload.get('step'),payload.get('confirmed_keys'))
             if action=='rewind':return c.rewind(payload.get('step'))
             if action=='base-test':return c.base_test(payload.get('kind'),payload.get('left_sign',-1),payload.get('right_sign',1),payload.get('confirmed',False))
@@ -627,7 +628,7 @@ class OriginalRuntime(ControlRuntime):
     def snapshot(self):
         with self.io:
             result=super().snapshot()
-            result.update(version='3.4-guided-calibration',control_profile=self.control_profile,
+            result.update(version='3.5-recoverable-calibration',control_profile=self.control_profile,
                           preferred_target='preview' if isinstance(self,PreviewRuntime) else 'hardware',
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),

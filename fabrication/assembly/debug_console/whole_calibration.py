@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import threading
 import time
 import uuid
@@ -69,9 +70,10 @@ class RangeSample:
             if raw!=self.raw:raise ValueError('同一采样时刻读数改变，无法判断移动速度')
             return
         delta=(raw-self.raw+2048)%4096-2048
-        if abs(delta)>min(512,900*elapsed+24):raise ValueError('手动移动过快，无法可靠展开编码器，请重新采集')
-        self.current+=delta;self.low=min(self.low,self.current);self.high=max(self.high,self.current)
-        if self.high-self.low>3800:raise ValueError('观察范围接近一整圈，请检查线束和采集方式后重新开始')
+        if abs(delta)>min(1024,4096*elapsed+32):raise ValueError('单次变化过大，暂停采集；有效行程已保留，可恢复后补采')
+        current=self.current+delta;low=min(self.low,current);high=max(self.high,current)
+        if high-low>3800:raise ValueError('观察范围接近一整圈，请检查线束和采集方式后恢复补采')
+        self.current=current;self.low=low;self.high=high
         self.raw=raw;self.at=at;self.count+=1;self.recent.append((at,self.current))
 
     def stationary(self,at):
@@ -152,13 +154,14 @@ class WholeCalibration:
         self.samples={};self.captures={};self.backup={};self.confirmed_keys=[]
         self.wheels={};self.base_tests={};self.base_running=None;self.timer=None
         self.last_save=0.;self.applied=False;self.busy=False
+        self.recovery_reset=[];self.recovery_sources=[];self.recoverable=None;self.recovery_checked=0.
 
     def persist(self):
         atomic_json(self.path,{'id':self.id,'serials':EXPECTED_SERIALS,'updated_at':now(),
           'active':self.active,'step':self.step,'error':self.error,'applied':self.applied,
           'register_backup':self.backup,'ranges':{k:v.snapshot() for k,v in self.samples.items()},
           'captures':self.captures,'confirmed_keys':self.confirmed_keys,'wheels':self.wheels,
-          'base_tests':self.base_tests})
+          'base_tests':self.base_tests,'recovery_reset':self.recovery_reset,'recovery_sources':self.recovery_sources})
         self.last_save=time.monotonic()
 
     def start(self,confirmed):
@@ -175,6 +178,7 @@ class WholeCalibration:
                 raise ValueError(key+'的型号/模式/供电/温度/状态不满足标定')
         self.error=None;self.step='ranges';self.captures={};self.samples={};self.applied=False
         self.confirmed_keys=[];self.wheels={};self.base_tests={};self.base_running=None
+        self.recovery_reset=[];self.recovery_sources=[]
         self.persist()  # Durable original register bytes precede every write.
         try:
             self.release_all()
@@ -190,6 +194,78 @@ class WholeCalibration:
             try:self.release_all()
             except Exception as cleanup:self.error+='；释放未确认：'+str(cleanup)
             self.active=False;self.persist();raise RuntimeError(self.error) from exc
+        return self.snapshot()
+
+    def find_recoverable(self):
+        """Find only this robot's non-applied checkpoints; never activate them."""
+        stamp=time.monotonic()
+        if stamp-self.recovery_checked<2:return self.recoverable
+        candidates=[]
+        for path in self.path.parent.glob('*.json'):
+            if not re.fullmatch(r'[0-9a-f]{32}',path.stem):continue
+            try:
+                data=json.loads(path.read_text(encoding='utf-8'))
+                if data.get('applied') or data.get('serials')!=EXPECTED_SERIALS:continue
+                ranges=data['ranges']
+                if set(ranges)!=set(KEYS):continue
+                count=sum(v['span_raw']>=48 for v in ranges.values())
+                candidates.append({'id':path.stem,'updated_at':data['updated_at'],
+                                   'observed_joints':count,'total_span':sum(v['span_raw'] for v in ranges.values())})
+            except (OSError,ValueError,KeyError,TypeError):continue
+        self.recoverable=max(candidates,key=lambda c:(c['observed_joints'],c['total_span'],c['updated_at']),default=None)
+        self.recovery_checked=stamp
+        return self.recoverable
+
+    def recover(self,session_id,confirmed):
+        """Re-anchor within an observed arc; reset only unresolvable joints.
+
+        A checkpoint contains extrema, not a path across the interruption.
+        No motion during that gap is inferred. Positions outside a recorded
+        arc restart that joint's observation while other valid arcs survive.
+        """
+        r=self.runtime
+        if not confirmed:raise ValueError('请确认双臂有支撑，恢复已保存的行程采样')
+        if r.controller['controller']=='online' or self.base_running:raise ValueError('先结束接管或等待底盘停车')
+        if self.active and not self.error:raise ValueError('当前采集正常，无需恢复')
+        if not isinstance(session_id,str) or not re.fullmatch(r'[0-9a-f]{32}',session_id):raise ValueError('采集记录编号无效')
+        path=self.path.parent/(session_id+'.json');data=json.loads(path.read_text(encoding='utf-8'))
+        if data.get('serials')!=EXPECTED_SERIALS or data.get('applied') or data.get('id')!=session_id:
+            raise ValueError('采集记录身份不符或已经应用')
+        backup=data['register_backup'];ranges=data['ranges']
+        if set(backup)!={f'{p}:{i}' for p,ids in EXPECTED.items() for i in ids} or set(ranges)!=set(KEYS):
+            raise ValueError('采集记录不完整')
+        # Read through the same owner. An old active error suppresses observing
+        # this scan; healthy active collections were rejected above.
+        r.scan();registers={}
+        for key,before in backup.items():
+            if len(before)!=70 or not all(type(v)is int and 0<=v<=255 for v in before):raise ValueError('寄存器备份格式不符')
+            port,i=split_key(key);reg=read_registers(r.session.ports[port],i);registers[key]=reg
+            if (word(reg,3)!=777 or reg[40]!=0 or reg[33]!=before[33] or reg[65] or
+                not 10<=reg[62]/10<=13 or reg[63]>=50 or
+                reg[:40]!=before[:40] or word(reg,48)!=word(before,48) or reg[55]!=before[55]):
+                raise ValueError(joint_label(port,i)+'的扭矩/模式/限位/偏移/供电已变化，不能恢复旧行程')
+            if key in ('COM4:9','COM4:10') and word(reg,46)!=0:raise ValueError('恢复采集前双轮目标速度必须为0')
+        stamp=time.monotonic();samples={};reset=[]
+        for key in KEYS:
+            saved=ranges[key];low=saved['min'];high=saved['max'];raw=word(registers[key],56)
+            if not(type(low)is int and type(high)is int and -8192<=low<=high<=12287 and high-low<=3800):
+                raise ValueError(key+'保存的连续范围无效')
+            candidates=[raw+4096*k for k in range(-3,4) if low<=raw+4096*k<=high]
+            sample=RangeSample(raw,stamp)
+            if len(candidates)==1:
+                sample.low=low;sample.high=high;sample.current=candidates[0]
+                sample.count=int(saved['samples']);sample.recent.clear();sample.recent.append((stamp,sample.current))
+            else:reset.append({'key':key,'label':joint_label(*split_key(key))})
+            samples[key]=sample
+        # Keep the original checkpoint independently reviewable before replacing
+        # its interrupted state. This does not change a motor register.
+        atomic_json(path.with_name(session_id+'-before-recovery-'+uuid.uuid4().hex[:8]+'.json'),data)
+        self.id=session_id;self.path=path;self.backup=backup;self.samples=samples
+        self.captures={};self.confirmed_keys=[];self.wheels={};self.base_tests={};self.step='ranges'
+        self.error=None;self.active=True;self.applied=False;self.recovery_reset=reset
+        self.recovery_sources=[session_id];self.recoverable=None;self.persist()
+        r.log('calibration_recovered','已恢复可确认的实测行程；仅补采当前位置超出旧记录的关节',
+              id=session_id,reset=[x['key'] for x in reset])
         return self.snapshot()
 
     def release_all(self):
@@ -215,7 +291,8 @@ class WholeCalibration:
                 if m['torque']!=0 or m['mode']!=0:raise ValueError(m['label']+'采集期间扭矩/模式改变')
                 if any(m[k]!=v for k,v in [('min',word(before,9)),('max',word(before,11)),('homing_raw',word(before,31))]):
                     raise ValueError(m['label']+'采集期间坐标参数改变')
-                sample.update(m['position'],stamp)
+                try:sample.update(m['position'],stamp)
+                except ValueError as exc:raise ValueError(m['label']+'：'+str(exc)) from exc
             if stamp-self.last_save>2:self.persist()
         except Exception as exc:self.fail(str(exc))
 
@@ -228,7 +305,7 @@ class WholeCalibration:
 
     def require_active(self):
         if not self.active:raise ValueError('先开始手动标定')
-        if self.error:raise ValueError(self.error+'；请结束后重新采集')
+        if self.error:raise ValueError(self.error+'；请使用恢复采集保留有效行程')
         if self.base_running:raise ValueError('等待底盘短脉冲测试停车')
 
     def capture(self,step,confirmed_keys=None):
@@ -383,4 +460,5 @@ class WholeCalibration:
                 'ranges':[{'key':key,'label':joint_label(*split_key(key)),**s.snapshot()} for key,s in self.samples.items()],
                 'captured':list(self.captures),'confirmed_keys':self.confirmed_keys,
                 'base_running':self.base_running,'base_tests':deepcopy(self.base_tests),'wheels':self.wheels,
-                'design_geometry':DESIGN_GEOMETRY}
+                'design_geometry':DESIGN_GEOMETRY,'recovery_reset':self.recovery_reset,
+                'recoverable':self.find_recoverable() if not self.active or self.error else None}

@@ -264,3 +264,52 @@ def test_folded_pose_is_explained_before_whole_start_enables_torque(runtime):
     runtime.pad_time=time.monotonic()
     with pytest.raises(ValueError,match='姿态B'):runtime.begin_whole_robot(True)
     assert sum(len(p.writes) for p in runtime.session.ports.values())==before
+
+
+def test_supported_manual_swing_does_not_abort_other_joint_ranges():
+    sample=cal.RangeSample(2000,1.)
+    sample.update(2300,1.1)  # 26 degrees in 100ms, well below a half-turn.
+    assert sample.high-sample.low==300
+
+
+def test_checkpoint_recovery_keeps_known_arcs_and_resets_only_unknown_joint(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    for sample in c.samples.values():sample.low-=150;sample.high+=150
+    c.persist();c.error='interrupted';before=sum(len(p.writes) for p in runtime.session.ports.values())
+    set_word(runtime.session.ports['COM3'].regs[4],56,3000)
+    c.recover(c.id,True)
+    assert c.error is None and c.active and c.step=='ranges'
+    assert c.samples['COM3:2'].high-c.samples['COM3:2'].low==300
+    assert c.samples['COM3:4'].high==c.samples['COM3:4'].low==3000
+    assert c.recovery_reset==[{'key':'COM3:4','label':'左臂腕俯仰'}]
+    assert sum(len(p.writes) for p in runtime.session.ports.values())==before,'Recovery must not write any register'
+
+
+def test_checkpoint_recovery_after_restart_anchors_a_recorded_cross_zero_arc(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    sample=c.samples['COM3:5'];sample.low=3900;sample.high=4400;sample.current=4200;sample.raw=104
+    set_word(runtime.session.ports['COM3'].regs[5],56,104);c.persist()
+    restored=cal.WholeCalibration(runtime,c.path.parent/'new.json',c.profile_path)
+    runtime.manual_calibration=restored
+    assert not restored.active and restored.find_recoverable()['id']==c.id
+    restored.recover(c.id,True)
+    assert restored.samples['COM3:5'].current==4200 and restored.samples['COM3:5'].low==3900
+
+
+@pytest.mark.parametrize('changed',['homing','mode','torque','pid','output'])
+def test_checkpoint_cannot_resume_with_changed_hardware_configuration(runtime,changed):
+    c=runtime.manual_calibration;c.start(True);c.error='interrupted';c.persist()
+    reg=runtime.session.ports['COM3'].regs[2]
+    if changed=='homing':set_word(reg,31,1)
+    elif changed=='mode':reg[33]=1
+    elif changed=='torque':reg[40]=1
+    elif changed=='pid':reg[21]+=1
+    elif changed=='output':set_word(reg,48,0)
+    with pytest.raises(ValueError,match='不能恢复'):c.recover(c.id,True)
+
+
+def test_recovery_requires_a_stopped_collection_and_rejects_path_input(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    with pytest.raises(ValueError,match='无需恢复'):c.recover(c.id,True)
+    c.error='interrupted'
+    with pytest.raises(ValueError,match='编号'):c.recover('../devices',True)

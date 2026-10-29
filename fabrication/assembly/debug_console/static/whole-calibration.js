@@ -1,5 +1,5 @@
 /* First-use commissioning shares the original console's API and state poll. */
-let calibrationOpen=false,calibrationView='',calibrationPending=false,calibrationLatest=null;
+let calibrationOpen=false,calibrationView='',calibrationPending=false,calibrationLatest=null,calibrationRecoveryView='';
 const calSteps=['ranges','left_a','left_b','left_c','left_open','left_closed','right_a','right_b','right_c','right_open','right_closed','base','review','complete'];
 const calTitles={ranges:'01 · 手动采集可用行程',left_a:'02 · 左臂姿态 A',left_b:'03 · 左臂姿态 B',left_c:'04 · 左臂姿态 C',left_open:'05 · 左夹爪全开',left_closed:'06 · 左夹爪闭合',right_a:'07 · 右臂姿态 A',right_b:'08 · 右臂姿态 B',right_c:'09 · 右臂姿态 C',right_open:'10 · 右夹爪全开',right_closed:'11 · 右夹爪闭合',base:'12 · 底盘方向与停车',review:'13 · 保存实测标定',complete:'标定已保存'};
 const calCheck=(id,text)=>`<label class="cal-check"><input type="checkbox" id="${id}"><span>${text}</span></label>`;
@@ -26,6 +26,10 @@ function renderCalibration(s){
  if(signature!==calibrationView){calibrationView=signature;$('cal-body').innerHTML=calibrationBody(c);}
  const index=calSteps.indexOf(c.step);$('cal-progress').innerHTML=['ranges','left_a','right_a','base','review'].map((key,i)=>`<li class="${c.active&&index>=calSteps.indexOf(key)||c.applied?'current':''}"><span>0${i+1}</span>${['行程','左臂','右臂','底盘','保存'][i]}</li>`).join('');
  $('cal-error').textContent=c.error||'';
+ const recovery=c.recoverable,pending=(c.recovery_reset||[]).filter(x=>(c.ranges||[]).find(r=>r.key===x.key)?.span_raw<48),recoverySig=JSON.stringify([recovery?.id,pending.map(x=>x.key)]);
+ $('cal-recovery').hidden=!recovery&&!pending.length;
+ if(recoverySig!==calibrationRecoveryView){calibrationRecoveryView=recoverySig;$('cal-recovery').innerHTML=recovery?`<strong>已保存 ${recovery.observed_joints} 项有效行程，可以恢复。</strong><p>会先核对设备身份和寄存器。当前位置超出旧记录的关节单独补采，其余有效范围保留；扭矩保持关闭。参考姿态重新采集。</p><button class="primary" id="cal-recover-button">恢复保留的行程</button>`:pending.length?`<strong>有效记录已恢复，请补采：${pending.map(x=>esc(x.label)).join('、')}。</strong><p>这些关节的当前位置不在旧记录里，已单独重新开始记录；其他行程保留。</p>`:'';}
+ const recoverButton=$('cal-recover-button');if(recoverButton){recoverButton.disabled=calibrationPending||active;recoverButton.onclick=()=>calibrationCommand('recover',{confirmed:true,session_id:calibrationLatest.recoverable.id});}
  for(const item of c.ranges||[]){const node=$('cal-range-'+item.key.replace(':','-'));if(node)node.textContent=`${item.span_deg}° · ${item.span_raw}计数 · 当前${item.position}`;}
  const poseNode=$('cal-live-pose');if(poseNode){const port=c.step?.startsWith('left_')?'COM3':'COM4';poseNode.textContent=(c.ranges||[]).filter(x=>x.key.startsWith(port+':')&&[2,3,4,6].includes(+x.key.split(':')[1])).map(x=>x.label+' '+x.position).join(' / ');}
  const resultNode=$('cal-base-results');if(resultNode)resultNode.textContent=c.base_running?'短脉冲执行中，等待停车回读…':`前进：${c.base_tests?.forward?'位移与停车已回读':'未测'} / 左转：${c.base_tests?.left?'位移与停车已回读':'未测'}`;

@@ -65,6 +65,7 @@ class OriginalStartCommand(BaseModel):
 
 class WholeCalibrationCommand(BaseModel):
     confirmed:bool=False
+    session_id:str|None=None
     step:str|None=None
     confirmed_keys:list[str]|None=None
     kind:str|None=None
