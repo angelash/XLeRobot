@@ -73,10 +73,28 @@ class WholeCalibrationCommand(BaseModel):
     right_sign:int=1
     forward_observed:bool=False
     left_observed:bool=False
+    item:str|None=None
+    wheels_verified:bool=False
+
+class ControllerSettingsCommand(BaseModel):
+    arm_mapping:str='normal'
+    joint_rate_deg_s:float=12
+    grip_raw_s:int=120
+    wheel_max_raw:int=800
+    follow_delta_raw:int=96
+
+@app.post('/api/control-settings')
+def update_control_settings(payload:ControllerSettingsCommand):
+    try:return runtime.update_controller_settings(payload.model_dump())
+    except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/whole-calibration/{action}')
 def whole_calibration_command(action:str,payload:WholeCalibrationCommand):
-    try:return runtime.calibration_command(action,payload.model_dump())
+    try:
+        result=runtime.calibration_command(action,payload.model_dump())
+        warnings=getattr(result,'warnings',None)
+        if warnings:return {**result,'operation_warnings':warnings}
+        return result
     except Exception as exc:
         runtime.log('calibration_error','整机标定：'+str(exc))
         raise HTTPException(409,str(exc)) from exc

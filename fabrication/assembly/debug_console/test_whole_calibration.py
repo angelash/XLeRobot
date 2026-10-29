@@ -240,7 +240,7 @@ def test_large_observed_gripper_range_obeys_raw_slew_limit(runtime):
     p=runtime.session.ports['COM3'];before=word(p.regs[6],56)
     step(runtime,pad([0,0,0,0,1,0]))
     after=word(p.regs[6],56)
-    assert 0<before-after<=6,'Normalized grip changes must not exceed the physical 60 raw/s rate'
+    assert 0<before-after<=12,'Normalized grip changes must respect the configured physical raw rate'
 
 
 def test_confirmed_wheel_signs_drive_continuously_and_release_stops(runtime):
@@ -278,7 +278,7 @@ def test_checkpoint_recovery_keeps_known_arcs_and_resets_only_unknown_joint(runt
     c.persist();c.error='interrupted';before=sum(len(p.writes) for p in runtime.session.ports.values())
     set_word(runtime.session.ports['COM3'].regs[4],56,3000)
     c.recover(c.id,True)
-    assert c.error is None and c.active and c.step=='ranges'
+    assert c.error is None and c.active and c.step=='cards'
     assert c.samples['COM3:2'].high-c.samples['COM3:2'].low==300
     assert c.samples['COM3:4'].high==c.samples['COM3:4'].low==3000
     assert c.recovery_reset==[{'key':'COM3:4','label':'左臂腕俯仰'}]
@@ -313,3 +313,31 @@ def test_recovery_requires_a_stopped_collection_and_rejects_path_input(runtime):
     with pytest.raises(ValueError,match='无需恢复'):c.recover(c.id,True)
     c.error='interrupted'
     with pytest.raises(ValueError,match='编号'):c.recover('../devices',True)
+
+
+def test_one_card_capture_and_delete_do_not_reorder_or_reset_other_cards(runtime):
+    c=runtime.manual_calibration;c.start(True)
+    for sample in c.samples.values():sample.low-=100;sample.high+=100
+    stamp=time.monotonic()
+    for sample in c.samples.values():
+        sample.recent.clear()
+        for delta in (-.15,-.1,-.05):sample.recent.append((stamp+delta,sample.current))
+    c.capture_item('range',True);c.capture_item('left_a',True);c.capture_item('right_open',True)
+    assert c.captures['left_a']['port']=='COM3' and c.captures['right_open']['port']=='COM4'
+    before=deepcopy(c.captures['left_a']);c.delete_capture('right_open')
+    assert c.captures['left_a']==before and 'right_open' not in c.captures and c.active
+
+
+def test_disk_error_does_not_invalidate_completed_pose(tmp_path,monkeypatch):
+    c=cal.WholeCalibration(object(),tmp_path/'c.json',tmp_path/'k.json')
+    c.active=True;c.id='a'*32;c.samples={};
+    c.captures['left_a']={'port':'COM3','positions':{}}
+    monkeypatch.setattr(cal.os,'replace',lambda *_: (_ for _ in ()).throw(PermissionError('read only')))
+    assert c.persist() is False and c.captures['left_a'] and c.active
+
+
+def test_chassis_failure_is_isolated_and_does_not_end_manual_collection(runtime):
+    c=runtime.manual_calibration;c.start(True);c.captures['left_a']={'port':'COM3','positions':{}}
+    c.base_running='forward';c._chassis_failure('停车回读不符')
+    assert c.active and c.error is None and 'left_a' in c.captures
+    assert not c.wheels['verified'] and c.step_warnings

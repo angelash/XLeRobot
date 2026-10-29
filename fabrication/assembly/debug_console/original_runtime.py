@@ -6,11 +6,13 @@ import threading
 from pathlib import Path
 from .control_runtime import ControlRuntime,EXPECTED_SERIALS,ROOT,now,LOG_DIR
 from .whole_calibration import WholeCalibration
+from .control_settings import ControllerSettings,remap_motor_labels
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse
 
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
 SERVICE_PROFILE=ROOT.parents[1]/'.local-deploy'/'hardware-service.json'
+CONTROLLER_SETTINGS=ROOT.parents[1]/'.local-deploy'/'controller-settings.json'
 
 
 class OriginalRuntime(ControlRuntime):
@@ -27,10 +29,25 @@ class OriginalRuntime(ControlRuntime):
         self.preparation=None
         self.service_blocked={}
         self.wheel_pulse_timer=None;self.wheel_pulse_latched=False
+        self.settings=ControllerSettings(CONTROLLER_SETTINGS)
         self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
+
+    def arm_ports(self):return self.settings.arm_ports()
+
+    def update_controller_settings(self,payload):
+        with self.io:
+            if self.controller['controller']=='online':raise ValueError('先结束接管再修改控制设置')
+            old=self.settings.arm_ports();result=self.settings.save(payload)
+            remap_motor_labels(self.report,self.settings)
+            if old!=self.settings.arm_ports() and self.manual_calibration.captures:
+                self.manual_calibration.remap_captures(old,self.settings.arm_ports())
+            self._make_envelopes();self.load_kinematic_profile()
+            self.log('settings',f'控制设置更新：双臂映射{self.settings.data["arm_mapping"]}',**result)
+            return result
 
     def scan(self):
         super().scan()
+        remap_motor_labels(self.report,self.settings)
         if getattr(self,'manual_calibration',None):self.manual_calibration.observe(self.report)
 
     def _require_not_calibrating(self):
@@ -43,7 +60,10 @@ class OriginalRuntime(ControlRuntime):
             if action=='start':return c.start(payload.get('confirmed',False))
             if action=='recover':return c.recover(payload.get('session_id'),payload.get('confirmed',False))
             if action=='capture':return c.capture(payload.get('step'),payload.get('confirmed_keys'))
+            if action=='capture-item':return c.capture_item(payload.get('item'),payload.get('confirmed',False))
+            if action=='delete-item':return c.delete_capture(payload.get('item'))
             if action=='rewind':return c.rewind(payload.get('step'))
+            if action=='wheels':return c.set_wheels(payload.get('left_sign'),payload.get('right_sign'),payload.get('wheels_verified',False),payload.get('confirmed',False))
             if action=='base-test':return c.base_test(payload.get('kind'),payload.get('left_sign',-1),payload.get('right_sign',1),payload.get('confirmed',False))
             if action=='base-confirm':return c.confirm_base(payload.get('forward_observed',False),payload.get('left_observed',False))
             if action=='apply':return c.apply(payload.get('confirmed',False))
@@ -189,7 +209,7 @@ class OriginalRuntime(ControlRuntime):
     def readiness(self,profile=None):
         profile=profile or self.control_profile
         channels={};motors=self.motors()
-        for side,port in [('left','COM3'),('right','COM4')]:
+        for side,port in self.arm_ports().items():
             arm_channels=([('lift',[2],False),('elbow',[3],False)] if profile=='original_joint'
                           else [('position',[2,3,4],True)])
             for channel,ids,needs_ref in arm_channels+[('pan',[1],False),('pitch',[4],False),('roll',[5],False),('grip',[6],True)]:
@@ -219,6 +239,7 @@ class OriginalRuntime(ControlRuntime):
     def whole_robot_setup(self):
         channels=self.readiness('original_hardware')
         checks=[]
+        ports=self.arm_ports()
         for side,label,keys in [('left','左臂联动与夹爪',['position','pan','pitch','roll','grip']),
                                 ('right','右臂联动与夹爪',['position','pan','pitch','roll','grip'])]:
             reasons=[]
@@ -232,11 +253,11 @@ class OriginalRuntime(ControlRuntime):
             motor=self.motors().get(('COM4',i))
             if not motor:reasons.append(f'COM4:{i}未读取')
             elif motor.get('mode')!=1:reasons.append(f'COM4:{i}未处于速度模式')
-        checks.append({'key':'base','label':'底盘连续遥控','ready':not reasons,'reasons':reasons})
+        checks.append({'key':'base','label':'底盘连续遥控','ready':not reasons,'optional':True,'reasons':reasons})
         full_range=self.kinematic_profile.get('full_manual_range_verified') is True
         checks.append({'key':'range','label':'完整操作行程','ready':full_range,
                        'reasons':[] if full_range else ['当前保存的是局部测试窗口；需人工逐关节采集真实可用行程']})
-        return {'ready':all(c['ready'] for c in checks),'checks':checks}
+        return {'ready':all(c['ready'] for c in checks if not c.get('optional')),'checks':checks}
 
     def begin_whole_robot(self,confirmed):
         """The normal real-robot entry must never report a partial takeover."""
@@ -252,7 +273,7 @@ class OriginalRuntime(ControlRuntime):
             if not setup['ready']:
                 missing=[c['label']+'：'+'；'.join(c['reasons']) for c in setup['checks'] if not c['ready']]
                 raise ValueError('整机初始化未完成。'+' | '.join(missing))
-            for side,port in [('左','COM3'),('右','COM4')]:
+            for side,port in self.arm_ports().items():
                 angles=[]
                 for i in (2,3):
                     ref=self.reference(port,i);raw=self.motors()[(port,i)]['position']
@@ -261,7 +282,8 @@ class OriginalRuntime(ControlRuntime):
                     solved=inverse(*forward(*angles))
                     if max(abs(a-b) for a,b in zip(angles,solved))>2:raise ValueError('不在上游逆解分支')
                 except ValueError as exc:
-                    raise ValueError(side+'臂当前姿态超出末端联动分支；请在支撑下回到标定姿态B附近再开启') from exc
+                    label='左臂' if side=='left' else '右臂'
+                    raise ValueError(label+'当前姿态超出末端联动分支；请在支撑下回到标定姿态B附近再开启') from exc
             prepared=self.prepare_hardware(True)
             if prepared['blocked']:raise ValueError('整机准备仍有未通过项，请查看初始化清单')
             return self.begin_original('hardware',True,full_range=True)
@@ -316,7 +338,7 @@ class OriginalRuntime(ControlRuntime):
             angles=None
             if target=='hardware':
                 angles={s:dict(zip(JOINTS,[0,0,2,-2,0,90])) for s in ('left','right')}
-                for side,port in [('left','COM3'),('right','COM4')]:
+                for side,port in self.arm_ports().items():
                     for i,j in enumerate(JOINTS,1):
                         ref=self.reference(port,i)
                         if ref:
@@ -325,8 +347,9 @@ class OriginalRuntime(ControlRuntime):
             wheels=self.kinematic_profile.get('wheels',{}) if target=='hardware' else {}
             if not wheels.get('verified'):wheels={}
             self.engine=UpstreamTeleop(angles,wheels.get('radius_m',.05),wheels.get('track_m',.25))
+            self.engine.arm_ports=self.arm_ports()
             if target=='hardware':
-                for side,port in [('left','COM3'),('right','COM4')]:
+                for side,port in self.arm_ports().items():
                     for i,j in enumerate(JOINTS,1):
                         ref=self.reference(port,i);e=self.envelopes.get((port,i))
                         if ref and e:
@@ -377,7 +400,7 @@ class OriginalRuntime(ControlRuntime):
             if self.control_profile in ('original_hardware','original_joint'):self.scan()
             self._hold();self.ui_heartbeat=time.monotonic();self.tick_time=self.ui_heartbeat
             if self.control_profile=='original_hardware':
-                for side,port in [('left','COM3'),('right','COM4')]:
+                for side,port in self.arm_ports().items():
                     for i,j in enumerate(JOINTS,1):
                         ref=self.reference(port,i)
                         if ref:
@@ -422,20 +445,21 @@ class OriginalRuntime(ControlRuntime):
 
     def _execute_joint(self,intent,dt):
         """A clearly separate raw-joint mode; no guessed IK references."""
-        for side,port in [('left','COM3'),('right','COM4')]:
+        for side,port in self.arm_ports().items():
             item=intent[side];mode=item['mode']
-            rates={1:item['h']*5 if mode=='pan' else 0,
-                   2:item['h']*5 if mode=='position' else 0,
-                   3:-item['v']*5 if mode=='position' else 0,
-                   4:-item['v']*5 if mode=='wrist' else 0,
-                   5:item['h']*5 if mode=='wrist' else 0}
+            rate_max=self.settings.data['joint_rate_deg_s']
+            rates={1:item['h']*rate_max if mode=='pan' else 0,
+                   2:item['h']*rate_max if mode=='position' else 0,
+                   3:-item['v']*rate_max if mode=='position' else 0,
+                   4:-item['v']*rate_max if mode=='wrist' else 0,
+                   5:item['h']*rate_max if mode=='wrist' else 0}
             # Triggers exercise only this session's bounded grip interval.
             if item['trigger']>.75:self.grip_touched[side]=True
             if self.grip_touched[side]:
                 e=self.envelopes.get((port,6),{})
                 motor=self.motors().get((port,6),{})
                 if e.get('available') and motor.get('torque') and motor.get('mode')==0:
-                    self._direct(port,6,5 if item['trigger']>.75 else -5,dt)
+                    self._direct(port,6,self.settings.data['grip_raw_s'] if item['trigger']>.75 else -self.settings.data['grip_raw_s'],dt)
             for i,rate in rates.items():
                 e=self.envelopes.get((port,i),{});m=self.motors().get((port,i),{})
                 if rate and (f'{port}:{i}' in self.service_blocked or not e.get('available') or not m.get('torque') or m.get('mode')!=0):
@@ -444,7 +468,7 @@ class OriginalRuntime(ControlRuntime):
                     self.original_notice('blocked',m.get('label',f'{port}:{i}')+'：'+reason);continue
                 self._direct(port,i,rate,dt)
         for i,name in [(7,'pan'),(8,'tilt')]:
-            rate=intent['head'][name]*5;e=self.envelopes.get(('COM3',i),{});m=self.motors().get(('COM3',i),{})
+            rate=intent['head'][name]*self.settings.data['joint_rate_deg_s'];e=self.envelopes.get(('COM3',i),{});m=self.motors().get(('COM3',i),{})
             if rate and (not e.get('available') or not m.get('torque')):continue
             self._direct('COM3',i,rate,dt)
         active=bool(intent['base']['v'] or intent['base']['omega'])
@@ -517,7 +541,7 @@ class OriginalRuntime(ControlRuntime):
         key=(port,i);p=self.session.ports[port];r=read_registers(p,i);pos=word(r,56)
         if r[33]!=0 or r[40]!=1:raise ValueError(e['label']+'模式/扭矩变化，未自动修改')
         if not 10<=r[62]/10<=13 or r[63]>=55:raise ValueError('供电/温度异常')
-        if abs(target-pos)>32:
+        if abs(target-pos)>self.settings.data['follow_delta_raw']:
             self.original_notice('blocked',e['label']+'目标跟随滞后，已停止累积')
             # Keep the last bounded goal while awaiting feedback. Resetting
             # to the encoder on every lag would repeatedly create tiny goals
@@ -528,7 +552,7 @@ class OriginalRuntime(ControlRuntime):
         # Track before the final write: a missing ACK can still mean the servo
         # accepted the goal, so the fault handler must attempt a hold here.
         self.moving[key]=target
-        write_register(p,i,46,60,2)
+        write_register(p,i,46,min(1000,max(60,int(self.settings.data['joint_rate_deg_s']*4096/360))),2)
         write_register(p,i,42,target,2)
         self.feedback_window.setdefault(key,{'origin':pos,'at':time.monotonic()})
         self.last_command={'port':port,'id':i,'label':e['label'],'origin':pos,'target':target,'outcome':'pending','time':now()}
@@ -536,7 +560,7 @@ class OriginalRuntime(ControlRuntime):
         return True
 
     def _execute(self,intent,previous,dt):
-        for side,port in [('left','COM3'),('right','COM4')]:
+        for side,port in self.arm_ports().items():
             item=intent[side];mode=item['mode']
             moving=item['h'] or item['v']
             if mode=='position' and moving:
@@ -547,7 +571,7 @@ class OriginalRuntime(ControlRuntime):
                         raw=ref['reference_raw']+(self.engine.q[side][j]-ref['reference_deg'])*4096/360*ref['direction']
                         targets.append((i,raw))
                     # Validate the whole IK step before any joint write.
-                    if all(self.envelopes[(port,i)]['min']<=raw<=self.envelopes[(port,i)]['max'] and abs(raw-self.motors()[(port,i)]['position'])<=32 for i,raw in targets):
+                    if all(self.envelopes[(port,i)]['min']<=raw<=self.envelopes[(port,i)]['max'] and abs(raw-self.motors()[(port,i)]['position'])<=self.settings.data['follow_delta_raw'] for i,raw in targets):
                         for i,raw in targets:self._goal(port,i,raw)
                     else:
                         self.engine.q[side]=previous[side]
@@ -557,9 +581,10 @@ class OriginalRuntime(ControlRuntime):
                 for i in (2,3):
                     if (port,i) in self.moving:self._hold_one((port,i))
             # Direct pan / wrist channels use relative raw increments, no assumed zero.
-            for i,channel,rate in [(1,'pan',item['h']*5 if mode=='pan' else 0),
-                                   (4,'pitch',-item['v']*5 if mode=='wrist' else 0),
-                                   (5,'roll',item['h']*5 if mode=='wrist' else 0)]:
+            rate_max=self.settings.data['joint_rate_deg_s']
+            for i,channel,rate in [(1,'pan',item['h']*rate_max if mode=='pan' else 0),
+                                   (4,'pitch',-item['v']*rate_max if mode=='wrist' else 0),
+                                   (5,'roll',item['h']*rate_max if mode=='wrist' else 0)]:
                 if i==4 and mode=='position' and moving:continue
                 if rate and not self._channel(side+'_'+channel):
                     if (port,i) in self.moving:self._hold_one((port,i))
@@ -576,13 +601,14 @@ class OriginalRuntime(ControlRuntime):
                     ref=self.reference(port,6)
                     raw=ref['closed_raw']+(self.engine.q[side]['grip']-2)/88*(ref['open_raw']-ref['closed_raw'])
                     origin=self.moving.get((port,6),self.motors()[(port,6)]['position'])
-                    raw=origin+max(-60*dt,min(60*dt,raw-origin))
+                    limit=self.settings.data['grip_raw_s']*dt
+                    raw=origin+max(-limit,min(limit,raw-origin))
                     accepted=self._goal(port,6,raw)
                     actual=raw if accepted else origin
                     self.engine.q[side]['grip']=2+(actual-ref['closed_raw'])*88/(ref['open_raw']-ref['closed_raw'])
                 else:self.engine.q[side]['grip']=previous[side]['grip']
         for i,axis_name in [(7,'pan'),(8,'tilt')]:
-            rate=intent['head'][axis_name]*5
+            rate=intent['head'][axis_name]*self.settings.data['joint_rate_deg_s']
             if rate and not self._channel(f'head_{i}'):
                 if ('COM3',i) in self.moving:self._hold_one(('COM3',i))
                 continue
@@ -590,6 +616,7 @@ class OriginalRuntime(ControlRuntime):
         raw=list(self.engine.wheels)
         wheels=self.kinematic_profile.get('wheels',{})
         raw=[raw[0]*(-wheels.get('left_sign',-1)),raw[1]*wheels.get('right_sign',1)]
+        raw=[max(-self.settings.data['wheel_max_raw'],min(self.settings.data['wheel_max_raw'],round(x))) for x in raw]
         self.engine.wheels=raw
         if any(raw):
             if not self._channel('base'):
@@ -633,7 +660,7 @@ class OriginalRuntime(ControlRuntime):
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),
                           whole_robot_setup=self.whole_robot_setup(),hardware_preparation=self.preparation,service_blocked=self.service_blocked,
-                          manual_calibration=self.manual_calibration.snapshot())
+                      manual_calibration=self.manual_calibration.snapshot(),control_settings=self.settings.snapshot())
             return result
 
 

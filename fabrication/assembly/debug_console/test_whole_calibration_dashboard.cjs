@@ -8,11 +8,11 @@ assert.match(body({}),/备份并关闭扭矩/);assert.match(body({}),/127 mm/);
 const c={active:true,id:'test',step:'ranges',ranges:[{key:'COM3:1',label:'左肩水平',position:2000,span_deg:80,span_raw:910}]};
 assert.match(body(c),/data-range="COM3:1"/);assert.match(body(c),/完整可用行程/);
 for(const side of ['left','right'])for(const pose of ['a','b','c','open','closed']){
- const result=body({...c,step:side+'_'+pose});assert.match(result,/data-cal="capture"/);
+ const result=body({...c,step:side+'_'+pose});assert.match(result,/data-cal="capture"|data-cal="capture-item"/);
  if(['a','b','c'].includes(pose))assert.match(result,/<svg[^>]+aria-label="侧视参考姿态/);
 }
-assert.match(body({...c,step:'base'}),/data-cal="base-forward"/);
-assert.match(body({...c,step:'base'}),/现场所见/);
+assert.match(body({...c,step:'cards',captured:[]}),/data-cal="base-forward"/);
+assert.match(body({...c,step:'cards',captured:[]}),/底盘（可选）/);
 assert.match(body({...c,step:'review'}),/当前姿态在范围中部/);
 assert.match(body({applied:true}),/开启整机控制/);
 context.s={manual_calibration:c,controller:{controller:'offline'},ports:[{},{}]};

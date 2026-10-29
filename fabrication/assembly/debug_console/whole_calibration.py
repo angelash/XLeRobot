@@ -38,6 +38,11 @@ def atomic_json(path,data):
     os.replace(temporary,path)
 
 
+class IndependentResult(dict):
+    """Valid in-memory capture plus warnings that must remain visible."""
+    def __init__(self,value,warnings=None):super().__init__(value);self.warnings=list(warnings or [])
+
+
 def signed_homing(raw):
     return -(raw&0x7ff) if raw&0x800 else raw
 
@@ -96,11 +101,12 @@ def recentered(sample,old_homing,margin=8):
             'homing_raw':encode_homing(offset),'position':convert(sample.current),'mid':mid}
 
 
-def build_profile(samples,captures,backup,wheels,confirmed_keys):
+def build_profile(samples,captures,backup,wheels,confirmed_keys,arm_ports=None):
     if set(confirmed_keys)!=set(KEYS):raise ValueError('需要逐项确认14个关节均已走过完整可用行程')
     needed=set(STEPS[1:11])
     if not needed<=set(captures):raise ValueError('双臂A/B/C与夹爪端点尚未完整采集')
-    if not wheels.get('verified'):raise ValueError('底盘方向与停车尚未完成现场确认')
+    # Arm calibration and chassis validation are independent deliverables.
+    # build_profile records the base state without requiring it.
     data={'schema':3,'kind':'observed_manual_whole_robot_calibration','serials':EXPECTED_SERIALS,
           'full_manual_range_verified':True,'captured_at':now(),'wheels':deepcopy(wheels),'joints':{},
           'method':'torque_off_unwrapped_range_and_geometric_ABC','raw_captures':deepcopy(captures)}
@@ -110,7 +116,12 @@ def build_profile(samples,captures,backup,wheels,confirmed_keys):
             raise ValueError(joint_label(*split_key(key))+'当前在采集端点，请手动回到范围中部再保存')
         entry.update(observed_range=sample.snapshot(),full_range_confirmed=True,verified=True)
         data['joints'][key]=entry
-    for side,port in [('left','COM3'),('right','COM4')]:
+    # Capture cards follow the operator's logical left/right. Map them to the
+    # profile's physical buses using the arm binding selected when capture starts.
+    arm_ports=arm_ports or {'left':'COM3','right':'COM4'}
+    for side in ('left','right'):
+        port=captures[side+'_a'].get('port') or arm_ports[side]
+        if port not in EXPECTED:raise ValueError(side+'姿态缺少物理控制板绑定')
         a,b,c=[captures[side+'_'+pose]['positions'] for pose in ('a','b','c')]
         # A: upper link vertical, forearm horizontal. B: upper link 45deg
         # outward, forearm horizontal. C: keep B links, tilt tool upward 45deg.
@@ -155,14 +166,17 @@ class WholeCalibration:
         self.wheels={};self.base_tests={};self.base_running=None;self.timer=None
         self.last_save=0.;self.applied=False;self.busy=False
         self.recovery_reset=[];self.recovery_sources=[];self.recoverable=None;self.recovery_checked=0.
+        self.persistence_error=None;self.step_warnings=[]
 
     def persist(self):
-        atomic_json(self.path,{'id':self.id,'serials':EXPECTED_SERIALS,'updated_at':now(),
+        try:atomic_json(self.path,{'id':self.id,'serials':EXPECTED_SERIALS,'updated_at':now(),
           'active':self.active,'step':self.step,'error':self.error,'applied':self.applied,
           'register_backup':self.backup,'ranges':{k:v.snapshot() for k,v in self.samples.items()},
           'captures':self.captures,'confirmed_keys':self.confirmed_keys,'wheels':self.wheels,
           'base_tests':self.base_tests,'recovery_reset':self.recovery_reset,'recovery_sources':self.recovery_sources})
-        self.last_save=time.monotonic()
+        except OSError as exc:
+            self.persistence_error=str(exc);return False
+        self.persistence_error=None;self.last_save=time.monotonic();return True
 
     def start(self,confirmed):
         r=self.runtime
@@ -261,7 +275,17 @@ class WholeCalibration:
         # its interrupted state. This does not change a motor register.
         atomic_json(path.with_name(session_id+'-before-recovery-'+uuid.uuid4().hex[:8]+'.json'),data)
         self.id=session_id;self.path=path;self.backup=backup;self.samples=samples
-        self.captures={};self.confirmed_keys=[];self.wheels={};self.base_tests={};self.step='ranges'
+        self.captures=deepcopy(data.get('captures',{}));self.confirmed_keys=list(data.get('confirmed_keys',[]))
+        self.wheels=deepcopy(data.get('wheels',{}));self.base_tests=deepcopy(data.get('base_tests',{}))
+        # Older checkpoints lack a per-card bus binding. Assign it only when
+        # this robot's current mapping is unambiguous during recover().
+        if self.captures:
+            ports=self.runtime.arm_ports()
+            for side in ('left','right'):
+                for kind in ('a','b','c','open','closed'):
+                    item=side+'_'+kind
+                    if item in self.captures:self.captures[item].setdefault('port',ports[side])
+        self.step='cards'
         self.error=None;self.active=True;self.applied=False;self.recovery_reset=reset
         self.recovery_sources=[session_id];self.recoverable=None;self.persist()
         r.log('calibration_recovered','已恢复可确认的实测行程；仅补采当前位置超出旧记录的关节',
@@ -340,6 +364,62 @@ class WholeCalibration:
         self.step=STEPS[STEPS.index(step)+1];self.persist()
         return self.snapshot()
 
+    def remap_captures(self,old_ports,new_ports):
+        for item in list(self.captures):
+            if '_' not in item:continue
+            side,kind=item.split('_',1);port=self.captures[item].get('port') or old_ports.get(side)
+            if not port:continue
+            new_by_port={p:s for s,p in new_ports.items()}
+            target=new_by_port.get(port,side)
+            if target!=side:self.captures[target+'_'+kind]=self.captures.pop(item)
+        self.persist()
+
+    def capture_item(self,item,confirmed=False):
+        self.require_active()
+        if not confirmed:raise ValueError('请确认该项已摆稳且双臂有支撑')
+        if item=='range':
+            short=[key for key in KEYS if self.samples[key].high-self.samples[key].low<48]
+            self.confirmed_keys=[key for key in KEYS if key not in short]
+            self.step_warnings=[joint_label(*split_key(k))+'尚未采到有效行程' for k in short]
+            self.persist();return IndependentResult(self.snapshot(),self.step_warnings)
+        valid={'left_a','left_b','left_c','left_open','left_closed','right_a','right_b','right_c','right_open','right_closed'}
+        if item not in valid:raise ValueError('未知采集卡片')
+        self.runtime.scan();self.require_active()
+        side,kind=item.split('_',1);port=self.runtime.arm_ports()[side]
+        required=(6,) if kind in ('open','closed') else (2,3,4)
+        if not all(self.samples[f'{port}:{i}'].stationary(time.monotonic()) for i in required):
+            raise ValueError('请保持该项姿态约1秒，编码器稳定后重录')
+        positions={key:s.current for key,s in self.samples.items()}
+        self.captures[item]={'captured_at':now(),'port':port,'positions':positions}
+        warnings=[]
+        if kind=='b' and side+'_a' in self.captures:
+            a=self.captures[side+'_a']['positions']
+            if any(not 160<=abs(positions[f'{port}:{i}']-a[f'{port}:{i}'])<=900 for i in (2,3)):warnings.append('B与A的肩/肘变化不典型，已保存，可重录')
+        if kind=='c' and side+'_b' in self.captures:
+            b=self.captures[side+'_b']['positions']
+            if abs(positions[f'{port}:4']-b[f'{port}:4'])<160:warnings.append('C的腕俯仰变化不明显，已保存，可重录')
+        if kind in ('open','closed'):
+            other_kind='closed' if kind=='open' else 'open';other=side+'_'+other_kind
+            if other in self.captures and abs(positions[f'{port}:6']-self.captures[other]['positions'][f'{port}:6'])<24:warnings.append('夹爪两端差不明显，已保存，可重录')
+        self.step_warnings=warnings;persisted=self.persist()
+        if not persisted:warnings.append('磁盘保存失败，当前运行进程仍保留；请处理后刷新')
+        return IndependentResult(self.snapshot(),warnings)
+
+    def delete_capture(self,item):
+        self.require_active()
+        if item not in self.captures:raise ValueError('该项尚未录制')
+        del self.captures[item];self.step_warnings=[];self.persist();return self.snapshot()
+
+    def set_wheels(self,left_sign,right_sign,verified,confirmed):
+        self.require_active()
+        if left_sign not in (-1,1) or right_sign not in (-1,1) or not confirmed:
+            raise ValueError('请选择双轮方向并确认现场已观察')
+        self.wheels={**DESIGN_GEOMETRY,'left_sign':left_sign,'right_sign':right_sign,
+                     'verified':bool(verified),'direction_observed':bool(verified),
+                     'stop_verified':bool(verified),'confirmed_at':now() if verified else None}
+        if not verified:self.wheels['note']=DESIGN_GEOMETRY['note']+'；底盘暂未开放，可稍后设置'
+        self.persist();return self.snapshot()
+
     def rewind(self,step):
         self.require_active()
         if step not in STEPS[:11] or STEPS.index(step)>=STEPS.index(self.step):raise ValueError('只能返回已经采集过的步骤')
@@ -353,7 +433,7 @@ class WholeCalibration:
             raise ValueError('请在底盘步骤确认周围有空间，再测试')
         if left_sign not in (-1,1) or right_sign not in (-1,1):raise ValueError('轮子方向必须为±1')
         if self.wheels.get('left_sign')!=left_sign or self.wheels.get('right_sign')!=right_sign:self.base_tests={}
-        self.wheels={**DESIGN_GEOMETRY,'left_sign':left_sign,'right_sign':right_sign}
+        self.wheels={**DESIGN_GEOMETRY,'left_sign':left_sign,'right_sign':right_sign,'verified':False}
         p=self.runtime.session.ports['COM4'];before={}
         try:
             self.runtime.scan();self.require_active()
@@ -371,6 +451,16 @@ class WholeCalibration:
             if self.timer:self.timer.cancel()
             self.base_running=None;self.release_all();raise
         return self.snapshot()
+
+    def _chassis_failure(self,message):
+        self.base_running=None
+        self.base_tests={}
+        self.wheels={**DESIGN_GEOMETRY,'left_sign':self.wheels.get('left_sign',-1),
+                     'right_sign':self.wheels.get('right_sign',1),'verified':False,
+                     'direction_observed':False,'stop_verified':False,
+                     'note':'底盘短测未通过，底盘暂未开放；'+message}
+        self.step_warnings=['底盘短测未通过，双臂采集保留：'+message]
+        self.persist()
 
     def _finish_base(self,kind,before):
         with self.runtime.io:
@@ -391,7 +481,8 @@ class WholeCalibration:
                     if abs(delta)<2:raise RuntimeError('轮子编码器未记录到有效位移')
                     results.append({'id':i,'delta':delta,'goal_velocity':0,'speed':word(reg,58),'torque':0})
                 self.base_tests[kind]={'at':now(),'results':results};self.persist()
-            except Exception as exc:self.fail('底盘短测失败：'+str(exc))
+            except Exception as exc:
+                self._chassis_failure(str(exc))
             finally:self.base_running=None;self.timer=None
 
     def confirm_base(self,forward_observed,left_observed):
@@ -405,10 +496,18 @@ class WholeCalibration:
 
     def apply(self,confirmed):
         self.require_active()
-        if self.step!='review' or not confirmed:raise ValueError('请完成全部步骤并确认保存实测标定')
+        if not confirmed:raise ValueError('请确认保存当前已采集的实测标定')
         r=self.runtime;r.scan();self.require_active()
         if not all(s.stationary(time.monotonic()) for s in self.samples.values()):raise ValueError('请让全部关节静止约1秒再保存')
-        profile=build_profile(self.samples,self.captures,self.backup,self.wheels,self.confirmed_keys)
+        required={side+'_'+kind for side in ('left','right') for kind in ('a','b','c','open','closed')}
+        missing=sorted(required-set(self.captures))
+        if missing:raise ValueError('还缺少采集卡片：'+', '.join(missing)+'；底盘可稍后设置')
+        wheels=deepcopy(self.wheels)
+        if not wheels.get('verified'):
+            wheels={**DESIGN_GEOMETRY,'verified':False,'direction_observed':False,
+                    'stop_verified':False,
+                    'note':DESIGN_GEOMETRY['note']+'；底盘可稍后设置方向与停车再开放'}
+        profile=build_profile(self.samples,self.captures,self.backup,wheels,self.confirmed_keys,self.runtime.arm_ports())
         # Backup the previous portable file before changing any device bytes.
         old_profile=self.profile_path.read_text(encoding='utf-8') if self.profile_path.exists() else None
         atomic_json(self.path.with_name(self.id+'-apply-backup.json'),
@@ -457,8 +556,10 @@ class WholeCalibration:
 
     def snapshot(self):
         return {'active':self.active,'id':self.id,'step':self.step,'error':self.error,'applied':self.applied,
+                'arm_ports':self.runtime.arm_ports(),
                 'ranges':[{'key':key,'label':joint_label(*split_key(key)),**s.snapshot()} for key,s in self.samples.items()],
                 'captured':list(self.captures),'confirmed_keys':self.confirmed_keys,
                 'base_running':self.base_running,'base_tests':deepcopy(self.base_tests),'wheels':self.wheels,
                 'design_geometry':DESIGN_GEOMETRY,'recovery_reset':self.recovery_reset,
-                'recoverable':self.find_recoverable() if not self.active or self.error else None}
+                'recoverable':self.find_recoverable() if not self.active or self.error else None,
+                'step_warnings':self.step_warnings,'persistence_error':self.persistence_error}
