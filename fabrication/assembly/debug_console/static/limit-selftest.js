@@ -39,7 +39,7 @@ function limitBody(t){
   return `<label class="limit-card ${cls} ${t.current===x.id?'active':''}"><span class="limit-check"><input type="checkbox" data-limit-item="${x.id}" ${sel.has(x.id)?'checked':''} ${running?'disabled':''}><strong>${esc(x.name)}</strong></span>${limitDiagram(x.side,x.kind)}<small>${esc(range)}</small><small>${esc(x.note)}${x.prepose&&x.prepose.length?' 预置：'+esc(x.prepose.join('、'))+'先摆到中位，测完放回。':''}</small>${fold}<em>${esc(limitStatus(res))}</em></label>`;}).join('')}</div></div>`).join('');
  const events=(t.events||[]).slice(-8).reverse().map(e=>`<li><time>${new Date(e.time).toLocaleTimeString('zh-CN')}</time>${esc(e.message)}</li>`).join('');
  return `<div class="limit-toolbar"><div class="cal-buttons"><button type="button" data-limit="recommend" ${running?'disabled':''}>一条龙推荐方案（全选并按顺序）</button><button type="button" class="outline" data-limit="none" ${running?'disabled':''}>清空勾选</button></div>
-<p class="fineprint">每个关节低速推进，扭矩上限降到35%–80%；编码器不再跟随即判为顶到止挡，立即卸力并退回约3°。新限位=止挡位置内缩约2°。腕旋转等没有硬止挡的关节最多在已存行程外再探30°–60°。测某关节前，会先把可能干涉的关节摆到中位，测完全部回到原姿态。</p>
+<p class="fineprint">每个关节低速推进，扭矩上限降到35%–95%（预置与回位用全扭矩）；编码器不再跟随即判为顶到止挡，立即卸力并退回约3°。新限位=止挡位置内缩约2°。腕旋转等没有硬止挡的关节最多在已存行程外再探30°–60°。测某关节前，会先把可能干涉的关节摆到中位，测完全部回到原姿态。</p>
 <label class="cal-check"><input type="checkbox" id="limit-apply" ${t.apply!==false?'checked':''} ${running?'disabled':''}><span>测完自动写入新限位（同时更新已保存行程）</span></label>
 <label class="cal-check"><input type="checkbox" id="limit-confirm" ${running?'disabled':''}><span>周围空间足够、无人靠近；手柄放下。自检中按手柄任意键或点“立即停止”立即停下</span></label>
 <div class="cal-buttons"><button type="button" class="primary" data-limit="start" id="limit-start">开始自检</button><button type="button" class="danger" data-limit="stop" id="limit-stop">立即停止</button></div>

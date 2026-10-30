@@ -28,9 +28,9 @@ ARM_TESTS={
          'note':'腕旋转多半没有硬止挡、以线缆为限：在已存行程外最多再探60°，到达即停。'},
  'pitch':{'id':4,'name':'腕俯仰','torque':450,'speed_deg':15,'extend_deg':45,'lag':48,'prepose':{3:'mid'},
           'note':'先把肘摆到行程中位给夹爪留空间；夹爪碰到前臂即记为该端限位。'},
- 'elbow':{'id':3,'name':'肘','torque':600,'speed_deg':12,'extend_deg':40,'lag':56,'prepose':{4:'mid'},
+ 'elbow':{'id':3,'name':'肘','torque':850,'speed_deg':12,'extend_deg':40,'lag':56,'prepose':{4:'mid'},
           'note':'先把腕俯仰摆到中位；收起端可能被夹爪或上臂挡住，受阻即为实际可用限位。'},
- 'lift':{'id':2,'name':'肩抬升','torque':800,'speed_deg':10,'extend_deg':30,'lag':64,'prepose':{3:'mid',4:'mid'},
+ 'lift':{'id':2,'name':'肩抬升','torque':950,'speed_deg':10,'extend_deg':30,'lag':64,'prepose':{3:'mid',4:'mid'},
          'note':'带动整条手臂，扭矩上限较高；先把肘、腕俯仰放到中位。'},
  'fold':{'name':'收起此臂','note':'把肩抬升、肘、腕俯仰同步移回保存行程时的折叠姿态，供肩水平测试。'},
  'pan':{'id':1,'name':'肩水平','torque':500,'speed_deg':12,'extend_deg':40,'lag':48,'prepose':{},'requires_fold':True,
@@ -41,7 +41,10 @@ HEAD_TESTS={
  'pan':{'id':7,'name':'头部水平','torque':350,'speed_deg':15,'extend_deg':40,'lag':40,'prepose':{},'note':'镜头左右转到止挡。'},
 }
 RECOMMENDED=['head:tilt','head:pan',*[f'{s}:{k}' for s in ('left','right') for k in ARM_ORDER]]
-MARGIN_RAW=24;BACKOFF_RAW=32;TICK=.05;WINDOW=8;FOLD_TOL=60;MOVE_TORQUE=700
+# Moves inside a known range (pre-pose, return, fold) carry the forearm or
+# whole arm against gravity: on the robot 70 % could not lift the left
+# forearm back, so they use full torque with the same obstruction check.
+MARGIN_RAW=24;BACKOFF_RAW=32;TICK=.05;WINDOW=8;FOLD_TOL=60;MOVE_TORQUE=1000
 
 
 class Aborted(Exception):pass
