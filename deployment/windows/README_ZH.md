@@ -39,9 +39,9 @@ flowchart LR
   Operator[当前小九工作电脑] --> SSH[Windows OpenSSH / 密钥登录]
   LAN[同一局域网或Tailscale] --- SSH
   SSH --> Laptop[车载Windows笔记本]
-  Laptop --> Interactive[已登录用户的交互式任务]
-  Interactive --> Control[8765 唯一设备所有者]
-  Interactive --> Studio[8770 Studio]
+  Laptop --> Boot[开机任务 XLeRobot-Boot，无需登录]
+  Boot --> Control[8765 唯一设备所有者]
+  Boot --> Studio[8770 Studio]
   Operator --> Tunnel[SSH隧道 本机18770]
   Tunnel --> Studio
 ```
@@ -84,7 +84,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\remote\enable-remote-s
 
 若Windows已有当前Python的全端口TCP拒绝规则，它会覆盖新增允许规则。配置脚本仅从该规则中排除Studio的8770，保留其他TCP端口及UDP限制，并增加此端口对未授权客户端的拒绝规则；改动前的端口范围与规则名保存在本机忽略目录。随后仍须从工作端实测直连。
 
-应用配置后，仅重启Studio网关：先确认未录制，再运行`debug_console/stop-platform.ps1`和`debug_console/start-platform.ps1`（位于`fabrication/assembly/`下）。控制服务与接管独立保留。交互式登录任务仍调用相同启动入口，下一次启动会读取该网络配置并显示新机URL。新机IP或获准工作端IP变化时重新运行配置脚本；旧URL不会自动假定可达。
+应用配置后，仅重启Studio网关：先确认未录制，再运行`debug_console/stop-platform.ps1`和`debug_console/start-platform.ps1`（位于`fabrication/assembly/`下）。控制服务与接管独立保留。开机任务（以及停用前的登录任务）调用相同启动入口，下一次启动会读取该网络配置并显示新机URL。新机IP或获准工作端IP变化时重新运行配置脚本；旧URL不会自动假定可达。
 
 验收须从工作端访问新机IP，检查主页、资源、内嵌控制页、状态与带新机Origin的POST，不能仅以新机上的localhost检查或SSH隧道成功代替直连验收。
 
@@ -101,18 +101,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\remote\enable-remote-s
 
 5. 控制板按USB序列号映射到固定逻辑角色：逻辑COM3=左臂/头部，逻辑COM4=右臂/双轮。物理端口可变为COM7/COM12，无需擅自改ID；缺板/身份重复时拒绝猜测。Web同时显示物理端口。更换控制板、USB串口适配器或整机时，需要重新确认身份与角色。
 6. 重新读取设备限位/模式/当前位置；历史标定只作参考，确认同一设备、相同安装和寄存器指纹后再决定启用哪些运动学参考。历史“未验证”字段不会因迁移变成已验证。
-7. 在新机交互式用户会话中确认手柄每个输入和三路相机遮挡对应；相机目前按`USB2.0_CAM1`的DirectShow序号读取，新机器仍需检查枚举顺序。注册`register-logon-task.ps1`后，SSH可触发交互式任务；默认是预览，不自动启用实机动作。
+7. 确认手柄每个输入和三路相机遮挡对应；相机目前按`USB2.0_CAM1`的DirectShow序号读取，新机器仍需检查枚举顺序。推荐用管理员会话（含SSH）运行`register-boot-task.ps1 -Mode Monitor -Apply`注册开机任务`XLeRobot-Boot`：以当前账号的S4U方式在开机约20秒后启动，不保存密码、不需要登录；它会停用旧的登录任务`XLeRobot-Interactive`，保证串口只有一个所有者。启动不会接管、不改扭矩，失败按20秒间隔重试，记录在`fabrication/assembly/debug_console/boot-start.log`。旧的`register-logon-task.ps1`仅在需要“登录后才启动”时使用。
 
 ```powershell
 # 顶层迁移包目录；目标目录需不存在。
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-kit.ps1 -Destination C:\Robot\XLeRobot -Apply
 # 源码目录内，本地已登录用户执行：
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deployment\windows\register-logon-task.ps1 -Mode Preview -Apply
-# 后续可通过SSH触发；任务只在该用户已登录时运行。
-Start-ScheduledTask -TaskName XLeRobot-Interactive
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deployment\windows\register-boot-task.ps1 -Mode Monitor -Apply
+# 开机自动运行；也可随时通过SSH手动触发。更新任务参数时加 -Replace。
+Start-ScheduledTask -TaskName XLeRobot-Boot
 ```
 
-锁屏、蓝牙省电、USB省电和合盖行为需要新机实测。注销或睡眠无法维持相机/手柄的交互式运行。远程桌面切换会话可能改变设备可见性；主要部署通路使用SSH，首次硬件验证仍在本机交互式用户会话完成。
+2026-10-30在新机实测：无人登录的后台会话（session 0）中，XInput手柄、三路DirectShow相机与两块CH343串口均可用；重启后停在登录界面时，开机任务约1分钟内拉起8765/8770，工作端可直接访问。重启会让Xbox无线接收器断电，手柄需按Xbox键重新连接。睡眠、蓝牙/USB省电和合盖行为仍需按现场设置确认。
 
 ## 当前能力与后续动作
 
