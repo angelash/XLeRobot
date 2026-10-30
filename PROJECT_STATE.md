@@ -693,3 +693,10 @@ status: active
 - **新机系统核验**：热点与SSH正常，但8765/8770无监听、无Python进程。系统事件显示13:03（MoUsoCoreWorker）与13:24（TrustedInstaller，“升级(计划内)”）两次自动重启，安装Windows 11 26H2及KB5121794/KB5127648/KB5127694；重启后无用户登录（未启用自动登录），而服务由“Ash登录时”的交互式计划任务启动（手柄XInput与相机需要交互会话），因此未运行。
 - **处理**：升级后防火墙规则（22/8770仅允许192.168.137.1）、Studio局域网配置、两块CH343与Python环境均核验正常。设置更新策略`NoAutoRebootWithLoggedOnUsers=1`、活跃时段8:00–次日2:00，更新照常安装，仅不在用户登录时自动重启；可删除对应注册表值撤销。未启用自动登录（需本人设置密码）。
 - **待完成**：需要用户在笔记本登录Ash，登录任务会自动启动Monitor模式与Studio；登录后再核验网页与16电机状态。
+
+### 2026-10-30 14:30 - 更正更新策略并关闭工作端热点自动关闭
+
+- **更正上一条（本地系统核验）**：`NoAutoRebootWithLoggedOnUsers=1`是14:10前后本轮才写入的，13:03 MoUsoCoreWorker重启时尚不存在，不能说明系统绕过了该设置。按微软策略说明，该值只在“自动安装”模式下约束重启，单独设置不足以防止强制重启；上一条“更新照常安装”的描述作废。
+- **新机处理（本地系统核验）**：在`HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU`设置`NoAutoUpdate=0`、`AUOptions=3`（自动下载、通知后手动安装），保留`NoAutoRebootWithLoggedOnUsers=1`，回读一致。系统为正式版Windows 11 Pro 26H2（build 26300），未加入Insider。撤销方法：删除该键下这三个值。
+- **工作端处理（本地系统核验）**：本机移动热点的“无设备连接时自动关闭”原为开启，可解释上午热点自行关闭；已通过WinRT `DisableNoConnectionsTimeoutAsync()`关闭并回读为False。热点保持On、5GHz、原SSID，1台客户端。
+- **当前状态**：14:25复查新机仍在登录界面（LogonUI，无explorer会话），8765/8770无监听；ping与TCP22正常，8770连接超时。待用户在笔记本本地登录Ash后由登录任务启动服务，再从工作端核验`http://192.168.137.150:8770/runtime/original`。
