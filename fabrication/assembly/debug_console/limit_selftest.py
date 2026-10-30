@@ -292,7 +292,11 @@ class LimitSelfTest:
         try:
             for j in cfg.get('prepose',{}):
                 r2=self._read(port,j);moved.append((j,word(r2,56)))
-                self._move_to({(port,j):(word(r2,9)+word(r2,11))/2},12,'预置姿态')
+                # Pre-posing only makes room. A posture-dependent obstruction
+                # (e.g. a folded forearm against the body) leaves the joint
+                # where it stopped; the probe keeps its own stop detection.
+                try:self._move_to({(port,j):(word(r2,9)+word(r2,11))/2},12,'预置姿态')
+                except RuntimeError as exc:self._log(f'{exc}；预置未到中位，停在受阻处继续测试')
             low=self._probe(port,i,-1,cfg)
             self._move_to({(port,i):start},cfg['speed_deg'],'回到起点')
             high=self._probe(port,i,1,cfg)

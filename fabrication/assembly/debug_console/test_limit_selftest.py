@@ -76,6 +76,15 @@ def test_preposed_joint_resting_short_of_target_counts_as_arrived(runtime,st):
     assert st.results['left:elbow']['status']=='done',st.results['left:elbow']
 
 
+def test_blocked_prepose_stays_put_and_the_probe_still_runs(runtime,st):
+    # The folded forearm cannot unfold past 2150 while the shoulder is down.
+    add_stops(runtime,{('COM3',3):(2150,2400),('COM3',2):(1700,2400)})
+    set_word(reg(runtime,'COM3',3),56,2300);runtime.scan()
+    st.start(['left:lift'],True,background=False)
+    assert st.results['left:lift']['status']=='done',st.results['left:lift']
+    assert any('预置未到中位' in e['message'] for e in st.events)
+
+
 def test_stop_inside_saved_range_keeps_the_reachable_saved_end(runtime,st):
     add_stops(runtime,{('COM3',3):(1900,2450)})
     st.start(['left:elbow'],True,background=False)
