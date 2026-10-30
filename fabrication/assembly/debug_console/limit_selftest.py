@@ -392,5 +392,7 @@ class LimitSelfTest:
                     write_register(p,i,48,value,2)
             except Exception as exc:self._log(f'{key}扭矩上限恢复失败：{exc}')
         try:
-            with r.io:r.scan()
+            # Pick up the limits just written to the profile, not only on the
+            # next capture (the page showed 13/14 saved ranges until then).
+            with r.io:r.scan();r.load_kinematic_profile()
         except Exception:pass

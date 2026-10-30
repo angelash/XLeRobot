@@ -46,6 +46,7 @@ def test_probe_finds_both_stops_returns_to_start_and_writes_margined_limits(runt
     assert word(r2,48)==st.torque_backup['COM3:2'],'Torque ceiling is restored'
     profile=json.loads(st.profile_path.read_text(encoding='utf-8'))
     assert profile['joints']['COM3:2']['range_verified'] and profile['joints']['COM3:2']['selftest']['min_kind']=='stall'
+    assert 'COM3:2' in runtime.saved_ranges(),'The runtime sees the new limits immediately'
     assert not st.running and st.error is None
 
 
