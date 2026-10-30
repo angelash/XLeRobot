@@ -131,7 +131,16 @@ class LimitSelfTest:
                     raise ValueError(('左臂' if side=='left' else '右臂')+'肩水平需要全收起：勾选“收起此臂”，或先手动收起')
                 if f'{side}:fold' in plan and not self.fold_pose(side):
                     raise ValueError(('左臂' if side=='left' else '右臂')+'没有保存行程时的折叠姿态，无法自动收起')
-            prepared=r.prepare_hardware(True)
+            # A joint left resting a few counts past its limit (e.g. against a
+            # stop after an interrupted probe) is re-included before holding.
+            for item in plan:
+                port,cfg=self._target(item)
+                for j in ([cfg['id']] if 'id' in cfg else [2,3,4])+list(cfg.get('prepose',{})):
+                    reg=read_registers(r.session.ports[port],j);pos,low,high=word(reg,56),word(reg,9),word(reg,11)
+                    if (pos<low and low-pos<=32) or (pos>high and pos-high<=32):
+                        self._set_limits(port,j,min(low,max(0,pos-8)),max(high,min(4095,pos+8)))
+                        self._log(f'{self._label(port,j)}停在限位外{max(low-pos,pos-high)}计数，已放宽到包住当前位置')
+            r.scan();prepared=r.prepare_hardware(True)
             ready={(x['port'],x['id']) for x in prepared['ready']}
             for item in plan:
                 port,cfg=self._target(item)
@@ -358,7 +367,7 @@ class LimitSelfTest:
             port,i=key.split(':');i=int(i)
             try:
                 pos=word(self._read(port,i),56)
-                self._set_limits(port,i,min(low,pos),max(high,pos))
+                self._set_limits(port,i,min(low,max(0,pos-8)),max(high,min(4095,pos+8)))
             except Exception as exc:self._log(f'{key}临时限位恢复失败：{exc}')
         for key,value in list(self.torque_backup.items()):
             port,i=key.split(':');i=int(i)

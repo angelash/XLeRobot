@@ -89,8 +89,16 @@ def test_abort_keeps_only_the_explored_range_and_restores_torque_ceiling(runtime
     st.start(['head:tilt'],True,background=False)
     r8=reg(runtime,'COM3',8);pos=word(r8,56)
     assert st.results['head:tilt']['status']=='aborted' and st.error=='测试停止'
-    assert word(r8,9)==min(1800,pos) and word(r8,11)==max(2300,pos)
+    assert word(r8,9)==min(1800,pos-8) and word(r8,11)==max(2300,pos+8)
     assert word(r8,48)==st.torque_backup['COM3:8'] and word(r8,42)==pos
+
+
+def test_joint_resting_just_past_its_limit_is_reincluded_before_holding(runtime,st):
+    r1=reg(runtime,'COM3',1);set_word(r1,56,1795);runtime.scan()
+    joints={f'COM3:{i}':{'position':p,'homing_raw':word(reg(runtime,'COM3',i),31),'mid':2047} for i,p in ((2,2050),(3,2050),(4,2050))}
+    st.profile_path.write_text(json.dumps({'serials':lt.EXPECTED_SERIALS,'joints':joints}),encoding='utf-8')
+    st.start(['left:pan'],True,background=False)
+    assert st.results['left:pan']['status']=='done' and word(r1,9)<=1795-8
 
 
 def test_shoulder_pan_requires_a_folded_arm_or_an_automatic_fold(runtime,st):
