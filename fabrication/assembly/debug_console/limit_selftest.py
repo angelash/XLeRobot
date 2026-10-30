@@ -248,7 +248,10 @@ class LimitSelfTest:
             if reg[40]==0:raise RuntimeError(name+'扭矩被关闭（可能触发过载保护）')
             lag=(goal-pos)*direction
             if lag>=cfg['lag'] and len(history)==WINDOW and max(history)-min(history)<=3:kind='stall';break
-            if int(round(goal))==bound and abs(pos-bound)<=6:kind='bound';break
+            # At the exploration cap the servo settles a few counts short
+            # (deadband/gravity); wait until it is still, then classify.
+            if int(round(goal))==bound and len(history)==WINDOW and max(history)-min(history)<=3:
+                kind='bound' if abs(bound-pos)<=max(12,cfg['lag']//2) else 'stall';break
             if time.monotonic()>deadline:kind='timeout';break
             self._sleep()
         with self.runtime.io:write_register(self.runtime.session.ports[port],i,42,pos,2)

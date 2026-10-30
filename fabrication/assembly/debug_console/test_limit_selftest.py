@@ -56,6 +56,14 @@ def test_joint_without_hard_stop_is_bounded_by_exploration_cap(runtime,st):
     assert (res['min'],res['max'])==(1800-extend,2300+extend)
 
 
+def test_cap_reached_a_few_counts_short_is_not_a_timeout(runtime,st):
+    extend=round(30*4096/360)
+    add_stops(runtime,{('COM3',8):(0,2300+extend-8)})
+    st.start(['head:tilt'],True,background=False)
+    res=st.results['head:tilt']
+    assert res['status']=='done' and res['max_kind']=='bound' and res['max']==2300+extend-8
+
+
 def test_stop_inside_saved_range_keeps_the_reachable_saved_end(runtime,st):
     add_stops(runtime,{('COM3',3):(1900,2450)})
     st.start(['left:elbow'],True,background=False)
