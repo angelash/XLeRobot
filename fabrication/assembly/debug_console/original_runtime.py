@@ -5,10 +5,10 @@ import time
 import threading
 from pathlib import Path
 from .control_runtime import ControlRuntime,EXPECTED_SERIALS,ROOT,now,LOG_DIR
-from .whole_calibration import WholeCalibration,DESIGN_GEOMETRY,KEYS as RANGE_KEYS
+from .whole_calibration import WholeCalibration,DESIGN_GEOMETRY,KEYS as RANGE_KEYS,atomic_json
 from .limit_selftest import LimitSelfTest
 from .control_settings import ControllerSettings,remap_motor_labels,MAPPING_KEYS
-from .torque_control import EXPECTED,read_registers,word,write_register
+from .torque_control import EXPECTED,read_registers,word,write_register,write_limits
 from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse,wheel_raw
 
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
@@ -18,6 +18,8 @@ CONTROLLER_SETTINGS=ROOT.parents[1]/'.local-deploy'/'controller-settings.json'
 SUPPLY_MIN_V=9.0;SUPPLY_MAX_V=13.5;TEMP_MAX_C=60
 SUPPLY_BAD_READS=3
 FAULT_RETRY_S=1.0
+# Locking a hand-posed joint widens its limits only this far past where it sits.
+POSE_MARGIN_RAW=8
 
 
 class OriginalRuntime(ControlRuntime):
@@ -34,6 +36,7 @@ class OriginalRuntime(ControlRuntime):
         self.preparation=None
         self.service_blocked={}
         self.preset_blocked={};self.joint_faults={}
+        self.manual_pose_active=False
         self.supply_bad={};self.stall_marks={};self.resume_on_release=False;self.heartbeat_noticed=False
         self.wheel_pulse_timer=None;self.wheel_pulse_latched=False
         self.settings=ControllerSettings(CONTROLLER_SETTINGS)
@@ -166,6 +169,80 @@ class OriginalRuntime(ControlRuntime):
                               'message':'已保持当前位置；未归零，未修改模式、PID或设备限位'}
             self.log('hardware_prepare',self.preparation['message'],ready=ready,blocked=blocked)
             return self.preparation
+
+    # ---- manual posing: release torque, then lock where the user left it ----
+    def _pose_selection(self,motors):
+        if not motors:return {name:list(ids) for name,ids in EXPECTED.items()}
+        selection={}
+        for name,ids in motors.items():
+            if name not in EXPECTED or not ids or any(int(i) not in EXPECTED[name] for i in ids):raise ValueError('未知电机')
+            selection[name]=sorted({int(i) for i in ids})
+        return selection
+
+    def _sync_profile_limits(self,changes):
+        """Keep a saved range in step with limits widened around a hand pose."""
+        if not changes or not KINEMATIC_PROFILE.is_file():return
+        data=json.loads(KINEMATIC_PROFILE.read_text(encoding='utf-8'))
+        if data.get('serials')!=EXPECTED_SERIALS:return
+        joints=data.get('joints',{});touched=False
+        for c in changes:
+            entry=joints.get(c['key'])
+            if not entry or (entry.get('min'),entry.get('max'))!=(c['old_min'],c['old_max']):continue
+            entry.update(min=c['min'],max=c['max'])
+            entry.setdefault('manual_widen',[]).append({'at':now(),'from':[c['old_min'],c['old_max']],
+                                                        'to':[c['min'],c['max']],'position':c['position']})
+            touched=True
+        if touched:atomic_json(KINEMATIC_PROFILE,data)
+
+    def manual_pose(self,action,motors=None,end_takeover=False):
+        """release: torque off so joints move by hand. hold: lock every selected
+        joint where it now is. A joint pushed past its stored limits gets those
+        limits widened just enough to contain it first (torque still off), so
+        the servo never snaps back."""
+        if action not in ('release','hold'):raise ValueError('未知手动摆位操作')
+        with self.io:
+            if isinstance(self,PreviewRuntime):raise ValueError('隔离预览不操作扭矩')
+            if self.limit_test.running:raise ValueError('限位自检进行中；请等待完成或点“立即停止”')
+            if self.controller['controller']=='online':
+                if not end_takeover:raise ValueError('手柄接管中；结束接管后再手动摆位')
+                self.stop()
+            selection=self._pose_selection(motors)
+            if action=='release':
+                result=self.torque(False,selection)
+                self.manual_pose_active=True
+                self.log('manual_pose',f'手动摆位：已卸力{result["count"]}个电机，可用手调整姿势',motors=result['motors'])
+                return {**result,'action':'release','widened':[],'skipped':[]}
+            self._require_not_calibrating()
+            self._make_envelopes()
+            skipped=[];widened=[]
+            for name,ids in list(selection.items()):
+                for i in list(ids):
+                    reason=self.service_blocked.get(f'{name}:{i}')
+                    if reason:skipped.append({'port':name,'id':i,'reason':reason});ids.remove(i)
+                if not ids:selection.pop(name)
+            if not selection:raise ValueError('所选电机都在检修中，未锁定')
+            self.session.open()
+            for name,ids in selection.items():
+                p=self.session.ports[name]
+                for i in ids:
+                    if name=='COM4' and i in (9,10):continue
+                    reg=read_registers(p,i)
+                    if reg[33]!=0:continue
+                    pos,low,high=word(reg,56),word(reg,9),word(reg,11)
+                    if low<=pos<=high:continue
+                    if reg[40]:raise ValueError(f'{name}:{i}在扭矩开启时位于限位外，未修改')
+                    new_low,new_high=min(low,max(0,pos-POSE_MARGIN_RAW)),max(high,min(4095,pos+POSE_MARGIN_RAW))
+                    write_limits(p,i,new_low,new_high)
+                    widened.append({'key':f'{name}:{i}','port':name,'id':i,'position':pos,
+                                    'old_min':low,'old_max':high,'min':new_low,'max':new_high})
+            self._sync_profile_limits(widened)
+            result=self.torque(True,selection)
+            self.manual_pose_active=False
+            self.load_kinematic_profile()
+            message=f'手动摆位：已锁定{result["count"]}个电机在当前位置'
+            if widened:message+=f'；{len(widened)}个关节超出原限位，已放宽到包住当前位置'
+            self.log('manual_pose',message,motors=result['motors'],widened=widened,skipped=skipped)
+            return {**result,'action':'hold','widened':widened,'skipped':skipped,'message':message}
 
     def begin(self,confirmed):
         with self.io:
@@ -941,7 +1018,7 @@ class OriginalRuntime(ControlRuntime):
             result=super().snapshot()
             setup=self.whole_robot_setup()
             preferred='preview' if isinstance(self,PreviewRuntime) else 'hardware' if setup['ready'] else 'preset'
-            result.update(version='3.7-limit-selftest',control_profile=self.control_profile,
+            result.update(version='3.8-manual-pose',control_profile=self.control_profile,
                           preferred_target=preferred,
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),

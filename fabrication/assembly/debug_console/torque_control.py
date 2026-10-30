@@ -90,6 +90,26 @@ def word(registers: list[int], address: int) -> int:
     return registers[address] + 256 * registers[address + 1]
 
 
+def write_limits(port: serial.Serial, motor_id: int, low: int, high: int) -> list[int]:
+    """Write position limits (EEPROM 9/11) with the lock opened and restored, then read back."""
+    before = read_registers(port, motor_id)
+    if (word(before, 9), word(before, 11)) == (low, high):
+        return before
+    if not 0 <= low < high <= 4095:
+        raise ValueError(f"ID {motor_id} 限位无效：{low}–{high}")
+    if not low <= word(before, 56) <= high:
+        raise ValueError(f"ID {motor_id} 当前位置不在新限位内，未写入")
+    write_register(port, motor_id, 55, 0, 1)
+    order = [(11, high), (9, low)] if low > word(before, 11) else [(9, low), (11, high)]
+    for address, value in order:
+        write_register(port, motor_id, address, value, 2)
+    write_register(port, motor_id, 55, before[55], 1)
+    after = read_registers(port, motor_id)
+    if (word(after, 9), word(after, 11)) != (low, high):
+        raise RuntimeError(f"ID {motor_id} 限位写入回读不符：{word(after, 9)}–{word(after, 11)}")
+    return after
+
+
 def discover(port: serial.Serial) -> list[int]:
     found = []
     for motor_id in SCAN_IDS:

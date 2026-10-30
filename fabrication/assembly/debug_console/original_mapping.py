@@ -52,7 +52,11 @@ for item in PRESET_MAP:
         item.update(role='肘 / 腕俯仰',gesture='直接前后拨杆转肘；按住LB/RB前后拨转腕俯仰',
                     result='对应关节按设定速度持续转动，回中即停',requirement=TUNE)
     elif item['key'] in ('ls','rs'):
-        item.update(result='只转肩水平；LB/RB优先于LS/RS',requirement=TUNE)
+        stick,side=('LS','左') if item['key']=='ls' else ('RS','右')
+        item.update(name=stick+'按住 / Elite背键',
+                    gesture=f'按住{stick}，或按住映射成“{side}摇杆按下”的Elite背键，再左右拨{side}摇杆',
+                    result='只转'+side+'肩水平；LB/RB优先于LS/RS',
+                    requirement='Elite背键需先在Xbox配件App里映射成摇杆按下（配置存在手柄上，换电脑也有效）；'+TUNE)
     elif item['key'] in ('lt','rt'):
         item.update(role='夹爪',gesture='首次压过75%后接入：压下闭合，松开张开',
                     result='按夹爪速度移动，到限位停住',requirement='开合反了：逐轴调参把夹爪设为反向')

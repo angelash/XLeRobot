@@ -59,7 +59,8 @@ def original_status():
     # Status polling is not a hardware mutation. Resuming a previously verified
     # torque-off checkpoint only reopens observation after a clean restart.
     pending=None if isinstance(runtime,PreviewRuntime) else runtime.manual_calibration.recoverable
-    if pending and not pending.get('dismissed') and not runtime.manual_calibration.active:
+    # A hand-posing release is not a request to reopen collection.
+    if pending and not pending.get('dismissed') and not runtime.manual_calibration.active and not getattr(runtime,'manual_pose_active',False):
         try:
             if runtime.controller['controller']=='offline' and not any(m['torque'] for p in runtime.report['ports'] for m in p['motors']):
                 runtime.calibration_command('resume',{})
@@ -123,6 +124,20 @@ def start_limit_test(payload:LimitTestCommand):
 @app.post('/api/limit-test/stop')
 def stop_limit_test():
     return runtime.limit_test.stop('页面点击立即停止')
+
+class ManualPoseCommand(BaseModel):
+    action:str
+    motors:dict[str,list[int]]|None=None
+    end_takeover:bool=False
+
+@app.post('/api/manual-pose')
+def manual_pose(payload:ManualPoseCommand):
+    try:
+        if isinstance(runtime,PreviewRuntime):raise ValueError('隔离预览不操作扭矩')
+        return runtime.manual_pose(payload.action,payload.motors,payload.end_takeover)
+    except Exception as exc:
+        runtime.log('error','手动摆位未执行：'+str(exc))
+        raise HTTPException(409,str(exc)) from exc
 
 @app.post('/api/whole-calibration/{action}')
 def whole_calibration_command(action:str,payload:WholeCalibrationCommand):
