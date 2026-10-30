@@ -125,6 +125,20 @@ def start_limit_test(payload:LimitTestCommand):
 def stop_limit_test():
     return runtime.limit_test.stop('页面点击立即停止')
 
+class UprightCommand(BaseModel):
+    side:str
+    action:str
+    positions:dict[str,int]|None=None
+
+@app.post('/api/limit-test/upright')
+def limit_test_upright(payload:UprightCommand):
+    try:
+        if isinstance(runtime,PreviewRuntime):raise ValueError('隔离预览不操作实机')
+        return runtime.limit_test.set_upright(payload.side,payload.action,payload.positions)
+    except Exception as exc:
+        runtime.log('limit_selftest','竖直姿态未修改：'+str(exc))
+        raise HTTPException(409,str(exc)) from exc
+
 class ManualPoseCommand(BaseModel):
     action:str
     motors:dict[str,list[int]]|None=None

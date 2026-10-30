@@ -229,4 +229,6 @@ def test_guided_calibration_proxy_only_exposes_explicit_actions(client):
     assert requests[-1].url.path=='/api/control-settings'
     assert client.post('/api/manual-pose',json={'action':'release'}).status_code==200
     assert requests[-1].url.path=='/api/manual-pose'
+    assert client.post('/api/limit-test/upright',json={'side':'left','action':'record'}).status_code==200
+    assert requests[-1].url.path=='/api/limit-test/upright'
     assert client.get('/static/manual-pose.js').status_code==200

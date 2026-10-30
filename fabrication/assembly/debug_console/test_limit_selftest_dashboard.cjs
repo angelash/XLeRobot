@@ -22,4 +22,15 @@ context.s.controller={controller:'offline'};context.s.limit_selftest={...context
 vm.runInContext('renderLimitTest(s)',context);
 assert.match(nodes.get('limit-live').textContent,/左臂肘 · 负向 · 位置 1900 → 目标 1880 · 负载 31%/);
 assert.equal(nodes.get('limit-stop').disabled,false);assert.match(nodes.get('limit-body').innerHTML,/完成：123°（原44°）· 下端止挡 · 上端探测上限 · 已写入/);
+context.s.limit_selftest={...context.s.limit_selftest,running:false,current:null,results:{},items:[
+ {id:'left:upright',side:'left',kind:'upright',name:'竖直此臂',note:'说明',prepose:[],upright:null},
+ {id:'right:upright',side:'right',kind:'upright',name:'竖直此臂',note:'说明',prepose:[],upright:{'2':2300,'3':2100,'4':2000}},
+ {id:'right:pitch',side:'right',kind:'pitch',name:'腕俯仰',note:'说明',prepose:['肘'],from_upright:true,position:2000,min:1800,max:2300,range_deg:44}]};
+vm.runInContext('limitView="";renderLimitTest(s)',context);
+const up=nodes.get('limit-body').innerHTML;
+assert.match(up,/data-upright="record" data-side="left"/);assert.match(up,/未记录：用“手动摆位”卸力/);
+assert.match(up,/已记录：肩抬升2300 · 肘2100 · 腕俯仰2000/);assert.match(up,/data-upright="clear" data-side="right"/);
+assert.match(up,/data-limit-item="left:upright"  disabled/,'An unrecorded upright pose cannot be ticked');
+assert.match(up,/先摆到记录的竖直姿态/);assert.doesNotMatch(up,/肘先摆到中位/);
+assert.equal(requests.length,0,'Rendering never records a pose');
 console.log('Limit self-test dashboard PASS: 16 illustrated items, recommended preselection, live probe line, stop availability, no automatic start');

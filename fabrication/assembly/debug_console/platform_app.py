@@ -421,7 +421,7 @@ async def camera_frame(camera:int):
 
 # A fixed route allowlist prevents the gateway becoming a generic HTTP proxy.
 PROXY_GET={'original/status','status','events','log/download'}
-PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','control-settings','torque','calibration/read','hardware/prepare','limit-test/start','limit-test/stop','manual-pose'}
+PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','control-settings','torque','calibration/read','hardware/prepare','limit-test/start','limit-test/stop','limit-test/upright','manual-pose'}
 PROXY_POST.update('whole-calibration/'+a for a in ('start','resume','recover','merge-checkpoint','capture','capture-item','delete-item','clear-captures','rewind','base-test','base-confirm','wheels','apply','apply-ranges','cancel'))
 
 async def proxy(request,path,stream=False):

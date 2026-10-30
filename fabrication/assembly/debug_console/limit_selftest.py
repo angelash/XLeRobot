@@ -20,7 +20,10 @@ from .torque_control import read_registers,word,write_register
 from .upstream_teleop import neutral
 from .whole_calibration import atomic_json
 
-ARM_ORDER=('grip','roll','pitch','elbow','lift','fold','pan')
+ARM_ORDER=('grip','roll','upright','pitch','elbow','lift','fold','pan')
+# These start from the recorded upright pose when one exists: with the arm
+# pointing straight up, both probe directions swing down and away from the body.
+UPRIGHT_KINDS=('pitch','elbow','lift')
 ARM_TESTS={
  'grip':{'id':6,'name':'夹爪','torque':350,'speed_deg':25,'extend_deg':40,'lag':40,'prepose':{},
          'note':'张开端和闭合端分别轻顶到止挡；夹爪里不要放任何东西。'},
@@ -33,6 +36,7 @@ ARM_TESTS={
  'lift':{'id':2,'name':'肩抬升','torque':950,'speed_deg':10,'extend_deg':30,'lag':64,'prepose':{3:'mid',4:'mid'},
          'note':'带动整条手臂，扭矩上限较高；先把肘、腕俯仰放到中位。'},
  'fold':{'name':'收起此臂','note':'把肩抬升、肘、腕俯仰同步移回保存行程时的折叠姿态，供肩水平测试。'},
+ 'upright':{'name':'竖直此臂','note':'把肩抬升、肘、腕俯仰移到记录的竖直向上姿态。记录后，腕俯仰、肘、肩抬升都从这个姿态开始测，测完回到原姿态。'},
  'pan':{'id':1,'name':'肩水平','torque':500,'speed_deg':12,'extend_deg':40,'lag':48,'prepose':{},'requires_fold':True,
         'note':'必须先全收起该臂，否则会扫到车体或另一条臂。'},
 }
@@ -40,14 +44,26 @@ HEAD_TESTS={
  'tilt':{'id':8,'name':'头部俯仰','torque':350,'speed_deg':15,'extend_deg':30,'lag':40,'prepose':{},'note':'镜头上下转到止挡，注意线缆余量。'},
  'pan':{'id':7,'name':'头部水平','torque':350,'speed_deg':15,'extend_deg':40,'lag':40,'prepose':{},'note':'镜头左右转到止挡。'},
 }
-RECOMMENDED=['head:tilt','head:pan',*[f'{s}:{k}' for s in ('left','right') for k in ARM_ORDER]]
+ALL_ITEMS=['head:tilt','head:pan',*[f'{s}:{k}' for s in ('left','right') for k in ARM_ORDER]]
+RECOMMENDED=[x for x in ALL_ITEMS if not x.endswith(':upright')]
 # Moves inside a known range (pre-pose, return, fold) carry the forearm or
 # whole arm against gravity: on the robot 70 % could not lift the left
 # forearm back, so they use full torque with the same obstruction check.
 MARGIN_RAW=24;BACKOFF_RAW=32;TICK=.05;WINDOW=8;FOLD_TOL=60;MOVE_TORQUE=1000
+# STS3215 overload protection (registers 34-36, factory 20 % / 2 s / 80 %): a
+# probe pushing above the threshold at a stop drops the output to 20 % and the
+# joint then cannot back off. Probes stay this far under the threshold.
+PROBE_TORQUE_MARGIN=50
+RECOVER_WAIT_S=2.5;RECOVER_TRIES=3;RETURN_SPEED_DEG=20;STRICT_TOL=16
+STATUS_BITS={1:'电压',2:'编码器',4:'温度',8:'电流',32:'过载'}
 
 
 class Aborted(Exception):pass
+
+
+class Blocked(RuntimeError):
+    def __init__(self,message,port,i):
+        super().__init__(message);self.port=port;self.id=i
 
 
 def deg(raw):return round(raw*360/4096,1)
@@ -57,6 +73,7 @@ class LimitSelfTest:
     def __init__(self,runtime,results_dir,profile_path,tick=TICK):
         self.runtime=runtime;self.results_dir=Path(results_dir);self.profile_path=Path(profile_path)
         self.tick=tick;self.require_pad=True
+        self.recover_wait=RECOVER_WAIT_S;self.arm_origin={}
         self.running=False;self.abort_reason=None;self.thread=None;self.plan=[];self.current=None
         self.results={};self.events=deque(maxlen=60);self.apply=True;self.error=None;self.live={}
         self.torque_backup={};self.limit_backup={};self.finalized=set();self.started_at=None;self.finished_at=None
@@ -88,6 +105,51 @@ class LimitSelfTest:
         port=self.runtime.arm_ports()[side];motors=self.runtime.motors()
         return all(abs(motors[(port,i)]['position']-pose[i])<=FOLD_TOL for i in (2,3))
 
+    # ---- upright start pose ------------------------------------------------
+    def _upright_path(self):return self.results_dir/'upright-poses.json'
+
+    def _upright_data(self):
+        try:return json.loads(self._upright_path().read_text(encoding='utf-8'))
+        except (OSError,ValueError):return {}
+
+    def upright_pose(self,side):
+        """Recorded straight-up pose of an arm (lift, elbow, wrist pitch), kept
+        per physical board and invalidated when that board's homing changes."""
+        if side not in ('left','right'):return None
+        port=self.runtime.arm_ports()[side];entry=self._upright_data().get(port)
+        if not entry or entry.get('serials')!=EXPECTED_SERIALS:return None
+        motors=self.runtime.motors();pose={}
+        for i in (2,3,4):
+            m=motors.get((port,i));j=str(i)
+            if not m or j not in entry.get('positions',{}) or entry.get('homing',{}).get(j)!=m['homing_raw']:return None
+            pose[i]=max(m['min'],min(m['max'],int(entry['positions'][j])))
+        return pose
+
+    def set_upright(self,side,action,positions=None):
+        if side not in ('left','right'):raise ValueError('未知手臂')
+        r=self.runtime;name='左臂' if side=='left' else '右臂'
+        with r.io:
+            if self.running:raise ValueError('自检进行中，结束后再修改竖直姿态')
+            port=r.arm_ports()[side];data=self._upright_data()
+            if action=='clear':
+                data.pop(port,None);message=name+'竖直姿态已清除，腕俯仰/肘/肩抬升恢复为中位预置'
+            elif action in ('record','set'):
+                r.scan();motors=r.motors();pose={}
+                for i in (2,3,4):
+                    m=motors.get((port,i))
+                    if not m:raise ValueError(f'{port}:{i}未在线')
+                    given=(positions or {}).get(str(i),(positions or {}).get(i))
+                    value=int(m['position'] if action=='record' or given is None else given)
+                    if not m['min']<=value<=m['max']:raise ValueError(f'{m["label"]}位置{value}超出当前限位{m["min"]}–{m["max"]}')
+                    pose[str(i)]=value
+                data[port]={'serials':EXPECTED_SERIALS,'positions':pose,'recorded_at':now(),'source':action,
+                            'homing':{str(i):motors[(port,i)]['homing_raw'] for i in (2,3,4)}}
+                message=f'{name}竖直姿态已{"记录" if action=="record" else "设定"}：肩抬升{pose["2"]}、肘{pose["3"]}、腕俯仰{pose["4"]}'
+            else:raise ValueError('未知竖直姿态操作')
+            self.results_dir.mkdir(parents=True,exist_ok=True);atomic_json(self._upright_path(),data)
+            self._log(message)
+        return self.snapshot()
+
     def items(self):
         motors=self.runtime.motors();out=[]
         groups=[('head',k) for k in ('tilt','pan')]+[(s,k) for s in ('left','right') for k in ARM_ORDER]
@@ -101,6 +163,10 @@ class LimitSelfTest:
                 m=motors.get((port,cfg['id']))
                 if m:row.update(motor=cfg['id'],position=m['position'],min=m['min'],max=m['max'],range_deg=deg(m['max']-m['min']),torque=m['torque'])
             if kind in ('pan','fold') and side!='head':row['folded']=self.folded(side)
+            if side!='head' and (kind=='upright' or kind in UPRIGHT_KINDS):
+                pose=self.upright_pose(side)
+                if kind=='upright':row['upright']={str(k):v for k,v in pose.items()} if pose else None
+                else:row['from_upright']=bool(pose)
             out.append(row)
         return out
 
@@ -113,9 +179,9 @@ class LimitSelfTest:
     def _ordered(self,items):
         wanted=set(items or [])
         if not wanted:raise ValueError('请至少勾选一个自检项目')
-        unknown=wanted-set(RECOMMENDED)
+        unknown=wanted-set(ALL_ITEMS)
         if unknown:raise ValueError('未知自检项目：'+'、'.join(sorted(unknown)))
-        return [x for x in RECOMMENDED if x in wanted]
+        return [x for x in ALL_ITEMS if x in wanted]
 
     def start(self,items,confirmed,apply=True,background=True):
         r=self.runtime
@@ -134,11 +200,13 @@ class LimitSelfTest:
                     raise ValueError(('左臂' if side=='left' else '右臂')+'肩水平需要全收起：勾选“收起此臂”，或先手动收起')
                 if f'{side}:fold' in plan and not self.fold_pose(side):
                     raise ValueError(('左臂' if side=='left' else '右臂')+'没有保存行程时的折叠姿态，无法自动收起')
+                if f'{side}:upright' in plan and not self.upright_pose(side):
+                    raise ValueError(('左臂' if side=='left' else '右臂')+'还没有记录竖直姿态：摆到竖直后在“竖直此臂”卡片点“记录”')
             # A joint left resting a few counts past its limit (e.g. against a
             # stop after an interrupted probe) is re-included before holding.
             for item in plan:
-                port,cfg=self._target(item)
-                for j in ([cfg['id']] if 'id' in cfg else [2,3,4])+list(cfg.get('prepose',{})):
+                port,_=self._target(item)
+                for j in self._joints_for(item):
                     reg=read_registers(r.session.ports[port],j);pos,low,high=word(reg,56),word(reg,9),word(reg,11)
                     if (pos<low and low-pos<=32) or (pos>high and pos-high<=32):
                         self._set_limits(port,j,min(low,max(0,pos-8)),max(high,min(4095,pos+8)))
@@ -146,14 +214,12 @@ class LimitSelfTest:
             r.scan();prepared=r.prepare_hardware(True)
             ready={(x['port'],x['id']) for x in prepared['ready']}
             for item in plan:
-                port,cfg=self._target(item)
-                ids=[cfg['id']] if 'id' in cfg else [2,3,4]
-                ids+=list(cfg.get('prepose',{}))
+                port,_=self._target(item);ids=self._joints_for(item)
                 missing=[f'{port}:{i}' for i in ids if (port,i) not in ready]
                 if missing:raise ValueError(item+'所需关节未能保持当前位置：'+'、'.join(missing))
             self.plan=plan;self.results={x:{'status':'queued'} for x in plan};self.apply=bool(apply)
             self.running=True;self.abort_reason=None;self.error=None;self.current=None;self.live={}
-            self.torque_backup={};self.limit_backup={};self.finalized=set()
+            self.torque_backup={};self.limit_backup={};self.finalized=set();self.arm_origin={}
             self.started_at=now();self.finished_at=None;self.events.clear()
             self._log('自检开始：'+'、'.join(plan))
         if background:
@@ -164,6 +230,13 @@ class LimitSelfTest:
     def stop(self,reason='页面停止'):
         if self.running:self.abort_reason=reason
         return self.snapshot()
+
+    def _joints_for(self,item):
+        side,kind=item.split(':',1);_,cfg=self._target(item)
+        ids=[cfg['id']] if 'id' in cfg else [2,3,4]
+        if side!='head' and kind in UPRIGHT_KINDS and self.upright_pose(side):ids+=[2,3,4]
+        else:ids+=list(cfg.get('prepose',{}))
+        return sorted(set(ids))
 
     def _log(self,message,**fields):
         self.events.append({'time':now(),'message':message})
@@ -215,8 +288,10 @@ class LimitSelfTest:
         return self.runtime.motors().get((port,i),{}).get('label',f'{port}:{i}')
 
     # ---- motion primitives -----------------------------------------------
-    def _move_to(self,targets,speed_deg=12,what='回位'):
-        """Step several joints together toward targets; stop on obstruction."""
+    def _move_to(self,targets,speed_deg=12,what='回位',strict=False):
+        """Step several joints together toward targets; stop on obstruction.
+        strict: the joint must really arrive (backing off a stop); resting
+        short is an obstruction, not gravity sag."""
         if not targets:return
         speed=speed_deg*4096/360
         state={}
@@ -241,20 +316,49 @@ class LimitSelfTest:
                 settled=len(s['history'])==WINDOW and max(s['history'])-min(s['history'])<=3
                 # Gravity and the reduced torque ceiling leave a joint resting a
                 # few counts short; a still joint inside the obstruction lag is there.
-                if s['goal']!=s['target'] or not (abs(s['target']-pos)<=8 or (settled and lag<72)):done=False
+                arrived=abs(s['target']-pos)<=(STRICT_TOL if strict else 8) or (not strict and settled and lag<72)
+                if s['goal']!=s['target'] or not arrived:done=False
+                if strict and s['goal']==s['target'] and settled and not arrived:lag=max(lag,72)
                 if lag>=72 and len(s['history'])==WINDOW and max(s['history'])-min(s['history'])<=3:
                     with self.runtime.io:write_register(self.runtime.session.ports[port],i,42,pos,2)
-                    raise RuntimeError(f'{what}时{self._label(port,i)}在{pos}受阻')
+                    raise Blocked(f'{what}时{self._label(port,i)}在{pos}受阻',port,i)
             if done:return
             if time.monotonic()>deadline:raise RuntimeError(what+'超时')
             self._sleep()
+
+    def _diagnose(self,port,i):
+        reg=self._read(port,i);status=reg[65]
+        flags='、'.join(n for b,n in STATUS_BITS.items() if status&b) or '无'
+        return (f'舵机状态0x{status:02x}（{flags}）·扭矩上限{word(reg,48)/10:.0f}%·负载{(word(reg,60)&0x3ff)/10:.0f}%'
+                f'·{reg[62]/10:.1f}V·{reg[63]}°C')
+
+    def _wait(self,seconds):
+        end=time.monotonic()+seconds
+        while time.monotonic()<end:
+            self._check_abort();time.sleep(min(.1,max(0,end-time.monotonic())))
+
+    def _move_retry(self,targets,speed_deg,what,strict=False):
+        """A joint that just pressed a stop may sit in overload protection for a
+        moment: hold it, wait, and try again before calling it blocked."""
+        for attempt in range(1,RECOVER_TRIES+1):
+            try:return self._move_to(targets,speed_deg,what,strict)
+            except Blocked as exc:
+                diag=self._diagnose(exc.port,exc.id)
+                if attempt==RECOVER_TRIES:raise Blocked(f'{exc}（{diag}）',exc.port,exc.id) from exc
+                self._log(f'{exc}（{diag}）；等待{self.recover_wait:g}秒后第{attempt}次重试',port=exc.port,id=exc.id)
+                self._wait(self.recover_wait)
+
+    def _probe_torque(self,port,i,wanted):
+        threshold=self._read(port,i)[36]
+        if not threshold:return wanted
+        return max(300,min(wanted,threshold*10-PROBE_TORQUE_MARGIN))
 
     def _probe(self,port,i,direction,cfg):
         reg=self._read(port,i);pos=word(reg,56);low,high=word(reg,9),word(reg,11)
         extend=round(cfg['extend_deg']*4096/360)
         bound=max(8,low-extend) if direction<0 else min(4087,high+extend)
         self._set_limits(port,i,min(low,bound),max(high,bound))
-        self._torque_limit(port,i,cfg['torque'])
+        self._torque_limit(port,i,self._probe_torque(port,i,cfg['torque']))
         speed=cfg['speed_deg']*4096/360
         with self.runtime.io:write_register(self.runtime.session.ports[port],i,46,min(1000,max(60,int(speed))),2)
         goal=float(pos);history=deque(maxlen=WINDOW);peak=0;kind=None
@@ -280,24 +384,35 @@ class LimitSelfTest:
         edge=pos
         self._log(f'{name}{"负" if direction<0 else "正"}向：'+{'stall':f'在{pos}顶到止挡（负载峰值{peak/10:.0f}%）','bound':f'到探测上限{pos}仍未遇到止挡','timeout':f'超时停在{pos}'}[kind],
                   port=port,id=i,direction=direction,edge=edge,stop_kind=kind,peak_load=peak)
-        if kind=='stall':self._move_to({(port,i):edge-direction*BACKOFF_RAW},cfg['speed_deg'],'退离止挡')
+        if kind=='stall':self._move_retry({(port,i):edge-direction*BACKOFF_RAW},cfg['speed_deg'],'退离止挡',strict=True)
         return {'edge':edge,'kind':kind,'peak_load':peak}
 
     # ---- items -------------------------------------------------------------
     def _fold(self,side):
         port=self.runtime.arm_ports()[side];pose=self.fold_pose(side)
         if not pose:raise ValueError('没有折叠姿态记录')
-        self._move_to({(port,i):pose[i] for i in (2,3,4)},10,'收起')
+        self._move_retry({(port,i):pose[i] for i in (2,3,4)},10,'收起')
         return {'status':'done','message':'已收起到保存行程时的折叠姿态'}
+
+    def _upright(self,side,record_origin=False):
+        port=self.runtime.arm_ports()[side];pose=self.upright_pose(side)
+        if not pose:raise ValueError('没有竖直姿态记录')
+        if record_origin and side not in self.arm_origin:
+            self.arm_origin[side]={j:word(self._read(port,j),56) for j in (2,3,4)}
+        self._move_retry({(port,i):pose[i] for i in (2,3,4)},12,'摆到竖直')
+        return {'status':'done','message':'已摆到竖直姿态'}
 
     def _run_item(self,item):
         side,kind=item.split(':',1)
         if kind=='fold':return self._fold(side)
+        if kind=='upright':return self._upright(side)
         port,cfg=self._target(item);i=cfg['id'];key=f'{port}:{i}'
+        upright=side!='head' and kind in UPRIGHT_KINDS and bool(self.upright_pose(side))
+        if upright:self._upright(side,record_origin=True)
         reg=self._read(port,i);start=word(reg,56);old=(word(reg,9),word(reg,11))
-        moved=[]
+        moved=[];back=max(cfg['speed_deg'],RETURN_SPEED_DEG)
         try:
-            for j in cfg.get('prepose',{}):
+            for j in ({} if upright else cfg.get('prepose',{})):
                 r2=self._read(port,j);moved.append((j,word(r2,56)))
                 # Pre-posing only makes room. A posture-dependent obstruction
                 # (e.g. a folded forearm against the body) leaves the joint
@@ -305,9 +420,9 @@ class LimitSelfTest:
                 try:self._move_to({(port,j):(word(r2,9)+word(r2,11))/2},12,'预置姿态')
                 except RuntimeError as exc:self._log(f'{exc}；预置未到中位，停在受阻处继续测试')
             low=self._probe(port,i,-1,cfg)
-            self._move_to({(port,i):start},cfg['speed_deg'],'回到起点')
+            self._move_retry({(port,i):start},back,'回到起点')
             high=self._probe(port,i,1,cfg)
-            self._move_to({(port,i):start},cfg['speed_deg'],'回到起点')
+            self._move_retry({(port,i):start},back,'回到起点')
         finally:
             for j,pos in reversed(moved):
                 try:self._move_to({(port,j):pos},12,'恢复预置关节')
@@ -323,7 +438,7 @@ class LimitSelfTest:
         if not new_low<start<new_high or new_high-new_low<48:raise RuntimeError(f'探测结果无效：{new_low}–{new_high}')
         result={'status':'done','min':new_low,'max':new_high,'min_kind':low['kind'],'max_kind':high['kind'],
                 'old_min':old[0],'old_max':old[1],'range_deg':deg(new_high-new_low),'old_range_deg':deg(old[1]-old[0]),
-                'peak_load':max(low['peak_load'],high['peak_load']),'applied':False}
+                'peak_load':max(low['peak_load'],high['peak_load']),'applied':False,'from_upright':upright}
         if self.apply:
             self._set_limits(port,i,new_low,new_high);self._update_profile(port,i,low,high,new_low,new_high)
             result['applied']=True
@@ -347,7 +462,7 @@ class LimitSelfTest:
 
     def _run(self):
         try:
-            for item in self.plan:
+            for n,item in enumerate(self.plan):
                 self._check_abort();self.current=item;self.results[item]['status']='running'
                 try:self.results[item].update(self._run_item(item))
                 except Aborted:raise
@@ -355,6 +470,7 @@ class LimitSelfTest:
                     self.results[item].update(status='failed',message=str(exc))
                     self._log(item+'失败：'+str(exc))
                     if isinstance(exc,OSError):raise
+                self._restore_arm(item,self.plan[n+1:])
         except Aborted as exc:
             self.error=str(exc);self._log(str(exc))
         except Exception as exc:
@@ -371,6 +487,17 @@ class LimitSelfTest:
                              'plan':self.plan,'results':self.results,'error':self.error,'events':list(self.events)})
             except OSError:pass
 
+    def _restore_arm(self,item,rest):
+        """After the last upright-based item of an arm, put it back where the
+        test found it (a later fold item does this itself)."""
+        side=item.split(':')[0]
+        if side not in self.arm_origin:return
+        if any(x.split(':')[0]==side and x.split(':')[1] in (*UPRIGHT_KINDS,'upright','fold') for x in rest):return
+        origin=self.arm_origin.pop(side);port=self.runtime.arm_ports()[side]
+        try:self._move_retry({(port,j):p for j,p in origin.items()},12,'恢复原姿态')
+        except Aborted:raise
+        except Exception as exc:self._log(('左臂' if side=='left' else '右臂')+f'恢复原姿态失败：{exc}')
+
     def _cleanup(self):
         """Hold every touched joint where it is, restore torque ceilings, and
         never leave an unexplored temporary limit: an interrupted joint keeps
@@ -381,7 +508,8 @@ class LimitSelfTest:
             port,i=key.split(':');i=int(i)
             try:
                 pos=word(self._read(port,i),56)
-                self._set_limits(port,i,min(low,max(0,pos-8)),max(high,min(4095,pos+8)))
+                # Widen only when the joint really stopped outside its range.
+                self._set_limits(port,i,max(0,pos-8) if pos<low else low,min(4095,pos+8) if pos>high else high)
             except Exception as exc:self._log(f'{key}临时限位恢复失败：{exc}')
         for key,value in list(self.torque_backup.items()):
             port,i=key.split(':');i=int(i)

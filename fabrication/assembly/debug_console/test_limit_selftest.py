@@ -141,3 +141,92 @@ def test_api_and_pad_dead_man(runtime,st,monkeypatch):
     assert not st._pad_active()
     assert client.post('/api/limit-test/stop').status_code==200
     assert 'limit_selftest' in client.get('/api/original/status').json()
+
+
+def test_upright_pose_is_the_start_for_pitch_and_the_arm_returns_afterwards(runtime,st):
+    goals={2:[],3:[],4:[]}
+    port=runtime.session.ports['COM3'];original=port.write
+    def spy(packet):
+        if packet[4]==3 and packet[5]==42 and packet[2] in goals:goals[packet[2]].append(packet[6]+256*packet[7])
+        return original(packet)
+    port.write=spy
+    st.set_upright('left','set',{'2':2250,'3':1900,'4':2100})
+    assert st.upright_pose('left')=={2:2250,3:1900,4:2100}
+    rows={x['id']:x for x in st.items()}
+    assert rows['left:upright']['upright']=={'2':2250,'3':1900,'4':2100} and rows['left:pitch']['from_upright']
+    assert 'left:upright' not in lt.RECOMMENDED,'Only run when the user ticks it'
+    st.start(['left:pitch'],True,background=False)
+    res=st.results['left:pitch']
+    assert res['status']=='done' and res['from_upright'],res
+    assert 2250 in goals[2] and 1900 in goals[3],'The arm is raised to the upright pose first'
+    assert all(word(reg(runtime,'COM3',i),56)==2050 for i in (2,3,4)),'The arm returns to where the test found it'
+
+
+def test_backoff_stuck_in_overload_protection_waits_and_retries(runtime,st):
+    port=runtime.session.ports['COM3'];original=port.write;state={'stuck':False,'seen':False}
+    def write(packet):
+        result=original(packet)
+        if packet[2]==8 and packet[4]==3 and packet[5]==42:
+            r=port.regs[8]
+            if word(r,56)<=1600:
+                set_word(r,56,1600)
+                if not state['seen']:state.update(seen=True,stuck=True)
+            if state['stuck']:set_word(r,56,1600);r[65]=0x20
+            else:r[65]=0
+        return result
+    port.write=write
+    def recover(seconds):state['stuck']=False
+    st._wait=recover
+    st.start(['head:tilt'],True,background=False)
+    res=st.results['head:tilt']
+    assert res['status']=='done' and res['min']==1600+lt.MARGIN_RAW,res
+    assert any('退离止挡' in e['message'] and '过载' in e['message'] and '重试' in e['message'] for e in st.events)
+
+
+def test_backoff_that_never_moves_is_reported_with_the_servo_state(runtime,st):
+    port=runtime.session.ports['COM3'];original=port.write
+    def write(packet):
+        result=original(packet)
+        if packet[2]==8 and packet[4]==3 and packet[5]==42 and word(port.regs[8],56)<=1650:
+            set_word(port.regs[8],56,1600);port.regs[8][65]=0x20
+        return result
+    port.write=write;st.recover_wait=0
+    st.start(['head:tilt'],True,background=False)
+    res=st.results['head:tilt']
+    assert res['status']=='failed' and '退离止挡' in res['message'] and '过载' in res['message'],res
+    assert sum('重试' in e['message'] for e in st.events)==lt.RECOVER_TRIES-1
+
+
+def test_probe_torque_stays_under_the_overload_threshold(runtime,st):
+    port=runtime.session.ports['COM3'];port.regs[3][36]=80;written=[];original=port.write
+    def spy(packet):
+        if packet[2]==3 and packet[4]==3 and packet[5]==48:written.append(packet[6]+256*packet[7])
+        return original(packet)
+    port.write=spy
+    st.start(['left:elbow'],True,background=False)
+    assert st.results['left:elbow']['status']=='done'
+    assert 800-lt.PROBE_TORQUE_MARGIN in written and lt.ARM_TESTS['elbow']['torque'] not in written
+
+
+def test_cleanup_restores_exact_limits_when_the_joint_stopped_inside(runtime,st):
+    r8=reg(runtime,'COM3',8)
+    for pos,expected in ((2296,(1800,2300)),(2340,(1800,2348))):
+        set_word(r8,9,1500);set_word(r8,11,2600);set_word(r8,56,pos)
+        st.limit_backup={'COM3:8':(1800,2300)};st.finalized=set();st.torque_backup={}
+        st._cleanup()
+        assert (word(r8,9),word(r8,11))==expected,'Widen only when the joint is really outside'
+
+
+def test_upright_item_needs_a_record_and_the_api_records_it(runtime,st,monkeypatch):
+    with pytest.raises(ValueError,match='竖直'):st.start(['left:upright'],True,background=False)
+    from fastapi.testclient import TestClient
+    from fabrication.assembly.debug_console import app as web
+    monkeypatch.setattr(web,'runtime',runtime);client=TestClient(web.app)
+    assert client.post('/api/limit-test/upright',json={'side':'left','action':'record'}).status_code==200
+    assert st.upright_pose('left')=={2:2050,3:2050,4:2050}
+    bad=client.post('/api/limit-test/upright',json={'side':'left','action':'set','positions':{'2':4000}})
+    assert bad.status_code==409 and '超出' in bad.json()['detail']
+    st.start(['left:upright'],True,background=False)
+    assert st.results['left:upright']['status']=='done'
+    assert client.post('/api/limit-test/upright',json={'side':'left','action':'clear'}).status_code==200
+    assert st.upright_pose('left') is None

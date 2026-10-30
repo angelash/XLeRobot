@@ -1018,7 +1018,7 @@ class OriginalRuntime(ControlRuntime):
             result=super().snapshot()
             setup=self.whole_robot_setup()
             preferred='preview' if isinstance(self,PreviewRuntime) else 'hardware' if setup['ready'] else 'preset'
-            result.update(version='3.8-manual-pose',control_profile=self.control_profile,
+            result.update(version='3.9-upright-selftest',control_profile=self.control_profile,
                           preferred_target=preferred,
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),
