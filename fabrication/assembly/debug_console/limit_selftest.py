@@ -494,8 +494,11 @@ class LimitSelfTest:
     def _restore_arm(self,item,rest):
         """After the last upright-based item of an arm, put it back where the
         test found it (a later fold item does this itself)."""
-        side=item.split(':')[0]
+        side,kind=item.split(':',1)
         if side not in self.arm_origin:return
+        # Folding is the arm's final pose; restoring the start pose afterwards
+        # would lift a folded arm back up.
+        if kind=='fold':self.arm_origin.pop(side,None);return
         if any(x.split(':')[0]==side and x.split(':')[1] in (*UPRIGHT_KINDS,'upright','fold') for x in rest):return
         origin=self.arm_origin.pop(side);port=self.runtime.arm_ports()[side]
         try:self._move_retry({(port,j):p for j,p in origin.items()},12,'恢复原姿态')

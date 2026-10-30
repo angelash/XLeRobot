@@ -165,6 +165,18 @@ def test_upright_pose_is_the_start_for_pitch_and_the_arm_returns_afterwards(runt
     assert st.results['left:lift']['start_pose']=={'2':2250,'3':2050,'4':2100},'Lift starts upright with the elbow at mid range'
 
 
+def test_a_fold_after_upright_items_is_the_final_pose(runtime,st):
+    joints={f'COM3:{i}':{'position':p,'homing_raw':word(reg(runtime,'COM3',i),31),'mid':2047,'min':1800,'max':2300}
+            for i,p in ((2,1850),(3,2250),(4,2000))}
+    st.profile_path.write_text(json.dumps({'serials':lt.EXPECTED_SERIALS,'joints':joints}),encoding='utf-8')
+    st.set_upright('left','set',{'2':2250,'3':1900,'4':2100})
+    for i,p in ((2,2250),(3,1900),(4,2100)):set_word(reg(runtime,'COM3',i),56,p)
+    runtime.scan()
+    st.start(['left:pitch','left:fold'],True,background=False)
+    assert st.results['left:fold']['status']=='done'
+    assert [word(reg(runtime,'COM3',i),56) for i in (2,3,4)]==[1850,2250,2000],'The arm stays folded'
+
+
 def test_backoff_stuck_in_overload_protection_waits_and_retries(runtime,st):
     port=runtime.session.ports['COM3'];original=port.write;state={'stuck':False,'seen':False}
     def write(packet):
