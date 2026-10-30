@@ -160,6 +160,9 @@ def test_upright_pose_is_the_start_for_pitch_and_the_arm_returns_afterwards(runt
     assert res['status']=='done' and res['from_upright'],res
     assert 2250 in goals[2] and 1900 in goals[3],'The arm is raised to the upright pose first'
     assert all(word(reg(runtime,'COM3',i),56)==2050 for i in (2,3,4)),'The arm returns to where the test found it'
+    assert res['start_pose']=={'2':2250,'3':1900,'4':2100}
+    st.start(['left:lift'],True,background=False)
+    assert st.results['left:lift']['start_pose']=={'2':2250,'3':2050,'4':2100},'Lift starts upright with the elbow at mid range'
 
 
 def test_backoff_stuck_in_overload_protection_waits_and_retries(runtime,st):

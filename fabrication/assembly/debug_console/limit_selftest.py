@@ -70,8 +70,10 @@ def deg(raw):return round(raw*360/4096,1)
 
 
 class LimitSelfTest:
-    def __init__(self,runtime,results_dir,profile_path,tick=TICK):
+    def __init__(self,runtime,results_dir,profile_path,tick=TICK,upright_path=None):
         self.runtime=runtime;self.results_dir=Path(results_dir);self.profile_path=Path(profile_path)
+        # Results are kept per day; the upright pose must survive a restart.
+        self.upright_path=Path(upright_path) if upright_path else self.results_dir/'upright-poses.json'
         self.tick=tick;self.require_pad=True
         self.recover_wait=RECOVER_WAIT_S;self.arm_origin={}
         self.running=False;self.abort_reason=None;self.thread=None;self.plan=[];self.current=None
@@ -106,10 +108,8 @@ class LimitSelfTest:
         return all(abs(motors[(port,i)]['position']-pose[i])<=FOLD_TOL for i in (2,3))
 
     # ---- upright start pose ------------------------------------------------
-    def _upright_path(self):return self.results_dir/'upright-poses.json'
-
     def _upright_data(self):
-        try:return json.loads(self._upright_path().read_text(encoding='utf-8'))
+        try:return json.loads(self.upright_path.read_text(encoding='utf-8'))
         except (OSError,ValueError):return {}
 
     def upright_pose(self,side):
@@ -146,7 +146,7 @@ class LimitSelfTest:
                             'homing':{str(i):motors[(port,i)]['homing_raw'] for i in (2,3,4)}}
                 message=f'{name}竖直姿态已{"记录" if action=="record" else "设定"}：肩抬升{pose["2"]}、肘{pose["3"]}、腕俯仰{pose["4"]}'
             else:raise ValueError('未知竖直姿态操作')
-            self.results_dir.mkdir(parents=True,exist_ok=True);atomic_json(self._upright_path(),data)
+            self.upright_path.parent.mkdir(parents=True,exist_ok=True);atomic_json(self.upright_path,data)
             self._log(message)
         return self.snapshot()
 
@@ -394,13 +394,17 @@ class LimitSelfTest:
         self._move_retry({(port,i):pose[i] for i in (2,3,4)},10,'收起')
         return {'status':'done','message':'已收起到保存行程时的折叠姿态'}
 
-    def _upright(self,side,record_origin=False):
+    def _upright(self,side,record_origin=False,kind=None):
         port=self.runtime.arm_ports()[side];pose=self.upright_pose(side)
         if not pose:raise ValueError('没有竖直姿态记录')
+        if kind=='lift':
+            # Shoulder lift swings the whole arm: keep the upper arm upright but
+            # bend the elbow to mid range, halving the reach and gravity load.
+            reg=self._read(port,3);pose={**pose,3:(word(reg,9)+word(reg,11))//2}
         if record_origin and side not in self.arm_origin:
             self.arm_origin[side]={j:word(self._read(port,j),56) for j in (2,3,4)}
         self._move_retry({(port,i):pose[i] for i in (2,3,4)},12,'摆到竖直')
-        return {'status':'done','message':'已摆到竖直姿态'}
+        return {'status':'done','message':'已摆到竖直姿态','start_pose':{str(k):v for k,v in pose.items()}}
 
     def _run_item(self,item):
         side,kind=item.split(':',1)
@@ -408,7 +412,7 @@ class LimitSelfTest:
         if kind=='upright':return self._upright(side)
         port,cfg=self._target(item);i=cfg['id'];key=f'{port}:{i}'
         upright=side!='head' and kind in UPRIGHT_KINDS and bool(self.upright_pose(side))
-        if upright:self._upright(side,record_origin=True)
+        start_pose=self._upright(side,record_origin=True,kind=kind)['start_pose'] if upright else None
         reg=self._read(port,i);start=word(reg,56);old=(word(reg,9),word(reg,11))
         moved=[];back=max(cfg['speed_deg'],RETURN_SPEED_DEG)
         try:
@@ -438,7 +442,7 @@ class LimitSelfTest:
         if not new_low<start<new_high or new_high-new_low<48:raise RuntimeError(f'探测结果无效：{new_low}–{new_high}')
         result={'status':'done','min':new_low,'max':new_high,'min_kind':low['kind'],'max_kind':high['kind'],
                 'old_min':old[0],'old_max':old[1],'range_deg':deg(new_high-new_low),'old_range_deg':deg(old[1]-old[0]),
-                'peak_load':max(low['peak_load'],high['peak_load']),'applied':False,'from_upright':upright}
+                'peak_load':max(low['peak_load'],high['peak_load']),'applied':False,'from_upright':upright,'start_pose':start_pose}
         if self.apply:
             self._set_limits(port,i,new_low,new_high);self._update_profile(port,i,low,high,new_low,new_high)
             result['applied']=True

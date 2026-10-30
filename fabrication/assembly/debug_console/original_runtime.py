@@ -14,6 +14,7 @@ from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_vel
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
 SERVICE_PROFILE=ROOT.parents[1]/'.local-deploy'/'hardware-service.json'
 CONTROLLER_SETTINGS=ROOT.parents[1]/'.local-deploy'/'controller-settings.json'
+UPRIGHT_POSES=ROOT.parents[1]/'.local-deploy'/'upright-poses.json'
 # STS3215 12 V supply readings sag briefly while several servos accelerate.
 SUPPLY_MIN_V=9.0;SUPPLY_MAX_V=13.5;TEMP_MAX_C=60
 SUPPLY_BAD_READS=3
@@ -42,7 +43,7 @@ class OriginalRuntime(ControlRuntime):
         self.settings=ControllerSettings(CONTROLLER_SETTINGS)
         self._settings_from_calibration=False
         self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
-        self.limit_test=LimitSelfTest(self,LOG_DIR/'limit-selftest',KINEMATIC_PROFILE)
+        self.limit_test=LimitSelfTest(self,LOG_DIR/'limit-selftest',KINEMATIC_PROFILE,upright_path=UPRIGHT_POSES)
 
     def arm_ports(self):return self.settings.arm_ports()
 
