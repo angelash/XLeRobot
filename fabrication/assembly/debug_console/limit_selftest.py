@@ -218,8 +218,11 @@ class LimitSelfTest:
                     reg=read_registers(p,i)
                 pos=word(reg,56);s['history'].append(pos)
                 if reg[40]==0:raise RuntimeError(self._label(port,i)+'扭矩被关闭（可能触发过载保护）')
-                if s['goal']!=s['target'] or abs(s['target']-pos)>8:done=False
                 lag=abs(s['goal']-pos)
+                settled=len(s['history'])==WINDOW and max(s['history'])-min(s['history'])<=3
+                # Gravity and the reduced torque ceiling leave a joint resting a
+                # few counts short; a still joint inside the obstruction lag is there.
+                if s['goal']!=s['target'] or not (abs(s['target']-pos)<=8 or (settled and lag<72)):done=False
                 if lag>=72 and len(s['history'])==WINDOW and max(s['history'])-min(s['history'])<=3:
                     with self.runtime.io:write_register(self.runtime.session.ports[port],i,42,pos,2)
                     raise RuntimeError(f'{what}时{self._label(port,i)}在{pos}受阻')

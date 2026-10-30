@@ -64,6 +64,18 @@ def test_cap_reached_a_few_counts_short_is_not_a_timeout(runtime,st):
     assert res['status']=='done' and res['max_kind']=='bound' and res['max']==2300+extend-8
 
 
+def test_preposed_joint_resting_short_of_target_counts_as_arrived(runtime,st):
+    # Wrist pitch sags 20 counts below its mid target under gravity.
+    port=runtime.session.ports['COM3'];original=port.write
+    def sag(packet):
+        result=original(packet)
+        if packet[2]==4 and packet[4]==3 and packet[5]==42:set_word(port.regs[4],56,word(port.regs[4],56)-20)
+        return result
+    port.write=sag;set_word(port.regs[4],9,1500);set_word(port.regs[4],11,2900)
+    st.start(['left:elbow'],True,background=False)
+    assert st.results['left:elbow']['status']=='done',st.results['left:elbow']
+
+
 def test_stop_inside_saved_range_keeps_the_reachable_saved_end(runtime,st):
     add_stops(runtime,{('COM3',3):(1900,2450)})
     st.start(['left:elbow'],True,background=False)
