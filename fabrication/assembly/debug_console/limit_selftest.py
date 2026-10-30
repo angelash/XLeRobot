@@ -180,6 +180,12 @@ class LimitSelfTest:
     def _sleep(self):
         if self.tick:time.sleep(self.tick)
 
+    def _dt(self,last):
+        """Seconds since the previous goal step. Serial I/O makes a real loop
+        about 70 ms; stepping by the nominal tick ran joints at ~70 % speed
+        and long sweeps (shoulder lift) hit the deadline."""
+        stamp=time.monotonic();return stamp,min(.2,max(stamp-last,self.tick or .05))
+
     # ---- register helpers (each under the runtime's serial lock) ---------
     def _read(self,port,i):
         with self.runtime.io:return read_registers(self.runtime.session.ports[port],i)
@@ -212,7 +218,7 @@ class LimitSelfTest:
     def _move_to(self,targets,speed_deg=12,what='回位'):
         """Step several joints together toward targets; stop on obstruction."""
         if not targets:return
-        speed=speed_deg*4096/360;step=max(1.,speed*max(self.tick,.05))
+        speed=speed_deg*4096/360
         state={}
         for (port,i),target in targets.items():
             reg=self._read(port,i);low,high=word(reg,9),word(reg,11)
@@ -220,9 +226,10 @@ class LimitSelfTest:
             self._torque_limit(port,i,min(MOVE_TORQUE,self.torque_backup.get(f'{port}:{i}',1000)))
             with self.runtime.io:write_register(self.runtime.session.ports[port],i,46,min(1000,max(60,int(speed))),2)
             state[(port,i)]={'goal':float(word(reg,56)),'target':target,'history':deque(maxlen=WINDOW)}
-        deadline=time.monotonic()+max(abs(s['target']-s['goal']) for s in state.values())/speed+6
+        deadline=time.monotonic()+max(abs(s['target']-s['goal']) for s in state.values())/speed*1.5+8
+        last=time.monotonic()
         while True:
-            self._check_abort();done=True
+            self._check_abort();done=True;last,dt=self._dt(last);step=max(1.,speed*dt)
             for (port,i),s in state.items():
                 delta=s['target']-s['goal'];s['goal']+=max(-step,min(step,delta))
                 with self.runtime.io:
@@ -248,13 +255,13 @@ class LimitSelfTest:
         bound=max(8,low-extend) if direction<0 else min(4087,high+extend)
         self._set_limits(port,i,min(low,bound),max(high,bound))
         self._torque_limit(port,i,cfg['torque'])
-        speed=cfg['speed_deg']*4096/360;step=max(1.,speed*max(self.tick,.05))
+        speed=cfg['speed_deg']*4096/360
         with self.runtime.io:write_register(self.runtime.session.ports[port],i,46,min(1000,max(60,int(speed))),2)
         goal=float(pos);history=deque(maxlen=WINDOW);peak=0;kind=None
-        deadline=time.monotonic()+abs(bound-pos)/speed+6
+        deadline=time.monotonic()+abs(bound-pos)/speed*1.5+8;last=time.monotonic()
         name=self._label(port,i)
         while True:
-            self._check_abort()
+            self._check_abort();last,dt=self._dt(last);step=max(1.,speed*dt)
             goal=max(goal-step,bound) if direction<0 else min(goal+step,bound)
             with self.runtime.io:
                 p=self.runtime.session.ports[port];write_register(p,i,42,int(round(goal)),2);reg=read_registers(p,i)
