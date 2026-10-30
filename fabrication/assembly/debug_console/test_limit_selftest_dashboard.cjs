@@ -1,0 +1,25 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(__dirname+'/static/original.html','utf8'),nodes=new Map(),requests=[];
+for(const match of html.matchAll(/id="([^"]+)"/g))nodes.set(match[1],{innerHTML:'',textContent:'',hidden:false,disabled:false,checked:false,value:'',scrollIntoView(){}});
+const dyn=id=>{if(!nodes.has(id))nodes.set(id,{innerHTML:'',textContent:'',hidden:false,disabled:false,checked:false});return nodes.get(id);};
+const context=vm.createContext({$:id=>nodes.get(id)||(['limit-live','limit-start','limit-stop','limit-confirm','limit-apply'].includes(id)?dyn(id):null),esc:v=>String(v??'').replace(/[<>]/g,'?'),latest:null,refresh:async()=>{},api:async(path,body)=>{requests.push({path,body});}});
+vm.runInContext(fs.readFileSync(__dirname+'/static/limit-selftest.js','utf8'),context);
+const rec=['head:tilt','head:pan','left:grip','left:roll','left:pitch','left:elbow','left:lift','left:fold','left:pan','right:grip','right:roll','right:pitch','right:elbow','right:lift','right:fold','right:pan'];
+const items=rec.map(id=>{const [side,kind]=id.split(':');return {id,side,kind,name:kind,note:'说明',prepose:kind==='pitch'?['肘']:[],position:2000,min:1800,max:2300,range_deg:44,folded:side!=='head'&&['pan','fold'].includes(kind)?false:undefined};});
+context.s={preview_only:false,ports:[{},{}],controller:{controller:'offline'},manual_calibration:{active:false},limit_selftest:{running:false,recommended:rec,items,results:{},events:[],apply:true}};
+vm.runInContext('limitOpen=true;renderLimitTest(s)',context);
+const body=nodes.get('limit-body').innerHTML;
+assert.equal((body.match(/data-limit-item=/g)||[]).length,16);
+assert.equal((body.match(/checked/g)||[]).length>=16,true,'Recommended plan is pre-selected');
+assert.match(body,/<svg class="limit-diagram"/);assert.match(body,/会自动执行“收起此臂”/);assert.match(body,/肘先摆到中位/);
+assert.match(nodes.get('limit-start').textContent,/16项/);assert.equal(nodes.get('limit-start').disabled,false);
+assert.equal(nodes.get('limit-stop').disabled,true);assert.equal(requests.length,0,'Rendering never starts a test');
+context.s.controller={controller:'online'};vm.runInContext('limitView="";renderLimitTest(s)',context);
+assert.equal(nodes.get('limit-start').disabled,true,'No self-test during a takeover');
+const results={'left:elbow':{status:'running'},'left:grip':{status:'done',min:1300,max:2700,min_kind:'stall',max_kind:'bound',range_deg:123,old_range_deg:44,applied:true}};
+context.s.controller={controller:'offline'};context.s.limit_selftest={...context.s.limit_selftest,running:true,current:'left:elbow',live:{joint:'左臂肘',direction:-1,position:1900,goal:1880,load:310},
+  results,items:items.map(x=>({...x,result:results[x.id]}))};
+vm.runInContext('renderLimitTest(s)',context);
+assert.match(nodes.get('limit-live').textContent,/左臂肘 · 负向 · 位置 1900 → 目标 1880 · 负载 31%/);
+assert.equal(nodes.get('limit-stop').disabled,false);assert.match(nodes.get('limit-body').innerHTML,/完成：123°（原44°）· 下端止挡 · 上端探测上限 · 已写入/);
+console.log('Limit self-test dashboard PASS: 16 illustrated items, recommended preselection, live probe line, stop availability, no automatic start');

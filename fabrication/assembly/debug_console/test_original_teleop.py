@@ -64,11 +64,11 @@ def test_upstream_abxy_head_and_trigger_release():
     assert not intentions(pad(buttons=(1,)))['stop']  # B remains head control
 
 
-def test_dpad_up_is_forward_and_wheels_stay_mirrored():
+def test_dpad_keeps_upstream_k_for_up_and_wheels_stay_mirrored():
     e=UpstreamTeleop();e.step(pad(hat=(0,1)),.1)
-    assert e.base[0]>0 and e.wheels[0]<0 and e.wheels[1]>0
+    assert e.base[0]<0 and e.wheels[0]>0 and e.wheels[1]<0
     e.step(pad(hat=(0,-1)),.1)
-    assert e.wheels[0]>0 and e.wheels[1]<0
+    assert e.wheels[0]<0 and e.wheels[1]>0
     e.step(pad(hat=(-1,0)),.1)
     assert e.wheels[0]>0 and e.wheels[1]>0
     assert encode_velocity(-15)==0x800f
@@ -382,13 +382,15 @@ def test_menu_pause_view_stop_and_watchdog_preserve_session(runtime):
     assert runtime.controller['controller']=='offline'
 
 
-def test_no_encoder_motion_pauses_original_hardware(runtime):
+def test_no_encoder_motion_holds_only_that_joint_and_records_stall(runtime):
     runtime.begin_original('hardware',True)
     runtime.session.ports['COM4'].follow=False
     for _ in range(12):step(runtime,pad([0,0,1,0,0,0],buttons=(9,)))
     for window in runtime.feedback_window.values():window['at']-=1
     runtime._check_feedback()
-    assert runtime.controller['paused'] and runtime.controller['controller']=='online'
+    # An obstruction stops that joint alone; the takeover keeps running.
+    assert not runtime.controller['paused'] and runtime.controller['controller']=='online'
+    assert 'COM4:1' in runtime.stall_marks and ('COM4',1) not in runtime.moving
 
 
 def test_reached_joint_limit_does_not_become_false_stall_and_reverse_is_still_monitored(runtime):
@@ -408,18 +410,18 @@ def test_reached_joint_limit_does_not_become_false_stall_and_reverse_is_still_mo
     for _ in range(15):step(runtime,pad([0,0,-1,0,0,0],buttons=(5,)))
     assert key in runtime.feedback_window
     runtime.feedback_window[key]['at']-=1
-    runtime._check_feedback();assert runtime.controller['paused']
+    runtime._check_feedback();assert not runtime.controller['paused'] and 'COM4:5' in runtime.stall_marks
 
 
-@pytest.mark.parametrize('profile,should_pause',[('joint',False),('hardware',True)])
-def test_trial_tracking_tolerance_is_separate_from_precise_hardware_acceptance(runtime,profile,should_pause):
+@pytest.mark.parametrize('profile,should_stall',[('joint',False),('hardware',True)])
+def test_trial_tracking_tolerance_is_separate_from_precise_hardware_acceptance(runtime,profile,should_stall):
     runtime.begin_original(profile,True)
     runtime._goal('COM4',1,2074)
     port=runtime.session.ports['COM4'];port.follow=False
     port.regs[1][56:58]=list((2064).to_bytes(2,'little'))
     runtime.feedback_window[('COM4',1)]={'origin':2064,'at':time.monotonic()-1}
     runtime._check_feedback()
-    assert runtime.controller['paused']==should_pause
+    assert ('COM4:1' in runtime.stall_marks)==should_stall and not runtime.controller['paused']
 
 
 def test_verified_kinematic_profile_and_group_execution(runtime):
@@ -473,7 +475,7 @@ def test_wheels_drive_without_field_verification_and_stop_on_release_and_torque_
     step(runtime,pad(hat=(0,1)))
     p=runtime.session.ports['COM4']
     raw=lambda i:p.regs[i][46]+256*p.regs[i][47]
-    assert raw(9)&0x8000 and 0<raw(10)<0x8000
+    assert 0<raw(9)<0x8000 and raw(10)&0x8000
     assert runtime.wheels_commanded
     step(runtime,pad())
     assert raw(9)==raw(10)==0 and not runtime.wheels_commanded
@@ -548,7 +550,7 @@ def test_feedback_checked_by_actual_monitor_watchdog_path(runtime):
     for _ in range(12):step(runtime,pad([0,0,1,0,0,0],buttons=(9,)))
     for w in runtime.feedback_window.values():w['at']-=1
     runtime.check_watchdog()
-    assert runtime.controller['paused']
+    assert 'COM4:1' in runtime.stall_marks and not runtime.controller['paused']
 
 
 def test_main_preview_does_not_pause_when_hardware_disconnected(runtime,monkeypatch):

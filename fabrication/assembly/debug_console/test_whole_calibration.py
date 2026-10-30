@@ -251,7 +251,7 @@ def test_large_observed_gripper_range_obeys_raw_slew_limit(runtime):
 
 def test_forward_setting_drives_continuously_and_release_stops(runtime):
     c=runtime.manual_calibration;c.start(True);completed_measurements(c)
-    runtime.update_controller_settings({'base_forward':'reverse'});c.apply(True)
+    c.apply(True)
     runtime.pad_time=time.monotonic();runtime.begin_whole_robot(True)
     step(runtime,pad(hat=(0,1)))
     p=runtime.session.ports['COM4']

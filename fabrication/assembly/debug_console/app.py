@@ -106,6 +106,24 @@ def update_control_settings(payload:ControllerSettingsCommand):
     try:return runtime.update_controller_settings(payload.model_dump(exclude_none=True))
     except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
+class LimitTestCommand(BaseModel):
+    items:list[str]=[]
+    confirmed:bool=False
+    apply:bool=True
+
+@app.post('/api/limit-test/start')
+def start_limit_test(payload:LimitTestCommand):
+    try:
+        if isinstance(runtime,PreviewRuntime):raise ValueError('隔离预览不能运行实机自检')
+        return runtime.limit_test.start(payload.items,payload.confirmed,payload.apply)
+    except Exception as exc:
+        runtime.log('limit_selftest','自检未开始：'+str(exc))
+        raise HTTPException(409,str(exc)) from exc
+
+@app.post('/api/limit-test/stop')
+def stop_limit_test():
+    return runtime.limit_test.stop('页面点击立即停止')
+
 @app.post('/api/whole-calibration/{action}')
 def whole_calibration_command(action:str,payload:WholeCalibrationCommand):
     try:

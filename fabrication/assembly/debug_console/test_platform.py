@@ -223,6 +223,7 @@ def test_guided_calibration_proxy_only_exposes_explicit_actions(client):
         assert requests[-1].extensions['timeout']['read']==45
     assert client.post('/api/whole-calibration/exec',json={}).status_code==404
     assert client.get('/static/whole-calibration.js').status_code==200
-    assert '/static/whole-calibration.js?v=39' in client.get('/runtime/original').text
+    assert '/static/whole-calibration.js?v=40' in client.get('/runtime/original').text
+    assert client.get('/static/limit-selftest.js').status_code==200
     assert client.post('/api/control-settings',json={}).status_code==200
     assert requests[-1].url.path=='/api/control-settings'

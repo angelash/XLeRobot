@@ -421,7 +421,7 @@ async def camera_frame(camera:int):
 
 # A fixed route allowlist prevents the gateway becoming a generic HTTP proxy.
 PROXY_GET={'original/status','status','events','log/download'}
-PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','control-settings','torque','calibration/read','hardware/prepare'}
+PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','control-settings','torque','calibration/read','hardware/prepare','limit-test/start','limit-test/stop'}
 PROXY_POST.update('whole-calibration/'+a for a in ('start','resume','recover','merge-checkpoint','capture','capture-item','delete-item','clear-captures','rewind','base-test','base-confirm','wheels','apply','apply-ranges','cancel'))
 
 async def proxy(request,path,stream=False):
@@ -452,7 +452,7 @@ async def camera_proxy(camera:int,request:Request):
 @app.get('/static/{path:path}')
 async def runtime_static(path:str):
     # Only the exact shipped runtime files needed by the two console pages.
-    if path not in ('mapping.css','original.css','original.js','whole-calibration.js','app.js','style.css','bringup.css'):raise HTTPException(404)
+    if path not in ('mapping.css','original.css','original.js','whole-calibration.js','limit-selftest.js','app.js','style.css','bringup.css'):raise HTTPException(404)
     if path=='mapping.css':
         css=(ROOT/'static'/path).read_text(encoding='utf-8')
         # The workbench remains usable offline; inherited Google Fonts are optional.

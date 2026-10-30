@@ -57,10 +57,11 @@ def intentions(raw):
         result[side]={'mode':mode,'h':get(offset),'v':get(offset+1),
                       'trigger':max(0,min(1,float(a[trigger]))) if trigger<len(a) else 0.}
     h=raw.get('hat',[0,0])
-    # Upstream's comment says D-pad up is "Forward" but it inserts key 'k',
-    # which xlerobot_2wheels maps to backward. The operator defines the
-    # chassis front by a field short test (+v), so up drives that front.
-    result['base']={'v':.04*h[1],'omega':-.25*h[0]}
+    # Upstream get_base_action: up -> 'k' (commented "Forward"). Although the
+    # 2-wheel config names 'k' backward in its x frame, a field test on
+    # 2026-10-30 confirmed up drives this robot's physical front. Keep the
+    # upstream sign; the "forward" short test uses the same D-pad-up command.
+    result['base']={'v':-.04*h[1],'omega':-.25*h[0]}
     result['head']={'pan':int(pressed(2))-int(pressed(1)),
                     'tilt':int(pressed(0))-int(pressed(3))}
     result['stop']=pressed(6)

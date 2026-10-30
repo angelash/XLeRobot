@@ -83,14 +83,23 @@ def test_preset_base_uses_forward_and_turn_settings_without_verification(runtime
     runtime.pad_time=time.monotonic();runtime.begin_preset(True)
     p=runtime.session.ports['COM4'];v=lambda i:word(p.regs[i],46)
     step(runtime,pad(hat=(0,1)))
-    assert v(9)&0x8000 and 0<v(10)<0x8000,'D-pad up drives the defined front'
+    assert 0<v(9)<0x8000 and v(10)&0x8000,'D-pad up keeps the upstream k command (field-verified front)'
     step(runtime,pad());assert v(9)==v(10)==0
     runtime.stop();runtime.update_controller_settings({'base_turn':'reverse'})
     runtime.pad_time=time.monotonic();runtime.begin_preset(True)
     step(runtime,pad(hat=(-1,0)))
     assert v(9)&0x8000 and v(10)&0x8000
     step(runtime,pad(hat=(0,1)))
-    assert v(9)&0x8000 and 0<v(10)<0x8000,'Turn reversal leaves forward unchanged'
+    assert 0<v(9)<0x8000 and v(10)&0x8000,'Turn reversal leaves forward unchanged'
+
+
+def test_forward_short_test_sends_the_dpad_up_command(runtime,monkeypatch):
+    from fabrication.assembly.debug_console.test_whole_calibration import ManualTimer
+    monkeypatch.setattr(cal.threading,'Timer',ManualTimer)
+    c=runtime.manual_calibration;c.start(True);c.base_test('forward',True)
+    p=runtime.session.ports['COM4']
+    assert 0<word(p.regs[9],46)<0x8000 and word(p.regs[10],46)&0x8000
+    c.cancel()
 
 
 def test_preset_gripper_moves_at_configured_raw_rate(runtime):
@@ -123,11 +132,40 @@ def test_previous_day_collection_is_recovered_after_midnight_restart(runtime,tmp
 def test_gateway_allows_every_route_the_console_calls():
     from fabrication.assembly.debug_console import platform_app
     static=Path(platform_app.__file__).resolve().parent/'static'
-    text=''.join((static/name).read_text(encoding='utf-8') for name in ('original.js','whole-calibration.js','original.html'))
+    text=''.join((static/name).read_text(encoding='utf-8') for name in ('original.js','whole-calibration.js','limit-selftest.js','original.html'))
     # Literal routes end at a quote or query string; a dynamic prefix ending
     # in "/" is covered by the calibrationCommand action names below.
     routes={m for m in re.findall(r"['\"`]/api/([a-z][a-z/-]*[a-z])(?=['\"`?])",text)}
     routes|={'whole-calibration/'+m for m in re.findall(r"calibrationCommand\('([a-z-]+)'",text)}
     allowed=platform_app.PROXY_GET|platform_app.PROXY_POST
     assert routes and not routes-allowed,sorted(routes-allowed)
+
+
+def test_brief_supply_sag_is_tolerated_and_a_fault_retries_by_itself(runtime):
+    runtime.pad_time=time.monotonic();runtime.begin_preset(True)
+    reg=runtime.session.ports['COM3'].regs[2];reg[62]=85
+    step(runtime,pad([1,0,0,0,0,0]))
+    assert 'COM3:2' not in runtime.joint_faults,'One sagging reading is not a fault'
+    for _ in range(3):step(runtime,pad([1,0,0,0,0,0]))
+    assert 'COM3:2' in runtime.joint_faults and not runtime.controller['paused']
+    reg[62]=122;runtime.joint_faults['COM3:2']['at']-=1.1
+    step(runtime,pad([1,0,0,0,0,0]))
+    assert 'COM3:2' not in runtime.joint_faults and ('COM3',2) in runtime.moving
+
+
+def test_menu_toggles_pause_and_gamepad_loss_resumes_after_neutral(runtime):
+    runtime.pad_time=time.monotonic();runtime.begin_preset(True)
+    step(runtime,pad(buttons=(7,)));assert runtime.controller['paused']
+    step(runtime,pad());assert runtime.controller['paused'],'Release alone does not resume a Menu pause'
+    step(runtime,pad(buttons=(7,)));step(runtime,pad())
+    assert not runtime.controller['paused']
+    lost={'connected':False,'buttons':[],'axes':[],'hat':[0,0]}
+    runtime.gamepad=lost;runtime.process_input(lost);assert runtime.controller['paused']
+    step(runtime,pad());assert not runtime.controller['paused'] and runtime.controller['controller']=='online'
+
+
+def test_closed_page_is_reported_without_stopping_gamepad_control(runtime):
+    runtime.pad_time=time.monotonic();runtime.begin_preset(True)
+    runtime.ui_heartbeat-=10;runtime.check_watchdog()
+    assert not runtime.controller['paused'] and '网页' in runtime.notice['message']
 

@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from .control_runtime import ControlRuntime,EXPECTED_SERIALS,ROOT,now,LOG_DIR
 from .whole_calibration import WholeCalibration,DESIGN_GEOMETRY,KEYS as RANGE_KEYS
+from .limit_selftest import LimitSelfTest
 from .control_settings import ControllerSettings,remap_motor_labels,MAPPING_KEYS
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse,wheel_raw
@@ -13,6 +14,10 @@ from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_vel
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
 SERVICE_PROFILE=ROOT.parents[1]/'.local-deploy'/'hardware-service.json'
 CONTROLLER_SETTINGS=ROOT.parents[1]/'.local-deploy'/'controller-settings.json'
+# STS3215 12 V supply readings sag briefly while several servos accelerate.
+SUPPLY_MIN_V=9.0;SUPPLY_MAX_V=13.5;TEMP_MAX_C=60
+SUPPLY_BAD_READS=3
+FAULT_RETRY_S=1.0
 
 
 class OriginalRuntime(ControlRuntime):
@@ -29,10 +34,12 @@ class OriginalRuntime(ControlRuntime):
         self.preparation=None
         self.service_blocked={}
         self.preset_blocked={};self.joint_faults={}
+        self.supply_bad={};self.stall_marks={};self.resume_on_release=False;self.heartbeat_noticed=False
         self.wheel_pulse_timer=None;self.wheel_pulse_latched=False
         self.settings=ControllerSettings(CONTROLLER_SETTINGS)
         self._settings_from_calibration=False
         self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
+        self.limit_test=LimitSelfTest(self,LOG_DIR/'limit-selftest',KINEMATIC_PROFILE)
 
     def arm_ports(self):return self.settings.arm_ports()
 
@@ -61,13 +68,17 @@ class OriginalRuntime(ControlRuntime):
         if getattr(self,'manual_calibration',None):self.manual_calibration.observe(self.report)
 
     def _require_not_calibrating(self):
+        if getattr(self,'limit_test',None) and self.limit_test.running:
+            raise ValueError('限位自检进行中；请等待完成或点“立即停止”')
         if self.manual_calibration.active:raise ValueError('正在手动标定；请保存或结束标定后再准备/接管/开启扭矩')
 
     def calibration_command(self,action,payload):
         with self.io:
             if isinstance(self,PreviewRuntime):raise ValueError('隔离预览服务不访问实机标定')
             c=self.manual_calibration
-            if action=='start':return c.start(payload.get('confirmed',False))
+            if action=='start':
+                if self.limit_test.running:raise ValueError('限位自检进行中，结束后再开始采集')
+                return c.start(payload.get('confirmed',False))
             if action=='resume':return c.resume_latest()
             if action=='recover':return c.recover(payload.get('session_id'),payload.get('confirmed',False))
             if action=='merge-checkpoint':return c.merge_checkpoint(payload.get('session_id'),payload.get('confirmed',False))
@@ -108,6 +119,7 @@ class OriginalRuntime(ControlRuntime):
 
     def torque(self,enabled,selection=None):
         with self.io:
+            if self.limit_test.running:raise ValueError('限位自检进行中，不能切换扭矩')
             if enabled:
                 self._require_not_calibrating()
                 if self.controller['controller']=='online':raise ValueError('先停止手柄接管，再切换扭矩')
@@ -198,9 +210,30 @@ class OriginalRuntime(ControlRuntime):
                 self.original_notice('calibration','运动学标定不可用：'+str(exc))
 
     def check_watchdog(self):
-        super().check_watchdog()
-        if self.control_profile in ('original_hardware','original_joint','original_preset') and not self.controller['paused'] and self.feedback_window:
-            self._check_feedback()
+        if self.control_profile not in ('original_hardware','original_joint','original_preset'):
+            return super().check_watchdog()
+        if self.controller['controller']!='online' or self.controller['paused']:return
+        # The native gamepad is the operator's dead-man input. A hidden or
+        # closed web page is reported, but it does not stop gamepad control.
+        if time.monotonic()-self.pad_time>.5:
+            self._pause('手柄输入超过500ms未更新；手柄恢复并回中后自动继续');return
+        if time.monotonic()-self.ui_heartbeat>3:
+            if not self.heartbeat_noticed:
+                self.heartbeat_noticed=True
+                self.original_notice('heartbeat','网页已关闭或在后台；手柄仍可控制，View结束接管')
+        else:self.heartbeat_noticed=False
+        if self.feedback_window:self._check_feedback()
+
+    def _supply_check(self,key,r):
+        """Fault only on a reading that stays out of range, not a brief sag."""
+        volts=r[62]/10;temp=r[63]
+        if SUPPLY_MIN_V<=volts<=SUPPLY_MAX_V and temp<TEMP_MAX_C:
+            self.supply_bad.pop(key,None);return
+        count=self.supply_bad.get(key,0)+1;self.supply_bad[key]=count
+        if count>=SUPPLY_BAD_READS:
+            self.supply_bad.pop(key,None)
+            raise ValueError(f'供电/温度持续异常（{volts:.1f}V，{temp}°C）')
+        self.log('supply_sag',f'{key}瞬时读数{volts:.1f}V {temp}°C，继续观察',key=key,volts=volts,temp=temp)
 
     def motors(self):
         return {(p['port'],m['id']):m for p in self.report['ports'] for m in p['motors']}
@@ -268,8 +301,8 @@ class OriginalRuntime(ControlRuntime):
             if span<24:reasons.append(f'设备限位只有{max(span,0)}计数；在整机标定里点“保存已采行程”后放开')
             elif not m['min']<=m['position']<=m['max']:
                 reasons.append(f'当前位置{m["position"]}不在设备限位{m["min"]}–{m["max"]}内；在整机标定里点“保存已采行程”后放开')
-            if not 10<=m['voltage']<=13 or m['temperature']>=50:reasons.append('供电/温度异常')
-            if key in self.joint_faults:reasons.append(self.joint_faults[key])
+            if not SUPPLY_MIN_V<=m['voltage']<=SUPPLY_MAX_V or m['temperature']>=TEMP_MAX_C:reasons.append(f'供电/温度异常（{m["voltage"]}V，{m["temperature"]}°C）')
+            if key in self.joint_faults:reasons.append(self.joint_faults[key]['reason']+'（约1秒后自动重试）')
             if not reasons and span<160:
                 note=f'设备限位只有{span*360/4096:.1f}°，仍是旧试控窗口；保存已采行程后放开'
             elif not reasons:note=f'可动范围 {span*360/4096:.0f}°'
@@ -283,7 +316,7 @@ class OriginalRuntime(ControlRuntime):
             m=motors.get(('COM4',i))
             if not m:reasons.append(f'COM4:{i}未读取')
             elif m['mode']!=1:reasons.append(f'COM4:{i}不是速度模式1')
-        if 'base' in self.joint_faults:reasons.append(self.joint_faults['base'])
+        if 'base' in self.joint_faults:reasons.append(self.joint_faults['base']['reason']+'（约1秒后自动重试）')
         forward,turn=self.settings.base_signs()
         channels['base']={'ready':not reasons,'reasons':reasons,
             'note':'轮径127mm/轮距250mm为资料值；前进'+('已反向' if forward<0 else '按方案A')+'，转向'+('已反向' if turn<0 else '正常')}
@@ -335,7 +368,7 @@ class OriginalRuntime(ControlRuntime):
         for i in (9,10):
             r=read_registers(p,i)
             if r[33]!=1 or r[40]!=1:raise ValueError('轮子模式/扭矩发生变化')
-            if not 10<=r[62]/10<=13 or r[63]>=55:raise ValueError('轮子供电/温度异常')
+            self._supply_check(f'COM4:{i}',r)
         self.wheels_commanded=True
         for i in (9,10):write_register(p,i,46,encode_velocity(command[i]),2)
         self.wheel_goals=[command[9],command[10]];self.engine.wheels=list(self.wheel_goals)
@@ -443,7 +476,8 @@ class OriginalRuntime(ControlRuntime):
             if self.controller['controller']=='online':raise ValueError('先结束当前接管')
             if time.monotonic()-self.pad_time>.5 or not neutral(self.gamepad):
                 raise ValueError('请连接手柄并全部回中')
-            self.capture_profile();self._make_envelopes();self.joint_faults={}
+            self.capture_profile();self._make_envelopes();self.joint_faults={};self.supply_bad={}
+            self.resume_on_release=False;self.heartbeat_noticed=False
             readiness=self.preset_readiness()
             if not any(v['ready'] for k,v in readiness.items() if k!='base'):
                 raise ValueError('没有可直接控制的关节：'+'；'.join(f'{self.motors().get((v["port"],v["id"]),{}).get("label",k)}：{"；".join(v["reasons"])}' for k,v in readiness.items() if k!='base'))
@@ -572,12 +606,21 @@ class OriginalRuntime(ControlRuntime):
         if self.control_profile=='diagnostic':return super().process_input(raw,source)
         with self.io:
             if self.controller['controller']!='online':return
-            if not raw.get('connected'):self._pause('手柄断开，接管保留');return
+            if not raw.get('connected'):self._pause('手柄断开；重新连接并回中后自动继续');return
             intent=intentions(raw)
             if intent['stop']:self._stop('View结束接管，保持姿态；不执行原脚本归零');return
             menu=intent['pause'];edge=menu and not self.last_menu;self.last_menu=menu
-            if edge and not self.controller['paused']:self._pause('Menu暂停所有动作，接管保留；回中后点击恢复');return
-            if self.controller['paused']:return
+            if edge and not self.controller['paused']:self._pause('Menu暂停所有动作；再按一次Menu继续');return
+            if self.controller['paused']:
+                # Menu toggles any pause; a lost/stale gamepad resumes by itself
+                # once it reports neutral input again. Old input is never replayed.
+                if edge:self.resume_on_release=True
+                reason=self.controller.get('pause_reason') or ''
+                if (self.resume_on_release or reason.startswith('手柄')) and neutral(raw):
+                    self.resume_on_release=False
+                    try:self.resume()
+                    except (ValueError,RuntimeError) as exc:self.original_notice('resume','暂未恢复：'+str(exc))
+                return
             stamp=time.monotonic();dt=min(.1,max(0,stamp-self.tick_time))
             if dt<.04:return
             self.tick_time=stamp
@@ -617,18 +660,26 @@ class OriginalRuntime(ControlRuntime):
             axis=self.settings.axis('COM3',i)
             self._preset_joint('COM3',i,intent['head'][name]*axis['joint_rate_deg_s']*axis['direction'],dt)
         level=self.engine.speed_level;v=intent['base']['v']*level;omega=intent['base']['omega']*level
-        if 'base' in self.joint_faults or 'COM4:9' in self.preset_blocked or 'COM4:10' in self.preset_blocked:
-            if v or omega:self.original_notice('blocked','底盘未接入：'+(self.joint_faults.get('base') or self.preset_blocked.get('COM4:9') or self.preset_blocked.get('COM4:10')))
+        fault=self.joint_faults.get('base')
+        if fault and time.monotonic()-fault['at']>=FAULT_RETRY_S:
+            self.joint_faults.pop('base',None);fault=None;self.log('joint_retry','底盘自动重试')
+        if fault or 'COM4:9' in self.preset_blocked or 'COM4:10' in self.preset_blocked:
+            if v or omega:self.original_notice('blocked','底盘未接入：'+((fault or {}).get('reason') or self.preset_blocked.get('COM4:9') or self.preset_blocked.get('COM4:10')))
             return
         try:self._drive_base(v,omega)
         except ValueError as exc:
-            self.joint_faults['base']=str(exc)
+            self.joint_faults['base']={'reason':str(exc),'at':time.monotonic()}
             self._zero_wheels()
-            self.original_notice('joint_fault','底盘已单独停用：'+str(exc)+'；双臂继续可控')
+            self.original_notice('joint_fault','底盘暂停：'+str(exc)+'；约1秒后自动重试，双臂继续可控')
 
     def _preset_joint(self,port,i,rate,dt):
         key=f'{port}:{i}';label=self.motors().get((port,i),{}).get('label',key)
-        reason=self.joint_faults.get(key) or self.preset_blocked.get(key)
+        fault=self.joint_faults.get(key)
+        if fault and time.monotonic()-fault['at']>=FAULT_RETRY_S:
+            # Transient faults (supply sag, a lost ACK) clear by themselves.
+            self.joint_faults.pop(key,None);fault=None
+            self.log('joint_retry',label+'自动重试',port=port,id=i)
+        reason=(fault or {}).get('reason') or self.preset_blocked.get(key)
         if reason:
             if rate:self.original_notice('blocked',label+'未接入：'+reason)
             return
@@ -641,13 +692,13 @@ class OriginalRuntime(ControlRuntime):
         except ValueError as exc:self._joint_fault(port,i,label,exc)
 
     def _joint_fault(self,port,i,label,exc):
-        """Disable one joint after a mode/torque/power/range refusal."""
-        self.joint_faults[f'{port}:{i}']=str(exc)
+        """Hold one joint after a refusal; it is retried automatically."""
+        self.joint_faults[f'{port}:{i}']={'reason':str(exc),'at':time.monotonic()}
         try:
             if (port,i) in self.moving:self._hold_one((port,i))
         except ValueError:pass
         for table in (self.moving,self.direct_targets,self.feedback_window):table.pop((port,i),None)
-        self.original_notice('joint_fault',label+'已单独停用：'+str(exc)+'；其余部件继续可控，结束接管后重新开启可再试')
+        self.original_notice('joint_fault',label+'暂停：'+str(exc)+'；约1秒后自动重试，其余部件继续可控')
 
     def _channel(self,key):
         value=self.readiness()[key]
@@ -680,7 +731,8 @@ class OriginalRuntime(ControlRuntime):
                     self.original_notice('blocked',m.get('label',f'{port}:{i}')+'：'+reason);continue
                 self._direct(port,i,rate,dt)
         for i,name in [(7,'pan'),(8,'tilt')]:
-            rate=intent['head'][name]*self.settings.data['joint_rate_deg_s'];e=self.envelopes.get(('COM3',i),{});m=self.motors().get(('COM3',i),{})
+            axis=self.settings.axis('COM3',i)
+            rate=intent['head'][name]*self.settings.data['joint_rate_deg_s']*axis['direction'];e=self.envelopes.get(('COM3',i),{});m=self.motors().get(('COM3',i),{})
             if rate and (not e.get('available') or not m.get('torque')):continue
             self._direct('COM3',i,rate,dt)
         active=bool(intent['base']['v'] or intent['base']['omega'])
@@ -753,7 +805,7 @@ class OriginalRuntime(ControlRuntime):
             if i!=6:self.original_notice('limit',e['label']+'到达限位，可反向；接管保留')
         key=(port,i);p=self.session.ports[port];r=read_registers(p,i);pos=word(r,56)
         if r[33]!=0 or r[40]!=1:raise ValueError(e['label']+'模式/扭矩变化，未自动修改')
-        if not 10<=r[62]/10<=13 or r[63]>=55:raise ValueError('供电/温度异常')
+        self._supply_check(f'{port}:{i}',r)
         axis=self.settings.axis(port,i)
         if abs(target-pos)>axis['follow_delta_raw']:
             self.original_notice('blocked',e['label']+'目标跟随滞后，已停止累积')
@@ -823,7 +875,8 @@ class OriginalRuntime(ControlRuntime):
                     self.engine.q[side]['grip']=2+(actual-ref['closed_raw'])*88/(ref['open_raw']-ref['closed_raw'])
                 else:self.engine.q[side]['grip']=previous[side]['grip']
         for i,axis_name in [(7,'pan'),(8,'tilt')]:
-            rate=intent['head'][axis_name]*self.settings.data['joint_rate_deg_s']
+            axis=self.settings.axis('COM3',i)
+            rate=intent['head'][axis_name]*axis['joint_rate_deg_s']*axis['direction']
             if rate and not self._channel(f'head_{i}'):
                 if ('COM3',i) in self.moving:self._hold_one(('COM3',i))
                 continue
@@ -839,6 +892,35 @@ class OriginalRuntime(ControlRuntime):
 
     def _check_feedback(self):
         if self.control_profile=='diagnostic':return super()._check_feedback()
+        return self._check_original_feedback()
+
+    def _stall(self,key,pos,expected):
+        """An obstructed joint stops alone; the takeover keeps running.
+
+        The stop point is kept as limit evidence for the self-test page.
+        A gripper closing on an object keeps a light, bounded squeeze.
+        """
+        port,i=key;e=self.envelopes.get(key,{});label=e.get('label',f'{port}:{i}')
+        direction=1 if expected>pos else -1;limit=e.get('max') if direction>0 else e.get('min')
+        self.stall_marks[f'{port}:{i}']={'position':pos,'target':expected,'direction':direction,
+                                         'soft_limit':limit,'time':now()}
+        self.feedback_window.pop(key,None)
+        try:
+            if i==6:
+                squeeze=pos+max(-40,min(40,expected-pos))
+                write_register(self.session.ports[port],i,42,squeeze,2)
+                self.moving[key]=squeeze;self.direct_targets[key]=float(squeeze)
+                self.original_notice('grip',label+'已夹住或受阻，保持轻夹；松开扳机张开')
+            else:
+                if key in self.moving:self._hold_one(key)
+                self.direct_targets[key]=float(pos)
+                gap=abs(limit-pos) if limit is not None else None
+                self.original_notice('stall',f'{label}在{pos}受阻'+(f'（距限位{gap}计数）' if gap is not None else '')+'，已停住；可反向')
+        except ValueError as exc:
+            self._joint_fault(port,i,label,exc)
+        self.log('stall',f'{label}受阻：目标{expected}，实测{pos}',port=port,id=i,position=pos,target=expected,soft_limit=limit)
+
+    def _check_original_feedback(self):
         if self.control_profile not in ('original_hardware','original_joint','original_preset'):return
         for key,window in list(self.feedback_window.items()):
             if time.monotonic()-window['at']<.8:continue
@@ -846,7 +928,7 @@ class OriginalRuntime(ControlRuntime):
             expected=self.moving.get(key,pos);delta=abs(pos-window['origin'])
             reached=abs(pos-expected)<=(16 if self.control_profile=='original_joint' else 6)
             if not reached and abs(expected-window['origin'])>=4 and delta<2:
-                self._pause(f'{port}:{i}原版目标已写入但编码器未变化');return
+                self._stall(key,pos,expected);continue
             self.log('feedback',f'{port}:{i}编码器变化{delta}计数'+('，进入目标容差' if reached else ''),
                      port=port,id=i,position=pos,target=expected,origin=window['origin'],moved=delta>=2,reached=reached)
             if self.last_command and self.last_command.get('port')==port and self.last_command.get('id')==i:
@@ -859,12 +941,14 @@ class OriginalRuntime(ControlRuntime):
             result=super().snapshot()
             setup=self.whole_robot_setup()
             preferred='preview' if isinstance(self,PreviewRuntime) else 'hardware' if setup['ready'] else 'preset'
-            result.update(version='3.6-direct-preset',control_profile=self.control_profile,
+            result.update(version='3.7-limit-selftest',control_profile=self.control_profile,
                           preferred_target=preferred,
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),
                           preset_readiness=self.preset_readiness() if not isinstance(self,PreviewRuntime) else {},
-                          preset_blocked=self.preset_blocked,joint_faults=self.joint_faults,saved_ranges=self.saved_ranges(),
+                          preset_blocked=self.preset_blocked,joint_faults={k:v['reason'] for k,v in self.joint_faults.items()},
+                          stall_marks=self.stall_marks,saved_ranges=self.saved_ranges(),
+                          limit_selftest=self.limit_test.snapshot(),
                           whole_robot_setup=setup,hardware_preparation=self.preparation,service_blocked=self.service_blocked,
                       manual_calibration=self.manual_calibration.snapshot(),control_settings=self.settings.snapshot())
             return result

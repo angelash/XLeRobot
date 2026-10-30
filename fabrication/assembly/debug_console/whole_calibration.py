@@ -19,7 +19,7 @@ import uuid
 from .commissioning import configure_measured_range,restore_test_window
 from .control_runtime import EXPECTED_SERIALS,joint_label,now
 from .torque_control import EXPECTED,read_registers,word,write_register
-from .upstream_teleop import O1,O2,encode_velocity
+from .upstream_teleop import O1,O2,encode_velocity,intentions
 
 KEYS=tuple(f'{p}:{i}' for p,ids in EXPECTED.items() for i in ids if not(p=='COM4' and i in (9,10)))
 STEPS=('ranges','left_a','left_b','left_c','left_open','left_closed',
@@ -571,7 +571,9 @@ class WholeCalibration:
             # Independent expiry thread is started before any nonzero velocity.
             self.timer=threading.Timer(.18,self._finish_base,args=(kind,before));self.timer.daemon=True;self.timer.start()
             # Same direction settings and kinematics as the gamepad path.
-            command=self.runtime.wheel_command(.04 if kind=='forward' else 0,0 if kind=='forward' else .25,max_raw=160)
+            hat=[0,1] if kind=='forward' else [-1,0]
+            base=intentions({'connected':True,'buttons':[],'axes':[],'hat':hat})['base']
+            command=self.runtime.wheel_command(base['v'],base['omega'],max_raw=160)
             scale=160/max(1,max(abs(v) for v in command.values()))
             for i,value in command.items():
                 write_register(p,i,40,1,1);write_register(p,i,46,encode_velocity(round(value*scale)),2)
