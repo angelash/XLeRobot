@@ -98,5 +98,8 @@ def test_api_and_pad_dead_man(runtime,st,monkeypatch):
     st.require_pad=True;runtime.gamepad=pad([0,.6,0,0,0,0]);runtime.pad_time=time.monotonic()
     response=client.post('/api/limit-test/start',json={'items':['head:pan'],'confirmed':True})
     assert response.status_code==409 and '回中' in response.json()['detail']
+    # A sleeping (disconnected) gamepad does not block a delegated run.
+    runtime.gamepad={'connected':False,'buttons':[],'axes':[],'hat':[0,0]}
+    assert not st._pad_active()
     assert client.post('/api/limit-test/stop').status_code==200
     assert 'limit_selftest' in client.get('/api/original/status').json()

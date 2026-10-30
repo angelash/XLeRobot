@@ -121,8 +121,10 @@ class LimitSelfTest:
             if not confirmed:raise ValueError('请确认周围空间足够、无人靠近；自检中按手柄任意键立即停止')
             if r.controller['controller']=='online':raise ValueError('先结束手柄接管，再开始自检')
             if r.manual_calibration.active:raise ValueError('先结束采集，再开始自检')
-            if self.require_pad and (not r.gamepad.get('connected') or time.monotonic()-r.pad_time>1 or not neutral(r.gamepad)):
-                raise ValueError('手柄需要在线并全部回中：自检过程中按手柄任意键会立即停止')
+            # A sleeping gamepad does not block a delegated run; a connected one
+            # must be neutral so that any later input means "stop".
+            if self.require_pad and self._pad_active():
+                raise ValueError('手柄全部回中后再开始：自检过程中按手柄任意键会立即停止')
             plan=self._ordered(items)
             for side in ('left','right'):
                 if f'{side}:pan' in plan and f'{side}:fold' not in plan and not self.folded(side):
@@ -157,10 +159,11 @@ class LimitSelfTest:
 
     def _check_abort(self):
         if self.abort_reason:raise Aborted(self.abort_reason)
-        if self.require_pad:
-            g=self.runtime.gamepad
-            if not g.get('connected') or time.monotonic()-self.runtime.pad_time>1:raise Aborted('手柄断开，自检已停止')
-            if not neutral(g):raise Aborted('检测到手柄输入，自检已立即停止')
+        if self.require_pad and self._pad_active():raise Aborted('检测到手柄输入，自检已立即停止')
+
+    def _pad_active(self):
+        g=self.runtime.gamepad
+        return bool(g.get('connected')) and time.monotonic()-self.runtime.pad_time<=1 and not neutral(g)
 
     def _sleep(self):
         if self.tick:time.sleep(self.tick)
