@@ -108,6 +108,18 @@ def test_legacy_wheel_swap_migrates_to_equivalent_direction_settings(tmp_path):
     assert s.base_signs()==(-1,1)
 
 
+def test_previous_day_collection_is_recovered_after_midnight_restart(runtime,tmp_path):
+    day1=tmp_path/'2026-10-29'/'whole-calibration'/'session.json'
+    day2=tmp_path/'2026-10-30'/'whole-calibration'/'session.json'
+    c=cal.WholeCalibration(runtime,day1,runtime.manual_calibration.profile_path);runtime.manual_calibration=c
+    c.start(True);widen(c,['COM3:2']);c.persist()
+    fresh=cal.WholeCalibration(runtime,day2,c.profile_path);runtime.manual_calibration=fresh
+    assert fresh.find_recoverable()['id']==c.id,'Dated evidence folders must not hide yesterday\'s collection'
+    resumed=fresh.resume_latest()
+    assert resumed['active'] and fresh.path.parent==day1.parent
+    assert fresh.samples['COM3:2'].high-fresh.samples['COM3:2'].low>=1000
+
+
 def test_gateway_allows_every_route_the_console_calls():
     from fabrication.assembly.debug_console import platform_app
     static=Path(platform_app.__file__).resolve().parent/'static'

@@ -166,6 +166,9 @@ def split_key(key):
 class WholeCalibration:
     def __init__(self,runtime,path,profile_path):
         self.runtime=runtime;self.path=Path(path);self.profile_path=Path(profile_path)
+        # Evidence directories are dated; new sessions go to today's folder,
+        # while recovery also searches earlier dated folders (midnight restarts).
+        self.base_dir=self.path.parent
         self.active=False;self.step='ranges';self.error=None;self.id=None
         self.samples={};self.captures={};self.backup={};self.confirmed_keys=[]
         self.wheels={};self.base_tests={};self.base_running=None;self.timer=None
@@ -185,12 +188,25 @@ class WholeCalibration:
             self.persistence_error=str(exc);return False
         self.persistence_error=None;self.last_save=time.monotonic();return True
 
+    def _session_dirs(self):
+        dirs=[self.base_dir]
+        if re.fullmatch(r'\d{4}-\d{2}-\d{2}',self.base_dir.parent.name):
+            for d in sorted(self.base_dir.parent.parent.glob('*/whole-calibration'),reverse=True):
+                if d!=self.base_dir and re.fullmatch(r'\d{4}-\d{2}-\d{2}',d.parent.name):dirs.append(d)
+        return dirs
+
+    def _session_file(self,name):
+        for d in self._session_dirs():
+            p=d/(name+'.json')
+            if p.is_file():return p
+        raise ValueError('找不到采集记录：'+name)
+
     def start(self,confirmed):
         r=self.runtime
         if not confirmed:raise ValueError('请先托住双臂重量并确认开始手动标定')
         if self.active:raise ValueError('已有手动标定进行中')
         if r.controller['controller']=='online':raise ValueError('请先结束接管，再开始手动标定')
-        r.scan();self.id=uuid.uuid4().hex;self.path=self.path.parent/(self.id+'.json')
+        r.scan();self.id=uuid.uuid4().hex;self.path=self.base_dir/(self.id+'.json')
         self.backup={f'{p}:{i}':read_registers(r.session.ports[p],i) for p,ids in EXPECTED.items() for i in ids}
         for key,reg in self.backup.items():
             wheel=key in ('COM4:9','COM4:10')
@@ -270,7 +286,7 @@ class WholeCalibration:
         stamp=time.monotonic()
         if stamp-self.recovery_checked<2:return self.recoverable
         candidates=[]
-        for path in self.path.parent.glob('*.json'):
+        for path in (p for d in self._session_dirs() for p in d.glob('*.json')):
             if not re.fullmatch(r'[0-9a-f]{32}',path.stem):continue
             try:
                 data=json.loads(path.read_text(encoding='utf-8'))
@@ -293,7 +309,7 @@ class WholeCalibration:
 
     def _best_card_checkpoint(self):
         best=None;best_count=0
-        for path in self.path.parent.glob('*-before-recovery-*.json'):
+        for path in (p for d in self._session_dirs() for p in d.glob('*-before-recovery-*.json')):
             try:
                 data=json.loads(path.read_text(encoding='utf-8'))
                 captures=data.get('captures',{})
@@ -314,7 +330,7 @@ class WholeCalibration:
         if r.controller['controller']=='online' or self.base_running:raise ValueError('先结束接管或等待底盘停车')
         if self.active and not self.error:raise ValueError('当前采集正常，无需恢复')
         if not isinstance(session_id,str) or not re.fullmatch(r'[0-9a-f]{32}',session_id):raise ValueError('采集记录编号无效')
-        path=self.path.parent/(session_id+'.json');data=json.loads(path.read_text(encoding='utf-8'))
+        path=self._session_file(session_id);data=json.loads(path.read_text(encoding='utf-8'))
         if data.get('serials')!=EXPECTED_SERIALS or data.get('applied') or data.get('id')!=session_id:
             raise ValueError('采集记录身份不符或已经应用')
         backup=data['register_backup'];ranges=data['ranges']
@@ -374,7 +390,7 @@ class WholeCalibration:
         if not confirmed:raise ValueError('请确认合并已保存的采集卡片')
         if not isinstance(session_id,str) or not re.fullmatch(r'[0-9a-f]{32}-before-recovery-[0-9a-f]{8}',session_id):
             raise ValueError('备份记录编号无效')
-        data=json.loads((self.path.parent/(session_id+'.json')).read_text(encoding='utf-8'))
+        data=json.loads(self._session_file(session_id).read_text(encoding='utf-8'))
         if data.get('serials')!=EXPECTED_SERIALS:raise ValueError('备份不属于当前机器人')
         ports=self.runtime.arm_ports();valid={'left_a','left_b','left_c','left_open','left_closed',
             'right_a','right_b','right_c','right_open','right_closed'}
