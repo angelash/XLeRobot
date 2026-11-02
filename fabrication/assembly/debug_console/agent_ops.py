@@ -71,7 +71,7 @@ class AgentRunner:
             if op=='probe':self.lt._ordered([step.get('item')])
             if op in ('sample','backoff_trial'):
                 for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
-            if op=='backoff_trial' and step.get('variant','A') not in ('A','B','C','D'):raise ValueError('退离实验只有A/B/C/D')
+            if op=='backoff_trial' and step.get('variant','A') not in ('A','B','C','D','S'):raise ValueError('退离实验只有A/B/C/D/S')
 
     def start(self,steps,confirmed,label='',background=True):
         r=self.runtime;lt=self.lt
@@ -202,13 +202,20 @@ class AgentRunner:
         """Press one joint into a stop, then back off in a chosen way while
         logging how long the encoder takes to move. A: at once. B: after
         delay s. C: ease the goal 5 counts off the stop first. D: drop the
-        torque ceiling to 0 for 0.2 s first (wrist and gripper only)."""
+        torque ceiling to 0 for 0.2 s first (wrist and gripper only). S: the
+        self-test's fix - the probe already waited for the load to fade.
+        Variants other than S skip that wait by measuring it inside the probe
+        and reporting it, so the latency is counted from the stall."""
         lt=self.lt;port,i=self.resolve(step['joint']);cfg=self._cfg(port,i)
         direction=-1 if int(step.get('direction',-1))<0 else 1;variant=step.get('variant','A')
+        if variant not in ('A','B','C','D','S'):raise ValueError('退离实验只有A/B/C/D/S')
         if variant=='D' and ARM_KINDS.get(i) not in ('pitch','roll','grip') and not (port=='COM3' and i in HEAD_KINDS):
             raise ValueError('D实验只在腕、夹爪或头部做，避免掉臂')
         start=word(lt._read(port,i),56)
-        stop=lt._probe(port,i,direction,cfg,backoff=False)
+        settle=lt._settle
+        if variant!='S':lt._settle=lambda port,i:0
+        try:stop=lt._probe(port,i,direction,cfg,backoff=False)
+        finally:lt._settle=settle
         if stop['kind']!='stall':
             lt._move_retry({(port,i):start},max(cfg['speed_deg'],RETURN_SPEED_DEG),'回到起点')
             return {'variant':variant,'edge':stop['edge'],'kind':stop['kind'],'latency_ms':None,'message':'没有顶到止挡'}
@@ -226,12 +233,15 @@ class AgentRunner:
             write_register(bus,i,48,full,2);write_register(bus,i,46,min(1000,max(60,int(speed))),2);write_register(bus,i,42,target,2)
         while time.monotonic()-t0<3:
             lt._check_abort();row=self._read_sample(port,i,t0);rows.append(row)
-            if latency is None and abs(row['pos']-edge)>=8:latency=round(row['t']*1000)
+            # Only motion away from the stop counts; the servo first sinks deeper.
+            if latency is None and (row['pos']-edge)*-direction>=8:latency=round(row['t']*1000)
             if abs(row['pos']-target)<=8:break
             time.sleep(.01)
         with open(path,'w',encoding='utf-8') as f:f.write(''.join(json.dumps(r)+'\n' for r in rows))
-        moved=abs(rows[-1]['pos']-edge) if rows else 0
-        lt._log(f'退离实验{variant}：{lt._label(port,i)}止挡{edge}，'+(f'{latency}ms后开始移动' if latency is not None else '3秒内未移动')+f'，共退{moved}计数')
+        moved=(rows[-1]['pos']-edge)*-direction if rows else 0
+        deeper=max([0]+[(edge-r['pos'])*-direction for r in rows])
+        lt._log(f'退离实验{variant}：{lt._label(port,i)}止挡{edge}，'+(f'{latency}ms后开始往回移动' if latency is not None else '3秒内未往回移动')+f'，先往里压{deeper}计数，共退{moved}计数')
         lt._move_retry({(port,i):start},max(cfg['speed_deg'],RETURN_SPEED_DEG),'回到起点')
-        return {'variant':variant,'delay':step.get('delay'),'edge':edge,'latency_ms':latency,'moved':moved,'file':path.name,'peak_load':stop['peak_load']}
+        return {'variant':variant,'delay':step.get('delay'),'edge':edge,'latency_ms':latency,'moved':moved,'deeper':deeper,
+                'settle_ms':stop.get('settle_ms',0),'file':path.name,'peak_load':stop['peak_load']}
 

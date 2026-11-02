@@ -55,6 +55,11 @@ MARGIN_RAW=24;BACKOFF_RAW=32;TICK=.05;WINDOW=8;FOLD_TOL=60;MOVE_TORQUE=1000
 # joint then cannot back off. Probes stay this far under the threshold.
 PROBE_TORQUE_MARGIN=50
 RECOVER_WAIT_S=2.5;RECOVER_TRIES=3;RETURN_SPEED_DEG=20;STRICT_TOL=16
+# After a stall the servo keeps pushing into the stop for about 1 s while its
+# speed-loop integral (register 39 = 200) unwinds; back-off goals sent during
+# that time are ignored (measured 2026-11-02 on the left wrist pitch). Hold the
+# goal at the stop until the load fades below this, at most SETTLE_MAX_S.
+SETTLE_LOAD=100;SETTLE_MAX_S=2.0
 STATUS_BITS={1:'电压',2:'编码器',4:'温度',8:'电流',32:'过载'}
 
 
@@ -353,6 +358,15 @@ class LimitSelfTest:
         if not threshold:return wanted
         return max(300,min(wanted,threshold*10-PROBE_TORQUE_MARGIN))
 
+    def _settle(self,port,i):
+        start=time.monotonic();calm=0
+        while time.monotonic()-start<SETTLE_MAX_S:
+            self._check_abort()
+            calm=calm+1 if (word(self._read(port,i),60)&0x3ff)<SETTLE_LOAD else 0
+            if calm>=2:break
+            if self.tick:time.sleep(.03)
+        return round((time.monotonic()-start)*1000)
+
     def _probe(self,port,i,direction,cfg,backoff=True):
         reg=self._read(port,i);pos=word(reg,56);low,high=word(reg,9),word(reg,11)
         extend=round(cfg['extend_deg']*4096/360)
@@ -381,11 +395,11 @@ class LimitSelfTest:
             if time.monotonic()>deadline:kind='timeout';break
             self._sleep()
         with self.runtime.io:write_register(self.runtime.session.ports[port],i,42,pos,2)
-        edge=pos
-        self._log(f'{name}{"负" if direction<0 else "正"}向：'+{'stall':f'在{pos}顶到止挡（负载峰值{peak/10:.0f}%）','bound':f'到探测上限{pos}仍未遇到止挡','timeout':f'超时停在{pos}'}[kind],
-                  port=port,id=i,direction=direction,edge=edge,stop_kind=kind,peak_load=peak)
+        edge=pos;settle=self._settle(port,i) if kind=='stall' else 0
+        self._log(f'{name}{"负" if direction<0 else "正"}向：'+{'stall':f'在{pos}顶到止挡（负载峰值{peak/10:.0f}%，回落用时{settle}ms）','bound':f'到探测上限{pos}仍未遇到止挡','timeout':f'超时停在{pos}'}[kind],
+                  port=port,id=i,direction=direction,edge=edge,stop_kind=kind,peak_load=peak,settle_ms=settle)
         if kind=='stall' and backoff:self._move_retry({(port,i):edge-direction*BACKOFF_RAW},cfg['speed_deg'],'退离止挡',strict=True)
-        return {'edge':edge,'kind':kind,'peak_load':peak}
+        return {'edge':edge,'kind':kind,'peak_load':peak,'settle_ms':settle}
 
     # ---- items -------------------------------------------------------------
     def _fold(self,side):

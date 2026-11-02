@@ -245,3 +245,18 @@ def test_upright_item_needs_a_record_and_the_api_records_it(runtime,st,monkeypat
     assert st.results['left:upright']['status']=='done'
     assert client.post('/api/limit-test/upright',json={'side':'left','action':'clear'}).status_code==200
     assert st.upright_pose('left') is None
+
+
+def test_back_off_waits_for_the_servo_load_to_fade(runtime,st):
+    add_stops(runtime,{('COM3',8):(1600,2600)})
+    real=st._read;state={'pressed':0}
+    def read(port,i):
+        reg=real(port,i)
+        if (port,i)==('COM3',8) and word(reg,56)==1600 and state['pressed']<6:
+            state['pressed']+=1;reg=list(reg);reg[60]=200;reg[61]=0   # 20 % load, fading after 6 reads
+        return reg
+    st._read=read
+    st.start(['head:tilt'],True,background=False)
+    assert st.results['head:tilt']['status']=='done'
+    assert state['pressed']>=6 and not any('重试' in e['message'] for e in st.events),'No retry once the load has faded'
+    assert any('回落用时' in e['message'] for e in st.events)
