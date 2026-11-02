@@ -90,7 +90,7 @@ class SpeechService:
         try:ready=bool(self.configuration()['key'])
         except SpeechError:ready=False
         return {'available':ready,'provider':'MiniMax','default_enabled':False,
-                'note':'只朗读新完成的公开回复；文字始终保留' if ready else '本机尚未配置 MiniMax；文字正常显示'}
+                'note':'只朗读新到达的公开回复；文字始终保留' if ready else '本机尚未配置 MiniMax；文字正常显示'}
 
     async def catalogue(self,refresh=False):
         async with self.catalogue_lock:

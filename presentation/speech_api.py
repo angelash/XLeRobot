@@ -21,6 +21,12 @@ class Preview(Contract):
     emotion: str = Field('auto',pattern=r'^(auto|calm)$')
 
 
+class ReplyPart(Contract):
+    request_id: str = Field(pattern=r'^[A-Za-z0-9_-]{1,100}$')
+    generation_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    part: int = Field(ge=0, le=200)
+
+
 def install_speech(router,store,guard):
     service=SpeechService(store.root)
     store.speech_service=service
@@ -72,4 +78,22 @@ def install_speech(router,store,guard):
         try:
             data,cached=await service.synthesize(parts[value.part],profile.speech,cancelled=cancelled)
             return audio(data,cached,len(parts))
+        except SpeechError as exc:raise HTTPException(exc.status,str(exc)) from None
+
+    @router.post('/speech/reply')
+    async def reply_part(value:ReplyPart,request:Request):
+        await guard(request)
+        profile=store.profile()
+        if not profile.speech.enabled:raise HTTPException(409,'声音输出已关闭')
+        reply=store.replies.get(value.request_id)
+        if not reply or reply['generation_id']!=value.generation_id or reply['status'] not in ('running','completed'):
+            raise HTTPException(410,'回答已失效，不补播旧语音')
+        if value.part>=len(reply['parts']):raise HTTPException(422,'公开句子尚未就绪')
+        async def cancelled():
+            current=store.replies.get(value.request_id)
+            return (not store.profile().speech.enabled or not current or current['generation_id']!=value.generation_id
+                    or current['status'] not in ('running','completed') or await request.is_disconnected())
+        try:
+            data,cached=await service.synthesize(reply['parts'][value.part],profile.speech,cancelled=cancelled)
+            return audio(data,cached,1)
         except SpeechError as exc:raise HTTPException(exc.status,str(exc)) from None

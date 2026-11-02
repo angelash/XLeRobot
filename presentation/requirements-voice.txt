@@ -1,0 +1,4 @@
+# Optional device-local voice input; no cloud ASR or audio-device dependency.
+sherpa-onnx==2.0.1
+pypinyin==0.55.0
+sentencepiece==0.2.1

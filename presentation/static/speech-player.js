@@ -2,6 +2,8 @@ export class SpeechPlayer {
   constructor({audio,request=(...args)=>fetch(...args),status=()=>{},error=()=>{},blocked=()=>{}}) {
     this.audio=audio;this.request=request;this.status=status;this.error=error;this.blocked=blocked;
     this.settings={enabled:false,volume:.8};this.queue=[];this.seen=new Set();this.generation=0;this.armed=false;
+    this.streamedRequests=new Set();this.nextParts=new Map();
+    this.mutedRequests=new Set();
   }
   configure(settings) {
     if(JSON.stringify(this.settings)!==JSON.stringify(settings))this.stop();
@@ -21,14 +23,37 @@ export class SpeechPlayer {
       this.seen.add(event.event_id);
       if(baseline||demo||event.evidence==='demo'||!this.settings.enabled||!this.armed)continue;
       if(event.kind!=='message'||event.phase!=='completed'||!event.text?.trim())continue;
+      if(this.streamedRequests.has(event.task_id))continue;
       if(!event.received_at||Date.now()-Date.parse(event.received_at)>20000)continue;
       this.queue.push({epoch,event_id:event.event_id});
     }
     while(this.seen.size>1000)this.seen.delete(this.seen.values().next().value);
     if(!this.busy&&this.queue.length)void this.drain();
   }
+  observeLive(value,{baseline=false}={}) {
+    if(!value.kind?.startsWith('reply.'))return;
+    const id=value.request_id;
+    if(['reply.cancelled','reply.failed','reply.interrupted'].includes(value.kind)){
+      if(this.currentRequest===id)this.stop();
+      this.queue=this.queue.filter(x=>x.request_id!==id);return;
+    }
+    const key=id+':'+value.generation_id,start=this.nextParts.get(key)||0;
+    this.nextParts.set(key,value.part_count||0);this.streamedRequests.add(id);
+    if(!baseline&&!this.mutedRequests.has(id)&&this.settings.enabled&&this.armed&&Date.now()/1000-value.updated_at<20){
+      for(let part=start;part<(value.part_count||0);part++)this.queue.push({request_id:id,generation_id:value.generation_id,part});
+      if(!this.busy&&this.queue.length)void this.drain();
+      else if(this.playing&&!this.prefetched&&this.queue[0]?.request_id){
+        const item=this.queue[0],promise=this.fetchAudio('/api/presence/speech/reply',item,this.generation);promise.catch(()=>{});this.prefetched={item,promise};
+      }
+    }
+    while(this.nextParts.size>128)this.nextParts.delete(this.nextParts.keys().next().value);
+    while(this.streamedRequests.size>128)this.streamedRequests.delete(this.streamedRequests.values().next().value);
+  }
   stop() {
-    this.generation++;this.queue=[];this.busy=false;this.controller?.abort();this.controller=null;
+    for(const item of this.queue)if(item.request_id)this.mutedRequests.add(item.request_id);
+    if(this.currentRequest)this.mutedRequests.add(this.currentRequest);
+    while(this.mutedRequests.size>128)this.mutedRequests.delete(this.mutedRequests.values().next().value);
+    this.generation++;this.queue=[];this.busy=false;this.controller?.abort();this.controller=null;this.prefetched=null;this.currentRequest=null;
     this.audio.pause();this.audio.removeAttribute('src');this.audio.load();
     if(this.url)URL.revokeObjectURL(this.url);this.url=null;
     this.finish?.();this.finish=null;
@@ -58,14 +83,20 @@ export class SpeechPlayer {
     const generation=this.generation;this.busy=true;
     try {
       while(this.queue.length&&generation===this.generation&&this.settings.enabled) {
-        const item=this.queue.shift();let parts=1;
+        const item=this.queue.shift();this.currentRequest=item.request_id;let parts=1;
         for(let part=0;part<parts;part++) {
           this.status(part?'继续生成语音…':'正在生成语音…');
-          const result=await this.fetchAudio('/api/presence/speech',{...item,part},generation);
+          const path=item.request_id?'/api/presence/speech/reply':'/api/presence/speech';
+          const body=item.request_id?item:{...item,part};
+          const cached=this.prefetched?.item===item?this.prefetched.promise:null;this.prefetched=null;
+          const result=await (cached||this.fetchAudio(path,body,generation));
           if(!result||generation!==this.generation)return;
           parts=result.parts;if(!result.blob)break;
           this.status(`正在播报${parts>1?` · ${part+1}/${parts}`:''}`);
-          await this.play(result.blob,generation);
+          const next=this.queue[0];
+          if(next?.request_id){const promise=this.fetchAudio('/api/presence/speech/reply',next,generation);promise.catch(()=>{});this.prefetched={item:next,promise};}
+          this.playing=true;
+          try{await this.play(result.blob,generation);}finally{this.playing=false;}
           if(generation!==this.generation)return;
         }
       }
@@ -77,6 +108,18 @@ export class SpeechPlayer {
         else {this.error(error.message);this.status('语音暂不可用 · 文字正常');}
       }
     } finally {if(generation===this.generation)this.busy=false;}
+  }
+  async acknowledgement(shouldPlay=()=>true) {
+    if(!this.settings.enabled||!this.armed||this.busy||!shouldPlay())return;
+    const generation=this.generation;
+    try{
+      const response=await this.request('/api/presence/voice-input/ack');
+      if(!response.ok||response.status===204)return;
+      const blob=await response.blob();
+      if(generation!==this.generation||this.busy||!shouldPlay())return;
+      this.busy=true;this.acknowledging=true;await this.play(blob,generation);
+    }catch{/* Cache misses stay visual. */}
+    finally{this.acknowledging=false;if(generation===this.generation){this.busy=false;if(this.queue.length)void this.drain();}}
   }
   async preview(body) {
     this.stop();await this.arm();const generation=this.generation;

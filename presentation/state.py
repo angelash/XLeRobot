@@ -62,6 +62,42 @@ class Speech(Contract):
     emotion: Literal['auto','calm'] = 'auto'
 
 
+class Wake(Contract):
+    follow_profile_name: Literal[True] = True
+    aliases: list[str] = Field(default_factory=list, max_length=8)
+    cooldown_ms: int = Field(2000, ge=1000, le=10000)
+
+    @model_validator(mode='after')
+    def validate_aliases(self):
+        self.aliases = list(dict.fromkeys(x.strip() for x in self.aliases if x.strip()))
+        if any(len(x) > 40 or not all(c.isalnum() or c in " -'" for c in x) for x in self.aliases):
+            raise ValueError('发音别名请使用不超过40字的中文或英文名字')
+        return self
+
+
+class WakeAck(Contract):
+    text: str = Field('我在', max_length=80)
+    audible: bool = True
+
+
+class Utterance(Contract):
+    start_timeout_ms: int = Field(5000, ge=2000, le=10000)
+    endpoint_silence_ms: int = Field(500, ge=400, le=1500)
+    max_ms: int = Field(20000, ge=3000, le=20000)
+
+
+class VoiceInput(Contract):
+    enabled: bool = False
+    capture_backend: Literal['browser-local'] = 'browser-local'
+    mode: Literal['wake-and-talk', 'push-to-talk'] = 'wake-and-talk'
+    confirm_transcript: bool = True
+    wake: Wake = Field(default_factory=Wake)
+    wake_ack: WakeAck = Field(default_factory=WakeAck)
+    utterance: Utterance = Field(default_factory=Utterance)
+    duplex: Literal['half'] = 'half'
+    keep_raw_audio: Literal[False] = False
+
+
 class Profile(Contract):
     version: Literal[1] = 1
     name: str = Field('MOSS', min_length=1, max_length=40)
@@ -72,6 +108,7 @@ class Profile(Contract):
     avatar: Avatar = Field(default_factory=Avatar)
     layout: Layout = Field(default_factory=Layout)
     speech: Speech = Field(default_factory=Speech)
+    voice_input: VoiceInput = Field(default_factory=VoiceInput)
 
 
 class Overlay(Contract):
@@ -186,6 +223,9 @@ class Store:
         self.quota = quota
         self.lock = threading.RLock()
         self.journal = Journal()
+        from .live import LiveFeed, PublicReplies
+        self.live = LiveFeed()
+        self.replies = PublicReplies(self.live)
 
     def profile(self):
         with self.lock:

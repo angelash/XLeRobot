@@ -42,3 +42,14 @@ test('a blocked play never loops or repeats synthesis',async()=>{
   p.configure({...settings,enabled:true});p.armed=true;p.observe([],{epoch:'one',baseline:true});p.observe([event('one'),event('two')],{epoch:'one'});
   await tick();assert.equal(blocked,1);assert.equal(count,1);assert.equal(p.armed,false);assert.equal(p.queue.length,0);p.stop();
 });
+
+test('streamed sentences play once, terminal fallback never repeats and stop mutes late sentences',async()=>{
+  const calls=[];const p=new SpeechPlayer({audio:audio(),request:async(path,value)=>{calls.push({path,...JSON.parse(value.body)});return reply();}});
+  p.configure({...settings,enabled:true});p.armed=true;
+  const live={kind:'reply.delta',request_id:'stream',generation_id:'a'.repeat(32),part_count:1,updated_at:Date.now()/1000};
+  p.observeLive(live);await tick();await tick();
+  assert.equal(calls.length,1);assert.equal(calls[0].part,0);
+  p.observeLive(live);p.observe([],{epoch:'one',baseline:true});
+  p.observe([event('done',{task_id:'stream'})],{epoch:'one'});await tick();assert.equal(calls.length,1);
+  p.stop();p.observeLive({...live,part_count:2});await tick();assert.equal(calls.length,1);
+});

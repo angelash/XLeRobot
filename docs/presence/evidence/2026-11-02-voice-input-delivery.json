@@ -1,0 +1,75 @@
+{
+  "date": "2026-11-02",
+  "scope": "silent software validation; physical microphone and speakers deferred to user",
+  "local_python": {
+    "passed": 76
+  },
+  "local_node": {
+    "passed": 23
+  },
+  "browser": {
+    "passed": true,
+    "microphone_calls": "simulated only",
+    "sound_play_calls": 0,
+    "speech_requests": 0,
+    "single_submission": 1,
+    "default_off": true,
+    "virtual_input_rejected": true,
+    "rename_releases_capture": true,
+    "page_errors": [],
+    "mobile_no_overflow": true
+  },
+  "laptop_isolated": {
+    "production_sessions_used": false,
+    "microphone_opened": false,
+    "audio_played": false,
+    "turns": [
+      {
+        "role": "MOSS",
+        "text": "你好，我是MOSS。",
+        "first_public_delta_s": 18.423793499998283,
+        "completed_s": 18.608663299994078,
+        "single_turn_input_tokens": 23296
+      },
+      {
+        "role": "LUNA",
+        "text": "你好，我是LUNA。",
+        "first_public_delta_s": 3.0477326000109315,
+        "completed_s": 3.160606799996458,
+        "single_turn_input_tokens": 23627
+      }
+    ],
+    "process_reused": true,
+    "cancel_discarded_late_result": true,
+    "models": {
+      "ready": true,
+      "wake_ready": true,
+      "wake_names": [
+        "MOSS",
+        "莫斯"
+      ],
+      "unsupported_names": []
+    },
+    "model_load_s": 6.5149815999902785,
+    "silent_pcm": {
+      "input_s": 5,
+      "processing_s": 0.5733160999952815,
+      "events": 0
+    },
+    "custom_name": {
+      "ready": true,
+      "wake_ready": true,
+      "wake_names": [
+        "露娜"
+      ],
+      "unsupported_names": []
+    }
+  },
+  "production_published": false,
+  "limitations": [
+    "No real microphone opened",
+    "No audio playback",
+    "No real recognition accuracy or echo verification",
+    "Two isolated text turns are not a p95 estimate"
+  ]
+}

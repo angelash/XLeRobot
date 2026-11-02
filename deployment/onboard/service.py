@@ -6,6 +6,7 @@ does not terminate it. Conversation files and diagnostics stay outside Git.
 from __future__ import annotations
 
 import argparse
+from collections import OrderedDict
 import json
 import os
 import queue
@@ -34,6 +35,11 @@ class Mailbox:
         self.fault = None
         self.sync = {"state": "not_checked"}
         self.started_at = time.time()
+        self.live_epoch = os.urandom(16).hex()
+        self.live_seq = 0
+        self.live_values = OrderedDict()
+        self.changed = threading.Condition(self.guard)
+        self.cancel_requests = set()
         for path in self.directory.glob("*.json"):
             value = json.loads(path.read_text(encoding="utf-8"))
             if value["status"] in ("queued", "running"):
@@ -72,12 +78,33 @@ class Mailbox:
                 value['presentation'] = presentation
             write_json(path, value)
             self.queue.put_nowait(request_id)
+            self._publish(value)
             return value
+
+    def _publish(self, value, text=None, turn_id=None):
+        with self.changed:
+            self.live_seq += 1
+            public = {'id': value['id'], 'status': value['status'], 'message': value['message'][:4000],
+                      'reply': text if text is not None else str(value.get('reply', {}).get('text', ''))[:8000],
+                      'turn_id': turn_id or value.get('reply', {}).get('turn_id'),
+                      'seq': self.live_seq, 'epoch': self.live_epoch}
+            self.live_values[value['id']] = public
+            self.live_values.move_to_end(value['id'])
+            while len(self.live_values) > 32:
+                self.live_values.popitem(last=False)
+            self.changed.notify_all()
+
+    def live(self, after, epoch):
+        with self.guard:
+            reset = epoch != self.live_epoch or after > self.live_seq
+            return {'epoch': self.live_epoch, 'seq': self.live_seq, 'reset': reset,
+                    'messages': [x for x in self.live_values.values() if reset or x['seq'] > after]}
 
     def health(self):
         with self.guard:
             return {"service": "xlerobot-onboard", "version": 1, "motion_enabled": False,
                     "presentation_context_version": 2,
+                    "public_stream_version": 1, "engine_transport": 'app-server' if getattr(self.brain, 'supports_stream', False) else 'cli',
                     "active": self.active, "fault": self.fault, "queue": self.queue.qsize(),
                     "thread_id": self.brain.session().get("thread_id"), "source_sync": self.sync,
                     "started_at": self.started_at}
@@ -110,6 +137,9 @@ class Mailbox:
             request_id = self.queue.get()
             with self.guard:
                 value = self.read(request_id)
+                if value['status'] == 'cancelled':
+                    self.queue.task_done()
+                    continue
                 if self.fault:
                     value.update(status="cancelled", error="A previous failure stopped the queue")
                     write_json(self.path(request_id), value)
@@ -118,23 +148,55 @@ class Mailbox:
                 self.active = request_id
                 value.update(status="running", started_at=time.time())
                 write_json(self.path(request_id), value)
+                self._publish(value)
             try:
-                result = (self.brain.ask(value['message'], request_id, presentation=value['presentation'])
-                          if value.get('presentation') is not None else self.brain.ask(value['message'], request_id))
+                kwargs = {'presentation': value['presentation']} if value.get('presentation') is not None else {}
+                if getattr(self.brain, 'supports_stream', False):
+                    def on_delta(text, turn_id):
+                        with self.guard:
+                            if request_id not in self.cancel_requests and not self.fault:
+                                self._publish(value, text, turn_id)
+                    kwargs['on_delta'] = on_delta
+                result = self.brain.ask(value['message'], request_id, **kwargs)
                 with self.guard:
-                    if self.fault:
+                    if self.fault or request_id in self.cancel_requests:
                         raise TurnFailure("Turn was cancelled; late answer was discarded")
                     value.update(status="completed", reply=result)
             except Exception as exc:
                 with self.guard:
-                    self.fault = str(exc)
-                    value.update(status="failed", error=str(exc))
+                    if request_id in self.cancel_requests:
+                        value.update(status='cancelled', error='Cancelled by user; late results discarded')
+                    else:
+                        self.fault = str(exc)
+                        value.update(status="failed", error=str(exc))
             finally:
                 with self.guard:
                     value["finished_at"] = time.time()
                     write_json(self.path(request_id), value)
+                    self._publish(value)
+                    if request_id in self.cancel_requests:
+                        self.cancel_requests.discard(request_id)
+                        self.brain.cancelled.clear()
                     self.active = None
                     self.queue.task_done()
+
+    def cancel_request(self, request_id):
+        with self.guard:
+            value = self.read(request_id)
+            if value.get('sender') != 'presence':
+                raise ValueError('Only display conversations may be cancelled here')
+            if value['status'] not in ('queued', 'running'):
+                return {'id': request_id, 'status': value['status']}
+            if request_id == self.active:
+                self.cancel_requests.add(request_id)
+                # Protocol replies are handled by the engine reader, which does
+                # not take this mailbox lock. Serialize with worker completion.
+                self.brain.cancel()
+            else:
+                value.update(status='cancelled', finished_at=time.time())
+                write_json(self.path(request_id), value)
+                self._publish(value)
+        return {'id': request_id, 'status': 'cancelled'}
 
     def cancel(self, reason="Cancelled by operator; no request will replay automatically"):
         with self.guard:
@@ -158,6 +220,29 @@ def handler_for(mailbox):
 
         def do_GET(self):
             try:
+                if self.path == '/v1/presentation/stream':
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('Connection', 'close')
+                    self.end_headers()
+                    self.connection.settimeout(4)
+                    cursor, epoch = 0, None
+                    try:
+                        while True:
+                            batch = mailbox.live(cursor, epoch)
+                            if batch['messages'] or batch['reset']:
+                                self.wfile.write(('data: ' + json.dumps(batch, ensure_ascii=False) + '\n\n').encode('utf-8'))
+                                self.wfile.flush()
+                            else:
+                                self.wfile.write(b': keepalive\n\n')
+                                self.wfile.flush()
+                            cursor, epoch = batch['seq'], batch['epoch']
+                            with mailbox.changed:
+                                if mailbox.live_seq == cursor:
+                                    mailbox.changed.wait(timeout=2)
+                    except (BrokenPipeError, ConnectionError, OSError):
+                        return
                 if self.path == "/health":
                     return self.reply(200, mailbox.health())
                 if self.path == "/v1/presentation":
@@ -188,6 +273,8 @@ def handler_for(mailbox):
                                                          payload.get('presentation')))
                 if self.path == "/v1/cancel":
                     return self.reply(200, mailbox.cancel())
+                if self.path.startswith('/v1/messages/') and self.path.endswith('/cancel'):
+                    return self.reply(200, mailbox.cancel_request(self.path[len('/v1/messages/'):-len('/cancel')]))
                 if self.path == "/v1/reset":
                     return self.reply(200, mailbox.reset())
                 self.reply(404, {"error": "Unknown route"})
@@ -195,6 +282,8 @@ def handler_for(mailbox):
                 self.reply(400, {"error": str(exc)})
             except TurnFailure as exc:
                 self.reply(409, {"error": str(exc)})
+            except FileNotFoundError:
+                self.reply(404, {'error': 'Message does not exist'})
 
     return Handler
 
@@ -225,6 +314,8 @@ def monitor_parent(server, mailbox, pid, probe=parent_alive):
     while probe(pid):
         time.sleep(.2)
     mailbox.cancel("Service parent exited; owned engine and listener are stopping")
+    if hasattr(mailbox.brain, 'close'):
+        mailbox.brain.close()
     server.shutdown()
 
 
@@ -246,7 +337,16 @@ def main():
     parser.add_argument("--parent-pid", type=int, default=0)
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding="utf-8-sig"))
-    brain = Brain(config["executable"], config["code_home"], config["workspace"],
+    # Explicit legacy selection is a maintenance fallback, never an uncertain
+    # request retry. Default to the owned persistent protocol engine.
+    if config.get('engine_transport', 'app-server') == 'app-server':
+        from .app_server import AppServerBrain
+        engine = AppServerBrain
+    elif config.get('engine_transport') == 'cli':
+        engine = Brain
+    else:
+        raise ValueError('Unknown engine transport')
+    brain = engine(config["executable"], config["code_home"], config["workspace"],
                   Path(config["state_dir"]) / "brain", timeout=config.get("turn_timeout", 120))
     mailbox = Mailbox(brain, config["state_dir"])
     server = ThreadingHTTPServer(("127.0.0.1", config.get("port", 8781)), handler_for(mailbox))
@@ -260,6 +360,8 @@ def main():
         server.serve_forever(poll_interval=0.2)
     finally:
         mailbox.cancel()
+        if hasattr(brain, 'close'):
+            brain.close()
         server.server_close()
 
 

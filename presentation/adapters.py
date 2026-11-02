@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import httpx
@@ -16,6 +17,48 @@ class OnboardAdapter:
         self.last_poll = 0
         self.connection = {'state': 'unconfigured', 'label': '智能服务未配置'}
         self.lock = asyncio.Lock()
+        self.task = None
+
+    async def start(self):
+        if self.url and not self.task:
+            self.task = asyncio.create_task(self.listen())
+
+    async def stop(self):
+        if self.task:
+            self.task.cancel()
+            try: await self.task
+            except asyncio.CancelledError: pass
+            self.task = None
+
+    async def listen(self):
+        while True:
+            try:
+                async with httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(10, read=20)) as client:
+                    async with client.stream('GET', self.url + '/v1/presentation/stream') as response:
+                        response.raise_for_status()
+                        async for line in response.aiter_lines():
+                            if not line.startswith('data: '):
+                                continue
+                            batch = json.loads(line[6:])
+                            for value in batch.get('messages', [])[-32:]:
+                                self.receive_live(value, baseline=batch.get('reset', False))
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                await self.refresh()
+                await asyncio.sleep(1)
+
+    def receive_live(self, value, baseline=False):
+        status = value.get('status')
+        text = value.get('reply', '')
+        if status == 'running' and text:
+            self.store.replies.update(value['id'], text, turn_id=value.get('turn_id'))
+        elif status in ('completed', 'cancelled', 'failed', 'interrupted'):
+            # Historical terminal receipts do not enter the live speech registry.
+            if not baseline or self.store.replies.get(value['id']):
+                old = self.store.replies.get(value['id'])
+                self.store.replies.update(value['id'], text or (old or {}).get('text', ''),
+                                          status=status, turn_id=value.get('turn_id'))
+        if status != 'running' or not text:
+            self.receive(value)
 
     async def refresh(self):
         if not self.url or time.monotonic() - self.last_poll < .8:
@@ -83,3 +126,11 @@ class OnboardAdapter:
                 raise httpx.RemoteProtocolError('提交回执不是有效 JSON') from None
         self.receive(value)
         return {'id': request_id, 'status': value.get('status', 'queued')}
+
+    async def cancel(self, request_id):
+        if not self.url:
+            raise ValueError('会话桥未连接')
+        async with httpx.AsyncClient(trust_env=False, timeout=8) as client:
+            response = await client.post(self.url + '/v1/messages/' + request_id + '/cancel', json={})
+            response.raise_for_status()
+            return response.json()

@@ -4,6 +4,7 @@ import {Demo} from './demo.js';
 import {SpeechPlayer} from './speech-player.js';
 import {VoicePicker} from './voice-picker.js';
 import {OperatorStatus} from './operator-status.js';
+import {VoiceInputController} from './voice-input.js';
 import {mergeEvents, filterEvents, visualFrame, viewState} from './model.js';
 
 const $ = id => document.getElementById(id);
@@ -15,6 +16,7 @@ let live = {epoch: null, seq: 0, events: []}, sample = {epoch: 'demo', seq: 0, e
 let filter = 'all', follow = true, showOverlays = true, cameraOn = false, visionDismissed = false;
 let connected = false, bridge = 'unconfigured', pending = null, pollTimer, toastTimer, responseTimer;
 let layoutWrite = Promise.resolve(), disposed = false;
+let activeReply = null;
 
 function notify(message, error = false) {
   $('toast').textContent = message; $('toast').classList.toggle('error', error); $('toast').hidden = false;
@@ -46,16 +48,23 @@ async function upload(path, file, limit) {
 const avatar = new AvatarView($('avatar-host'), (message, type) => {
   $('renderer-note').textContent = message; $('model-type').textContent = type;
 });
-$('voice-audio').addEventListener('playing', () => avatar.setSpeaking(true));
+$('voice-audio').addEventListener('playing', () => {avatar.setSpeaking(true);voiceInput.playback(true,speech.acknowledging);});
 for (const event of ['pause', 'ended', 'emptied', 'error']) {
-  $('voice-audio').addEventListener(event, () => avatar.setSpeaking(false));
+  $('voice-audio').addEventListener(event, () => {avatar.setSpeaking(false);voiceInput.playback(false,speech.acknowledging);});
 }
 const speech = new SpeechPlayer({audio:$('voice-audio'),status:message=>$('speech-status').textContent=message,
   error:message=>notify(message,true),blocked:()=>renderSpeechButton()});
 function renderSpeechButton() {
   $('voice-toggle').setAttribute('aria-pressed',String(Boolean(profile?.speech?.enabled)));
-  $('voice-toggle').textContent=!profile?.speech?.enabled?'语音关闭':speech.armed?'语音开启':'启用声音';
+  $('voice-toggle').textContent=!profile?.speech?.enabled?'声音输出 关闭':speech.armed?'声音输出 开启':'启用声音';
 }
+const voiceInput = new VoiceInputController({api,profile:()=>profile,notify,
+  saveEnabled:async enabled=>{await layoutWrite;const next=structuredClone(profile);next.voice_input.enabled=enabled;applyProfile(await api('/config',next,'PUT'));},
+  onWake:()=>{avatar.setState('working');$('avatar-state').textContent='倾听';clearTimeout(responseTimer);
+    setTimeout(()=>{void speech.acknowledgement(()=>voiceInput.owned&&!voiceInput.paused&&!$('mic-transcript').textContent&&voiceInput.level<.012);},800);},
+  onCommand:action=>{if(action==='stop-speech')speech.stop();if(action==='cancel-reply')void cancelReply();if(action==='hide-process')setProcess(false,false);if(action==='show-process')setProcess(true,false);},
+  onSubmitted:(id,status)=>{if(!pending)pending={id,uncertain:status==='uncertain'};renderConnection();},
+});
 const voices = new VoicePicker({player:speech,api,selected:()=>profile.speech,notify,
   choose:async()=>{
     await layoutWrite;const next=structuredClone(profile);
@@ -64,6 +73,7 @@ const voices = new VoicePicker({player:speech,api,selected:()=>profile.speech,no
   }});
 
 function applyProfile(value) {
+  if(profile&&(profile.name!==value.name||profile.persona!==value.persona)){speech.stop();activeReply=null;}
   profile = structuredClone(value);
   document.documentElement.style.setProperty('--accent', profile.accent);
   document.documentElement.style.setProperty('--split', `${profile.layout.split * 100}%`);
@@ -76,6 +86,8 @@ function applyProfile(value) {
   setProcess(profile.layout.log_open, false);
   profile.speech ||= {enabled:false,voice_id:'Chinese (Mandarin)_Reliable_Executive',speed:1,pitch:0,volume:.8,emotion:'auto'};
   speech.configure(profile.speech);renderSpeechButton();
+  profile.voice_input ||= {enabled:false,mode:'wake-and-talk',confirm_transcript:true,wake:{aliases:[]},wake_ack:{text:'我在',audible:true}};
+  voiceInput.configure(profile);
   avatar.setProfile(profile);
 }
 
@@ -114,6 +126,7 @@ function renderConnection() {
   $('send-message').disabled = Boolean(demo) || !connected || !['online', 'legacy'].includes(bridge) || Boolean(pending && !pending.uncertain);
   $('send-message').textContent = pending?.uncertain ? '查询回执' : pending ? '处理中…' : '发送 ↵';
   $('command-status').textContent = demo ? '合成演示' : pending ? '请求 ' + pending.id.slice(-8) : '观察与规划';
+  $('cancel-reply').hidden=!pending&&!activeReply;
 }
 
 function showState() {
@@ -260,7 +273,7 @@ function stopDemo() {
 
 function startDemo() {
   if (demo) {stopDemo(); return;}
-  speech.stop();stopCamera(); visionDismissed = false; setVision(true);
+  speech.stop();void voiceInput.stop('演示期间麦克风暂停');stopCamera(); visionDismissed = false; setVision(true);
   sample = {epoch:'demo', seq:0, events:[]};
   demo = new Demo($('demo-video'), event => ingest({epoch:'demo', seq:event.seq, events:[event]}, true));
   $('demo-toggle').textContent = '退出演示'; $('live-view').hidden = false; $('demo-video').hidden = false;
@@ -277,16 +290,49 @@ function connectStream() {
     const value = JSON.parse(event.data); ingest({epoch:value.epoch, seq:value.seq, events:[value]});
   });
   stream.addEventListener('reset', event => ingest(JSON.parse(event.data)));
+  stream.addEventListener('live', event => receiveLive(JSON.parse(event.data)));
+  stream.addEventListener('live-reset',event=>{for(const value of JSON.parse(event.data).events)receiveLive(value,true);});
   stream.onopen = () => $('stream-label').textContent = 'LIVE';
   stream.onerror = () => $('stream-label').textContent = '重连中';
 }
+
+function receiveLive(value,baseline=false){
+  if(value.kind.startsWith('voice.')||value.kind.startsWith('asr.'))voiceInput.event(value,baseline);
+  if(!value.kind.startsWith('reply.'))return;
+  speech.observeLive(value,{baseline:baseline||Boolean(demo)||document.hidden||$('voices-dialog').open});
+  if(demo)return;
+  if(value.status==='running'){
+    activeReply=value;$('robot-response').textContent=value.text.slice(0,1200);
+    $('avatar-state').textContent='正在回应';$('avatar-state').dataset.state='responding';avatar.setState('responding');
+    let output=$('reply-live');
+    if(!output){output=textNode('article','event live-reply','');output.id='reply-live';$('event-list').append(output);}
+    output.replaceChildren(textNode('h3','event-title','正在生成公开回复'),textNode('p','event-text',value.text));
+    if(follow)$('event-scroll').scrollTop=$('event-scroll').scrollHeight;
+  }else{
+    if(activeReply?.request_id===value.request_id)activeReply=null;
+    $('reply-live')?.remove();
+    if(value.status!=='completed'){$('robot-response').textContent='回答已中断。'+value.text;$('avatar-state').textContent='回答中断';}
+  }
+  renderConnection();
+}
+
+async function cancelReply(){
+  const id=pending?.id||activeReply?.request_id;if(!id)return;
+  speech.stop();$('cancel-reply').disabled=true;
+  try{await api('/messages/'+id+'/cancel',{});await refreshNow();}
+  catch(error){notify(error.message,true);}
+  finally{$('cancel-reply').disabled=false;}
+}
+$('cancel-reply').addEventListener('click',()=>void cancelReply());
+$('stop-speech').addEventListener('click',()=>{speech.stop();$('speech-status').textContent='播报已停止 · 文字正常';});
 
 async function poll() {
   if (disposed) return;
   try {
     const state = await api('/state');
     connected = true; bridge = state.connection.state;
-    if (!profile) applyProfile(state.profile);
+    if (!profile||JSON.stringify(profile)!==JSON.stringify(state.profile)) applyProfile(state.profile);
+    if(state.voice_input)voiceInput.render(state.voice_input);
     ingest(state);
     if (pending) {
       try {
@@ -312,6 +358,10 @@ function fillSettings(value) {
   $('setting-animate').checked = value.layout.animate;
   $('setting-speech').checked = value.speech?.enabled||false;
   $('setting-volume').value = value.speech?.volume??.8;
+  $('setting-input-mode').value=value.voice_input?.mode||'wake-and-talk';
+  $('setting-input-confirm').checked=value.voice_input?.confirm_transcript??true;
+  $('setting-wake-aliases').value=(value.voice_input?.wake?.aliases||[]).join('，');
+  $('setting-wake-ack').value=value.voice_input?.wake_ack?.text??'我在';
   $('avatar-file-note').textContent = value.avatar.asset_id ? '已保存资源：' + value.avatar.asset_id.slice(0,8) : '自包含 GLB ≤20MiB · 图片 ≤10MiB';
   $('settings-status').textContent = ''; $('settings-status').classList.remove('error');
 }
@@ -328,6 +378,11 @@ function readSettings() {
   value.layout.animate = $('setting-animate').checked;
   value.layout.log_open = profile.layout.log_open;
   value.speech={...profile.speech,enabled:$('setting-speech').checked,volume:Number($('setting-volume').value)};
+  value.voice_input=structuredClone(profile.voice_input);
+  value.voice_input.mode=$('setting-input-mode').value;
+  value.voice_input.confirm_transcript=$('setting-input-confirm').checked;
+  value.voice_input.wake.aliases=$('setting-wake-aliases').value.split(/[,，]/).map(x=>x.trim()).filter(Boolean);
+  value.voice_input.wake_ack.text=$('setting-wake-ack').value;
   return value;
 }
 
@@ -460,10 +515,10 @@ document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'i') {event.preventDefault(); $('process-toggle').click();}
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {operatorStatus.stop();speech.stop();stream?.close(); stopCamera(); stopDemo();}
+  if (document.hidden) {void voiceInput.stop('页面隐藏，麦克风已停止');operatorStatus.stop();speech.stop();stream?.close(); stopCamera(); stopDemo();}
   else {operatorStatus.start();connectStream(); clearTimeout(pollTimer); poll();}
 });
-window.addEventListener('pagehide', () => {operatorStatus.stop();speech.stop();disposed = true; clearTimeout(pollTimer); stream?.close(); stopCamera(); demo?.stop(); avatar.dispose();});
+window.addEventListener('pagehide', () => {void voiceInput.stop();operatorStatus.stop();speech.stop();disposed = true; clearTimeout(pollTimer); stream?.close(); stopCamera(); demo?.stop(); avatar.dispose();});
 window.addEventListener('pageshow', event => {if (event.persisted) location.reload();});
 
 await poll(); connectStream();

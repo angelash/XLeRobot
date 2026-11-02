@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from presentation.api import create_app
+from presentation.state import VoiceInput
 
 
 def test_speech_profile_loads_and_survives_an_unrelated_settings_edit(tmp_path):
@@ -23,9 +24,9 @@ def test_speech_profile_loads_and_survives_an_unrelated_settings_edit(tmp_path):
     with TestClient(create_app(tmp_path)) as client:
         response = client.get('/api/presence/config')
         assert response.status_code == 200
-        assert response.json() == original
+        assert response.json() == {**original, 'voice_input': VoiceInput().model_dump()}
         state = client.get('/api/presence/state')
-        assert state.status_code == 200 and state.json()['profile'] == original
+        assert state.status_code == 200 and state.json()['profile'] == response.json()
         assert path.read_bytes() == before
 
         changed = response.json()

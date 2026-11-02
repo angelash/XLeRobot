@@ -1,0 +1,17 @@
+{
+  "kws": {
+    "cache_name": "kws.tar.bz2",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2",
+    "sha256": "68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6"
+  },
+  "asr": {
+    "cache_name": "asr.tar.bz2",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2",
+    "sha256": "2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7"
+  },
+  "vad": {
+    "cache_name": "silero_vad.onnx",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+    "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+  }
+}

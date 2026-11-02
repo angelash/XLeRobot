@@ -54,6 +54,8 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
     controller = local_peer(controller_url)
     router = APIRouter(prefix='/api/presence')
     app.state.presence = store
+    app.add_event_handler('startup', adapter.start)
+    app.add_event_handler('shutdown', adapter.stop)
 
     @router.api_route('/{rest:path}', methods=['OPTIONS'], include_in_schema=False)
     async def no_cors(rest: str):
@@ -83,7 +85,10 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
     async def put_config(value: Profile, request: Request):
         await guard(request)
         try:
-            return store.save(value)
+            saved = store.save(value)
+            if hasattr(store, 'voice_input'):
+                await store.voice_input.reconfigure(saved)
+            return saved
         except (OSError, ValueError) as exc:
             raise HTTPException(422, str(exc)) from exc
 
@@ -91,6 +96,7 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
     async def state():
         connection = await adapter.refresh()
         return {'version': 1, 'profile': profile(), 'connection': connection,
+                'voice_input': store.voice_input.status(),
                 'camera_available': bool(controller), 'server_time': now(), **store.journal.read()}
 
     @router.get('/stream')
@@ -102,6 +108,8 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
         async def generate():
             nonlocal cursor, epoch
             heartbeat = 0
+            live_cursor, live_epoch = store.live.seq, store.live.epoch
+            yield 'event: live-reset\ndata: ' + json.dumps(store.live.read(), ensure_ascii=False) + '\n\n'
             while not await request.is_disconnected():
                 batch = store.journal.read(cursor, epoch)
                 if batch['reset']:
@@ -112,11 +120,15 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
                         yield f'id: {event["seq"]}\nevent: progress\ndata: ' + json.dumps(event, ensure_ascii=False) + '\n\n'
                         cursor = event['seq']
                 epoch = batch['epoch']
+                current = store.live.read(live_cursor, live_epoch)
+                for item in current['events']:
+                    yield 'event: live\ndata: ' + json.dumps(item, ensure_ascii=False) + '\n\n'
+                live_cursor, live_epoch = current['seq'], current['epoch']
                 heartbeat += 1
                 if heartbeat >= 30:
                     yield ': keepalive\n\n'
                     heartbeat = 0
-                await asyncio.sleep(.3)
+                await asyncio.sleep(.1)
         return StreamingResponse(generate(), media_type='text/event-stream',
                                  headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
@@ -197,6 +209,17 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
         except (httpx.HTTPError, ValueError, KeyError):
             raise HTTPException(503, '暂时无法读回原请求；原 ID 已保留') from None
 
+    @router.post('/messages/{request_id}/cancel')
+    async def cancel_message(request_id: str, request: Request):
+        import re
+        await guard(request)
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', request_id):
+            raise HTTPException(422, '请求 ID 无效')
+        try:
+            return await adapter.cancel(request_id)
+        except (httpx.HTTPError, ValueError):
+            raise HTTPException(503, '取消结果暂不能确认；保留原请求 ID 查询') from None
+
     @router.get('/camera/{camera}')
     async def camera(camera: int, request: Request):
         if camera not in (0, 1, 2) or not controller:
@@ -227,6 +250,8 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
 
     from .speech_api import install_speech
     install_speech(router,store,guard)
+    from .voice_api import install_voice_input
+    install_voice_input(app, router, store, adapter, guard)
     from .operator_stream import install_operator_stream
     install_operator_stream(router,controller)
     app.include_router(router)

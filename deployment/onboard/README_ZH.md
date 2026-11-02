@@ -115,3 +115,11 @@ Start-ScheduledTask -TaskName XLeRobot-Onboard
 ```
 
 覆盖消息去重、崩溃后不重放、失败锁定队列、模型超时结束进程、部分回答拒绝、HTTP通信、取消启动竞态、父进程退出清理及源码更新保护。车载运行环境的pytest由原部署测试工具目录提供，远程回归时先设置`PYTHONPATH=D:\Robot\XLeRobot\.local-deploy\test-tools`，并将便携Git加入该次命令的PATH；不要求把测试依赖安装进控制环境。实际车载部署、跨进程会话连续性、完整文件校验和开机任务运行结果见`PROJECT_STATE.md`最新记录。
+
+## 语音输入与常驻对话（2026-11-02）
+
+默认使用`AppServerBrain`，由本进程托管私有stdio `app-server`子进程，无新增端口或任务。首次请求懒加载，后续轮次复用进程；仍分别续接`session.json`与`presentation-session.json`。只把allowlist中的`agentMessage`公开回复送入同源SSE；analysis、未知phase及工具原文不转发。成功必须收到completed终态，取消/超时/崩溃不自动重试或换适配器重发。
+
+新增`POST /v1/messages/{id}/cancel`只取消指定展示请求；原`/v1/cancel`仍是全桥故障锁定。公开增量通过`GET /v1/presentation/stream`进入8770。需要维护回退时，可在私有配置中明确设`"engine_transport":"cli"`并在空闲时重启；它不是运行时自动回退。
+
+本机麦克风入口为`http://127.0.0.1:8770/presence/`，输入默认关闭且需要用户手动授权、选择设备。准备步骤、静默验证与用户验收见[语音输入交付说明](../../docs/presence/VOICE_INPUT_DELIVERY_ZH.md)。

@@ -117,3 +117,19 @@ def test_spoken_parts_do_not_read_code_and_keep_all_prose():
     assert spoken_parts('前面。\n```python\nprint(1)\n```\n[后面](https://example.com)。')==['前面。 后面。']
     long='甲'*500
     assert ''.join(spoken_parts(long))==long and max(map(len,spoken_parts(long)))<=220
+
+
+def test_streamed_public_sentences_are_bound_to_generation_and_cancel_invalidates_audio(tmp_path):
+    configured(tmp_path);app=create_app(tmp_path);calls=[]
+    with TestClient(app) as client:
+        store=app.state.presence
+        store.speech_service.transport=provider(calls)
+        profile=client.get('/api/presence/config').json();profile['speech']['enabled']=True
+        client.put('/api/presence/config',json=profile)
+        reply=store.replies.update('generated-stream','第一句。未完成部分')
+        body={'request_id':'generated-stream','generation_id':reply['generation_id'],'part':0}
+        assert client.post('/api/presence/speech/reply',json=body).status_code==200
+        assert json.loads(calls[-1].content)['text']=='第一句。'
+        assert client.post('/api/presence/speech/reply',json={**body,'part':1}).status_code==422
+        store.replies.update('generated-stream',reply['text'],status='cancelled')
+        assert client.post('/api/presence/speech/reply',json=body).status_code==410
