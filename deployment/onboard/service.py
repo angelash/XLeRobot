@@ -74,6 +74,21 @@ class Mailbox:
                     "thread_id": self.brain.session().get("thread_id"), "source_sync": self.sync,
                     "started_at": self.started_at}
 
+    def presentation(self):
+        """Bounded public receipts; excludes raw engine events and diagnostics."""
+        with self.guard:
+            paths = sorted(self.directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:32]
+            messages = []
+            for path in reversed(paths):
+                value = json.loads(path.read_text(encoding="utf-8"))
+                messages.append({"id": value["id"], "status": value["status"],
+                                 "message": str(value.get("message", ""))[-4000:],
+                                 "reply": str(value.get("reply", {}).get("text", ""))[:8000],
+                                 "created_at": value.get("created_at"),
+                                 "started_at": value.get("started_at"),
+                                 "finished_at": value.get("finished_at")})
+            return {"version": 1, "fault": bool(self.fault), "messages": messages}
+
     def reset(self):
         with self.guard:
             if self.active:
@@ -136,6 +151,8 @@ def handler_for(mailbox):
             try:
                 if self.path == "/health":
                     return self.reply(200, mailbox.health())
+                if self.path == "/v1/presentation":
+                    return self.reply(200, mailbox.presentation())
                 if self.path.startswith("/v1/messages/"):
                     return self.reply(200, mailbox.read(self.path.removeprefix("/v1/messages/")))
                 self.reply(404, {"error": "Unknown route"})

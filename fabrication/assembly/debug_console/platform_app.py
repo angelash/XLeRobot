@@ -291,6 +291,11 @@ async def lifespan(app):
 app=FastAPI(title='XLeRobot Studio',lifespan=lifespan)
 app.mount('/assets',StaticFiles(directory=STATIC),name='platform-assets')
 
+# Register before the generic /api/{path:path} controller allowlist.
+from presentation.api import install as install_presence
+install_presence(app, data_dir=DATA/'presence', onboard_url='http://127.0.0.1:8781',
+                 controller_url=UPSTREAM, allowed_origins=lambda: ALLOWED_ORIGINS)
+
 @app.middleware('http')
 async def local_only(request,call_next):
     origin=request.headers.get('origin')

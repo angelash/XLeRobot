@@ -6,6 +6,8 @@
 
 `POST /api/presence/events` 接收单条事件，返回补充了 `seq`、`epoch` 和接收时间的事件。生产者必须从本机调用；示例 CLI：`python -m presentation.client emit --file event.json`。同一 `event_id` 重传不重复追加；同 ID 不同内容拒绝。
 
+首版实现补充（2026-11-02）：幂等覆盖当前保留的500条历史窗口，窗口外的事件ID不永久保存；服务重启也会更换epoch。生产者应只重传尚未确认的新近事件，不把旧窗口当作任务重放队列。
+
 `GET /api/presence/state` 获取配置、连接状态和当前有界历史。`GET /api/presence/stream?after=42&epoch=...` 提供 SSE；浏览器断线携带 Last-Event-ID。进程重启或游标落在已淘汰历史之前时发送 `reset`，客户端重建当前窗口，不将旧任务重新执行。
 
 ```json

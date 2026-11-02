@@ -124,6 +124,20 @@ def test_http_roundtrip_and_cross_origin_rejection(tmp_path):
         server.server_close()
 
 
+def test_presentation_projection_is_bounded_and_excludes_private_engine_data(tmp_path):
+    mailbox = Mailbox(FakeBrain(), tmp_path)
+    for index in range(40):
+        write_json(mailbox.path('public-' + str(index)), {
+            'id': 'public-' + str(index), 'status': 'completed', 'message': 'user request',
+            'reply': {'text': 'public reply', 'thread_id': 'private-thread'},
+            'diagnostics': 'private-log', 'error': 'private-error', 'created_at':index,
+        })
+    public = mailbox.presentation()
+    assert len(public['messages']) == 32
+    assert all(item['reply'] == 'public reply' for item in public['messages'])
+    assert not any(secret in json.dumps(public) for secret in ('private-thread','private-log','private-error'))
+
+
 def test_clean_source_fast_forwards_and_laptop_edits_are_preserved(tmp_path):
     git = shutil.which("git")
     if not git:

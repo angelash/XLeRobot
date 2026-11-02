@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "event_id": "example-public-tool-001",
+  "kind": "tool",
+  "phase": "completed",
+  "title": "示例：工具公开进度",
+  "text": "此事件由发布 CLI 显式提交，用于检查展示链路；不是机器人状态读回。",
+  "source": "example-cli",
+  "evidence": "demo",
+  "task_id": "example-task"
+}

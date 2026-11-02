@@ -1,0 +1,2 @@
+# Preserve the pinned npm runtime byte for byte, including on Windows checkouts.
+static/vendor/** -text

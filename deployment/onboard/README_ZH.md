@@ -41,6 +41,7 @@
 | 请求 | 含义 |
 |---|---|
 | `GET /health` | 服务、会话、队列、故障、源码同步状态 |
+| `GET /v1/presentation` | 最近32条消息的公开展示投影，不含私有诊断、原始引擎事件和会话密钥；供[形象与过程展示](../../presentation/README_ZH.md)读取 |
 | `POST /v1/messages` | `{"id":"unique-id","sender":"workstation","message":"..."}` |
 | `GET /v1/messages/{id}` | 持久回执；状态为queued/running/completed/failed/cancelled/interrupted |
 | `POST /v1/cancel` | 取消当前模型进程树，并阻止队列继续运行 |
