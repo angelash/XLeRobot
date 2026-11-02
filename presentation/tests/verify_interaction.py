@@ -26,7 +26,7 @@ from deployment.onboard.service import Mailbox,handler_for
 class ReplyProvider:
     def __init__(self):self.calls=[];self.cancelled=threading.Event()
     def session(self):return {}
-    def ask(self,message,request_id):
+    def ask(self,message,request_id,*,presentation=None):
         self.calls.append((message,request_id));return {'text':'收到，消息链路已验证。'}
     def cancel(self):self.cancelled.set()
 

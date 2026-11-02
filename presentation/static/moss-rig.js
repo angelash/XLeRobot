@@ -12,19 +12,21 @@ export class MossRig {
     this.body = find('MOSS Body Pitch');
     this.fixed = find('MOSS Fixed Link');
     this.ready = Boolean(this.ceiling && this.elbow && this.wrist && this.body && this.fixed);
-    this.yaw = 0; this.pitch = 0;
+    this.yaw = 0; this.pitch = 0; this.arm = 0;
   }
 
-  lookAt(yaw, pitch) {
+  lookAt(yaw, pitch, arm = 0) {
     if (!this.ready) return;
     this.yaw = clamp(yaw, -.55, .55);
     this.pitch = clamp(pitch, -.20, .20);
+    this.arm = clamp(arm, -.10, .10);
     // A requested body heading is distributed over the three vertical joints.
     // The upper link counter-turns slightly; all children remain on their axes.
     // These are display limits, not a physical IK model or robot command.
-    this.ceiling.rotation.y = -.25 * this.yaw;
-    this.elbow.rotation.y = .65 * this.yaw;
-    this.wrist.rotation.y = .60 * this.yaw;
+    // Counter-swivel changes the arm silhouette while preserving body heading.
+    this.ceiling.rotation.y = -.25 * this.yaw + this.arm;
+    this.elbow.rotation.y = .65 * this.yaw - 2 * this.arm;
+    this.wrist.rotation.y = .60 * this.yaw + this.arm;
     this.body.rotation.x = this.pitch;
   }
 }

@@ -43,6 +43,10 @@ async function upload(path, file, limit) {
 const avatar = new AvatarView($('avatar-host'), (message, type) => {
   $('renderer-note').textContent = message; $('model-type').textContent = type;
 });
+$('voice-audio').addEventListener('playing', () => avatar.setSpeaking(true));
+for (const event of ['pause', 'ended', 'emptied', 'error']) {
+  $('voice-audio').addEventListener(event, () => avatar.setSpeaking(false));
+}
 const speech = new SpeechPlayer({audio:$('voice-audio'),status:message=>$('speech-status').textContent=message,
   error:message=>notify(message,true),blocked:()=>renderSpeechButton()});
 function renderSpeechButton() {

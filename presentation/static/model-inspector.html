@@ -8,6 +8,14 @@
     <aside>
       <p class="eyebrow">550W / MATERIAL STUDY</p><h1>让 MOSS<br>更接近 MOSS。</h1><p class="intro">材质、磨损、铭牌与机械细节。<br>比较三种形象，选择喜欢的版本。</p>
       <label class="field">内置版本<select id="inspector-variant"><option value="licensed">Jom 材质版 · 当前采用</option><option value="detailed">程序生成详细版 · 对照</option><option value="simple">首版简化形象 · 对照</option></select></label>
+      <section id="idle-controls" class="idle-controls" aria-label="待机动作预览" hidden>
+        <div class="idle-heading"><h2>待机小动作</h2><span>10 ROUTINES</span></div>
+        <label class="field">选择动作<select id="idle-clip"></select></label>
+        <p id="idle-description" class="idle-description"></p>
+        <div class="idle-actions"><button type="button" id="idle-preview">播放这套 ↗</button><button type="button" id="idle-random">随机轮播</button><button type="button" id="idle-stop" disabled>停止</button></div>
+        <progress id="idle-progress" max="1" value="0" aria-label="待机动作播放进度"></progress>
+        <p id="idle-status" class="idle-status" role="status">展示页待机时自动随机播放，每套 5–30 秒。</p>
+      </section>
       <div class="views" role="group" aria-label="观察方向"><button type="button" data-view="front">正面</button><button type="button" data-view="quarter" aria-pressed="true">前侧</button><button type="button" data-view="side">侧面</button><button type="button" data-view="rear">背面</button></div>
       <label class="field">观察方位 <output id="yaw-value">−25°</output><input type="range" id="yaw" min="-180" max="180" value="-25"></label>
       <label class="field">观察俯仰 <output id="pitch-value">4°</output><input type="range" id="pitch" min="-40" max="40" value="4"></label>

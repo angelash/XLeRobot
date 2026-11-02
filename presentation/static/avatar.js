@@ -2,6 +2,7 @@ import * as THREE from './vendor/three.module.min.js';
 import {GLTFLoader} from './vendor/addons/loaders/GLTFLoader.js';
 import {makeDetailedMoss} from './moss-detailed.js';
 import {MossRig} from './moss-rig.js';
+import {MossIdlePlayer} from './moss-idle.js';
 
 function disposeObject(object) {
   const materials = new Set(), textures = new Set(), images = new Set();
@@ -112,6 +113,7 @@ export class AvatarView {
     this.host = host;
     this.report = report;
     this.state = 'idle'; this.target = {x: 0, y: 0}; this.generation = 0;
+    this.idle = new MossIdlePlayer(); this.pointerUntil = 0; this.speaking = false; this.speakingUntil = 0;
     this.fallback = host.querySelector('.avatar-fallback');
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
@@ -119,10 +121,14 @@ export class AvatarView {
       const rect = host.getBoundingClientRect();
       this.target.x = ((event.clientX - rect.left) / rect.width - .5) * .85;
       this.target.y = ((event.clientY - rect.top) / rect.height - .5) * .28;
+      this.pointerUntil = performance.now() + 2600;
       this.requestFrame();
     };
-    this.leave = () => {this.target = {x: 0, y: 0}; this.requestFrame();};
-    this.visibility = () => {if (document.hidden) cancelAnimationFrame(this.frame); else this.requestFrame();};
+    this.leave = () => {this.target = {x: 0, y: 0}; this.pointerUntil = performance.now() + 1000; this.requestFrame();};
+    this.visibility = () => {
+      this.idle.reset(); this.lastDraw = 0;
+      if (document.hidden) cancelAnimationFrame(this.frame); else this.requestFrame();
+    };
     host.addEventListener('pointermove', this.move);
     host.addEventListener('pointerleave', this.leave);
     document.addEventListener('visibilitychange', this.visibility);
@@ -217,7 +223,15 @@ export class AvatarView {
     }
   }
 
-  setState(state) {this.state = state; this.requestFrame();}
+  setState(state) {
+    if (state !== this.state && state !== 'idle') this.idle.reset();
+    this.state = state; this.requestFrame();
+  }
+  setSpeaking(active) {
+    this.speaking = active; this.speakingUntil = performance.now() + 1000;
+    if (active) this.idle.reset();
+    this.requestFrame();
+  }
   resize() {
     if (!this.renderer) return;
     const {width, height} = this.host.getBoundingClientRect();
@@ -243,13 +257,24 @@ export class AvatarView {
     if (!this.renderer || document.hidden) return;
     const moving = this.animate && !this.motion.matches;
     if (!moving || !this.lastDraw || time - this.lastDraw >= 1000 / 30) {
+      const seconds = this.lastDraw ? Math.max(0, (time-this.lastDraw)/1000) : 0;
       this.lastDraw = time;
       if (this.pivot) {
         if (this.rig?.ready) {
-          const yaw = moving ? this.target.x + Math.sin(time / 4100) * .035 : 0;
-          const pitch = moving ? this.target.y + (this.state === 'working' ? .065 : 0) : 0;
-          this.rig.lookAt(moving ? this.rig.yaw + (yaw-this.rig.yaw)*.09 : 0,
-            moving ? this.rig.pitch + (pitch-this.rig.pitch)*.09 : 0);
+          const pointer = time < this.pointerUntil;
+          const idle = moving && this.state === 'idle' && !pointer && !this.speaking && time >= this.speakingUntil;
+          let pose;
+          if (idle) pose = this.idle.advance(seconds);
+          else {
+            this.idle.reset();
+            pose = {yaw: pointer ? this.target.x : 0,
+              pitch: (pointer ? this.target.y : 0) + (this.state === 'working' ? .065 : 0), arm: 0};
+          }
+          this.host.dataset.idleMotion = this.idle.current?.clip.id || 'paused';
+          const blend = 1-Math.exp(-seconds*16);
+          this.rig.lookAt(moving ? this.rig.yaw+(pose.yaw-this.rig.yaw)*blend : 0,
+            moving ? this.rig.pitch+(pose.pitch-this.rig.pitch)*blend : 0,
+            moving ? this.rig.arm+(pose.arm-this.rig.arm)*blend : 0);
         } else {
           const yaw = -.24 + (moving ? this.target.x * .3 + Math.sin(time / 4100) * .035 : 0);
           const pitch = .035 + (moving ? this.target.y * .4 + (this.state === 'working' ? .07 : 0) : 0);
@@ -272,7 +297,9 @@ export class AvatarView {
   clearScene() {
     cancelAnimationFrame(this.frame);
     disposeObject(this.scene); this.scene = null; this.pivot = null; this.object = null; this.pulseMaterials = []; this.rig = null; this.suspended = false;
+    this.idle.reset(); this.pointerUntil = 0;
     delete this.host.dataset.suspended;
+    delete this.host.dataset.idleMotion;
     this.renderer?.dispose(); this.renderer?.domElement.remove(); this.renderer = null;
     this.image?.remove(); this.image = null; this.lastDraw = 0;
   }

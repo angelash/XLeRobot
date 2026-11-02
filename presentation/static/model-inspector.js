@@ -4,6 +4,7 @@ import {GLTFLoader} from './vendor/addons/loaders/GLTFLoader.js';
 import {makeDetailedMoss} from './moss-detailed.js';
 import {makeSimpleMoss} from './avatar.js';
 import {MossRig} from './moss-rig.js';
+import {MOSS_IDLE_CLIPS, MossIdlePlayer} from './moss-idle.js';
 
 const $=id=>document.getElementById(id),host=$('inspection-canvas');
 const scene=new THREE.Scene();
@@ -19,6 +20,62 @@ for(const [color,power,position] of [['#edece1',3.5,[-3,4,5]],['#a6c5db',2.5,[4,
 const pivot=new THREE.Group();scene.add(pivot);
 let model,rig,variant='licensed',yaw=-25,pitch=4,distance=7,drag,lastX,lastY,exporting=false,generation=0;
 const licensedUrl='/presence/assets/models/moss-550w-jom.glb';
+const idle=new MossIdlePlayer(),motion=matchMedia('(prefers-reduced-motion: reduce)');
+let idleMode=null,idleFrame=0,idleTime=0,idleLabel=null;
+
+for(const clip of MOSS_IDLE_CLIPS){
+  const option=document.createElement('option');option.value=clip.id;
+  option.textContent=`${clip.label} · ${clip.seconds[0]}–${clip.seconds[1]} 秒`;
+  $('idle-clip').append(option);
+}
+function describeIdle(){
+  $('idle-description').textContent=MOSS_IDLE_CLIPS.find(clip=>clip.id===$('idle-clip').value).description;
+}
+function showJoints(){
+  const yaw=Math.round((rig?.yaw||0)*180/Math.PI),pitch=Math.round((rig?.pitch||0)*180/Math.PI);
+  $('joint-yaw').value=yaw;$('joint-pitch').value=pitch;
+  $('joint-yaw-value').textContent=`${yaw}°`;$('joint-pitch-value').textContent=`${pitch}°`;
+}
+function stopIdle(note='已停止，关节已回正。',resetPose=true){
+  cancelAnimationFrame(idleFrame);idle.reset();idleMode=null;idleTime=0;idleLabel=null;
+  $('idle-progress').value=0;$('idle-stop').disabled=true;
+  $('idle-random').setAttribute('aria-pressed','false');$('idle-status').textContent=note;
+  if(resetPose&&rig?.ready){rig.lookAt(0,0,0);showJoints();render();}
+}
+function tickIdle(time){
+  if(document.hidden||motion.matches||!rig?.ready){stopIdle('已暂停动作预览。');return;}
+  if(idleTime&&time-idleTime<1000/30){idleFrame=requestAnimationFrame(tickIdle);return;}
+  const seconds=idleTime?Math.max(0,(time-idleTime)/1000):0;idleTime=time;
+  const pose=idle.advance(seconds,{loop:idleMode==='random'});
+  rig.lookAt(pose.yaw,pose.pitch,pose.arm);showJoints();render();
+  if(!idle.current){
+    stopIdle('这套动作播放完毕。');$('idle-progress').value=1;return;
+  }
+  const current=idle.current;
+  $('idle-progress').value=current.elapsed/current.duration;
+  if(idleLabel!==current){
+    idleLabel=current;
+    $('idle-status').textContent=`${current.clip.label} · ${current.duration.toFixed(1)} 秒${idleMode==='random'?' · 随机轮播中':''}`;
+  }
+  idleFrame=requestAnimationFrame(tickIdle);
+}
+function playIdle(mode){
+  stopIdle();if(!rig?.ready||motion.matches)return;
+  idleMode=mode;idle.play(mode==='single'?$('idle-clip').value:undefined);
+  $('idle-stop').disabled=false;$('idle-random').setAttribute('aria-pressed',String(mode==='random'));
+  idleFrame=requestAnimationFrame(tickIdle);
+}
+function motionPreference(){
+  $('idle-preview').disabled=motion.matches;$('idle-random').disabled=motion.matches;
+  if(motion.matches)stopIdle('系统已启用减少动态效果，自动动作已暂停。');
+}
+describeIdle();motionPreference();
+$('idle-clip').addEventListener('change',()=>{stopIdle();describeIdle();});
+$('idle-preview').addEventListener('click',()=>playIdle('single'));
+$('idle-random').addEventListener('click',()=>playIdle('random'));
+$('idle-stop').addEventListener('click',()=>stopIdle());
+motion.addEventListener('change',motionPreference);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopIdle('页面隐藏，预览已停止。');});
 
 function dispose(object){
   const materials=new Set(),textures=new Set(),images=new Set();
@@ -37,6 +94,7 @@ function resize(){
   renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();render();
 }
 async function replace(){
+  stopIdle();
   const request=++generation,selection=variant;
   $('export-model').disabled=true;$('export-status').textContent='正在载入形象…';
   let next;
@@ -55,6 +113,7 @@ async function replace(){
   model=next;
   rig=selection==='licensed'?new MossRig(model):null;
   $('joint-controls').hidden=!rig?.ready;
+  $('idle-controls').hidden=!rig?.ready;
   $('joint-yaw').value=0;$('joint-pitch').value=0;
   $('joint-yaw-value').textContent='0°';$('joint-pitch-value').textContent='0°';
   pivot.add(model);
@@ -65,6 +124,7 @@ async function replace(){
   $('part-count').textContent=stats.parts||'—';$('mesh-count').textContent=meshes;
   $('triangle-count').textContent=Math.round(triangles).toLocaleString('en-US');
   $('export-status').textContent='';$('export-model').disabled=false;render();
+  $('idle-status').textContent=motion.matches?'系统已启用减少动态效果，自动动作已暂停。':'展示页待机时自动随机播放，每套 5–30 秒。';
 }
 function selectView(name){
   const views={front:[0,0,'正面'],quarter:[-25,4,'前侧视角'],side:[-90,0,'侧面'],rear:[180,0,'背面']};
@@ -76,6 +136,7 @@ document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener
 $('inspector-variant').addEventListener('change',event=>{if(exporting)return;variant=event.target.value;replace();});
 for(const id of ['yaw','pitch'])$(id).addEventListener('input',()=>{yaw=Number($('yaw').value);pitch=Number($('pitch').value);$('view-name').textContent='自定义视角';render();});
 for(const id of ['joint-yaw','joint-pitch'])$(id).addEventListener('input',()=>{
+  stopIdle('手动调整关节。',false);
   const yaw=Number($('joint-yaw').value),pitch=Number($('joint-pitch').value);
   rig?.lookAt(yaw*Math.PI/180,pitch*Math.PI/180);
   $('joint-yaw-value').textContent=`${yaw}°`;$('joint-pitch-value').textContent=`${pitch}°`;render();
@@ -107,5 +168,5 @@ $('export-model').addEventListener('click',async()=>{
   finally{for(const [node,userData] of saved)node.userData=userData;exporting=false;$('export-model').disabled=false;$('inspector-variant').disabled=false;}
 });
 new ResizeObserver(resize).observe(host);
-window.addEventListener('pagehide',()=>{dispose(model);renderer.dispose();});
+window.addEventListener('pagehide',()=>{cancelAnimationFrame(idleFrame);idle.reset();dispose(model);renderer.dispose();});
 replace();resize();
