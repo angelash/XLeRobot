@@ -24,11 +24,32 @@ def bounded_advance(runtime, check_abort, duration=.18, max_raw=80):
     return _bounded_pulse(runtime, check_abort, 1, duration, max_raw, advance=True)
 
 
-def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=False):
+def bounded_travel(runtime, check_abort, distance_m=.05, max_raw=220):
+    """Stop by wheel rotation for one nominal <=5cm leg, not elapsed time.
+
+    The geometry may be a design value. This reports wheel-derived distance
+    explicitly; visual confirmation is still required before another leg.
+    """
+    if (isinstance(distance_m,bool) or not isinstance(distance_m,(int,float))
+            or not math.isfinite(distance_m) or not .005<=abs(distance_m)<=.05):
+        raise ValueError('每段只接受正负0.5–5cm的估计距离')
+    radius,_=runtime._wheel_geometry()
+    if not math.isfinite(radius) or not .02<=radius<=.2:
+        raise ValueError('轮径参数无效')
+    target=round(abs(distance_m)/(2*math.pi*radius)*4096)
+    result=_bounded_pulse(runtime,check_abort,1 if distance_m>0 else -1,6.,max_raw,
+                          advance=True,target_counts=target)
+    result.update(requested_distance_m=distance_m,
+                  wheel_distance_m_estimate=(1 if distance_m>0 else -1)*sum(abs(d) for d in result['wheel_delta_raw'].values())/2*2*math.pi*radius/4096,
+                  radius_m_used=radius,distance_source='wheel_rotation_and_configured_geometry_not_ground_measurement')
+    return result
+
+
+def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=False,target_counts=None):
     if type(direction) is not int or direction not in (-1, 1):
         raise ValueError('转向只能是-1或1')
-    duration_limit = .65
-    speed_limit = 120 if advance else 160
+    duration_limit = 6. if target_counts is not None else .65
+    speed_limit = 220 if target_counts is not None else 120 if advance else 160
     if isinstance(duration, bool) or not isinstance(duration, (float, int)) or not math.isfinite(duration) or not .04 <= duration <= duration_limit:
         raise ValueError(f'观察脉冲只能持续40–{round(duration_limit*1000)}ms')
     if type(max_raw) is not int or not 60 <= max_raw <= speed_limit:
@@ -41,6 +62,10 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     readbacks = []
     started = None
     timer = None
+    travel_trace=[]
+    reached=False
+    drive_elapsed=None
+    fault=None
 
     def stable(rows):
         # STS speed is quantized in 50-count steps: idle encoder jitter by one
@@ -56,9 +81,12 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             for motor in (9,10))
 
     def stop():
+        nonlocal drive_elapsed
         with stop_lock:
             if stopped.is_set():
                 return
+            if started is not None:
+                drive_elapsed=time.monotonic()-started
             try:
                 with runtime.io:
                     # Both wheels are attempted even after a lost acknowledgement.
@@ -146,7 +174,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 raise ValueError('轮组编码器尚未稳定，未发送旋转')
             before={motor:rows[-1]['wheels'][motor]['position'] for motor in (9,10)}
             # The mirrored-left chassis uses opposite raw signs for forward.
-            command = runtime.wheel_command(.02, 0, max_raw=max_raw) if advance else runtime.wheel_command(0, direction*.25, max_raw=max_raw)
+            command = runtime.wheel_command(direction*(.025 if target_counts is not None else .02), 0, max_raw=max_raw) if advance else runtime.wheel_command(0, direction*.25, max_raw=max_raw)
             if (set(command) != {9, 10} or not command[9]
                     or command[9] != (-command[10] if advance else command[10])
                     or max(abs(v) for v in command.values()) > max_raw):
@@ -172,9 +200,35 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     try:
         while not stopped.wait(.015):
             check_abort()
-            if time.monotonic()-started > 1.5:
+            if target_counts is not None:
+                with runtime.io:
+                    if stopped.is_set():break
+                    progress={}
+                    for motor in (9,10):
+                        reg=read_registers(runtime.session.ports['COM4'],motor)
+                        if reg[33]!=1 or reg[40]!=1 or reg[65] or reg[63]>=45 or not 11.5<=reg[62]/10<=12.6:
+                            fault={'motor':motor,'registers':list(reg),'position':word(reg,56),
+                                   'mode':reg[33],'torque':reg[40],'status':reg[65],
+                                   'temperature':reg[63],'voltage':reg[62]/10}
+                            raise RuntimeError(f'直行中轮{motor}状态异常：mode={reg[33]}, torque={reg[40]}, '
+                                               f'status={reg[65]}, temperature={reg[63]}, voltage={reg[62]/10}')
+                        progress[motor]=((word(reg,56)-before[motor]+2048)%4096-2048)*(1 if command[motor]>0 else -1)
+                travel_trace.append({'t':round(time.monotonic()-started,3),'counts':progress})
+                if min(progress.values()) < -4 or abs(progress[9]-progress[10]) > max(35,.25*max(progress.values())):
+                    raise RuntimeError('直行中轮位反向或不对称，已停')
+                if time.monotonic()-started>1.2 and min(progress.values())<2:
+                    raise RuntimeError('直行没有取得双轮有效进展，已停')
+                if max(progress.values())>=target_counts-10:
+                    reached=True;stop()
+            if time.monotonic()-started > duration+1.2:
                 raise RuntimeError('观察脉冲停车超时')
         check_abort()
+    except BaseException as exc:
+        stop()
+        exc.rotation={'travel_trace':travel_trace,'readbacks':readbacks,
+                      'target_counts':target_counts,'failures':failures,
+                      'wheel_start_raw':before,'fault':fault}
+        raise
     finally:
         stop()
         timer.cancel()
@@ -187,17 +241,22 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     # Larger disagreement or overshoot stops the scan instead of accumulating it.
     disagreement=abs(deltas[9]+deltas[10]) if advance else abs(deltas[9]-deltas[10])
     if (disagreement > max(8 if advance else 10,.30*max(abs(v) for v in deltas.values()))
-            or max(abs(v) for v in deltas.values()) > (100 if advance else 130)
+            or max(abs(v) for v in deltas.values()) > (target_counts+max(20,round(target_counts*.1)) if target_counts is not None else 100 if advance else 130)
             or (advance and any(deltas[motor]*command[motor] <= 0 for motor in (9,10)))):
         error=RuntimeError('观察轮子位移不对称、反向或超限，已停')
         error.rotation={'wheel_delta_raw':deltas,'stop_readback':final,'readbacks':readbacks}
         raise error
     if min(abs(v) for v in deltas.values()) < 2:
         raise RuntimeError('轮子未记录到有效转动，已停；需观察原因')
+    if target_counts is not None and (not reached or min(abs(v) for v in deltas.values())<target_counts*.75):
+        raise RuntimeError('直行未达到计数目标，已停；不自动续走')
     if advance:
         return {'wheel_delta_raw': deltas, 'stop_readback': final, 'stop_trace': readbacks,
-                'duration_s': duration, 'command_raw': command, 'rotation_command_rad_s': 0,
-                'direction': 'forward', 'distance_source': 'not_measured_no_metric_claim'}
+                'duration_s': duration if target_counts is None else round(drive_elapsed,3),
+                'command_raw': command, 'rotation_command_rad_s': 0,
+                'direction': 'forward' if direction>0 else 'backward', 'distance_source': 'not_measured_no_metric_claim',
+                **({'target_counts':target_counts,'travel_trace':travel_trace,'max_duration_s':duration,
+                    'wheel_start_raw':before} if target_counts is not None else {})}
     radius, track = runtime._wheel_geometry()
     angle = sum(deltas.values())/2 * 2*math.pi/4096 * 2*radius/track
     return {'wheel_delta_raw': deltas, 'stop_readback': final,

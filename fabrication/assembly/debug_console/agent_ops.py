@@ -19,7 +19,7 @@ from .limit_selftest import ARM_TESTS,HEAD_TESTS,BACKOFF_RAW,MOVE_TORQUE,RETURN_
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .whole_calibration import atomic_json
 
-MOTION_OPS={'move','probe','backoff_trial','rotate','advance'}
+MOTION_OPS={'move','probe','backoff_trial','rotate','advance','travel'}
 OPS=MOTION_OPS|{'snapshot','sample','wait'}
 ARM_KINDS={1:'pan',2:'lift',3:'elbow',4:'pitch',5:'roll',6:'grip'}
 HEAD_KINDS={7:'pan',8:'tilt'}
@@ -46,6 +46,7 @@ class AgentRunner:
         self.steps=[];self.results=[];self.current=None;self.error=None
         self.started_at=None;self.finished_at=None
         self.consumed_drive_evidence=set()
+        self.consumed_return_evidence=set()
 
     @property
     def lt(self):return self.runtime.limit_test
@@ -78,7 +79,7 @@ class AgentRunner:
 
     def _validate(self,steps):
         if not isinstance(steps,list) or not steps:raise ValueError('至少需要一个步骤')
-        advances=[n for n,s in enumerate(steps) if isinstance(s,dict) and s.get('op')=='advance']
+        advances=[n for n,s in enumerate(steps) if isinstance(s,dict) and s.get('op') in ('advance','travel')]
         if advances and (advances!=[0] or any(s.get('op')!='snapshot' for s in steps[1:])):
             raise ValueError('每次只允许一个直行脉冲，随后只拍照；重新观察后才能再发')
         for n,step in enumerate(steps):
@@ -111,6 +112,21 @@ class AgentRunner:
                 if step.get('observation_run_id')!=self.run_id:
                     raise ValueError('直行需引用最近一次观察运行')
                 self._advance_evidence(step)
+            if op=='travel':
+                if set(step)-{'op','distance_m','max_raw','label','observation_run_id','clearance_confirmed','boundary_id','return_run_id'}:
+                    raise ValueError('小幅行走不接受转向或续跑参数')
+                distance=step.get('distance_m');raw=step.get('max_raw',220)
+                import math
+                if (isinstance(distance,bool) or not isinstance(distance,(int,float)) or not math.isfinite(distance)
+                        or not .005<=abs(distance)<=.05 or type(raw) is not int or not 60<=raw<=220):
+                    raise ValueError('小幅行走限正负0.5–5cm估计距离、60–220原始轮速')
+                if not re.fullmatch(r'[a-z0-9-]{1,64}',str(step.get('boundary_id',''))):
+                    raise ValueError('需要绑定本次用户指定的边界依据')
+                if step.get('clearance_confirmed') is not True or step.get('observation_run_id')!=self.run_id:
+                    raise ValueError('先检查最近一次停车照片和本次边界')
+                self._advance_evidence(step)
+                if distance<0:self._return_evidence(step)
+                elif 'return_run_id' in step:raise ValueError('只有原路后退才接受返回依据')
             if op=='probe':self.lt._ordered([step.get('item')])
             if op in ('sample','backoff_trial'):
                 for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
@@ -166,7 +182,7 @@ class AgentRunner:
                     lt._log(f'助手第{n+1}步（{step["op"]}）失败：{exc}')
                     self._record(n,step,result)
                     if isinstance(exc,OSError):raise
-                    if step['op'] in ('rotate','advance') or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
+                    if step['op'] in ('rotate','advance','travel') or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
                         self.error=f'第{n+1}步失败，运行停止：{exc}';break
                     continue
                 if shots:result['watch']=shots
@@ -176,7 +192,7 @@ class AgentRunner:
         except Exception as exc:
             self.error='助手运行中断：'+str(exc);lt._log(self.error)
         finally:
-            if any(s['op'] in ('rotate','advance') for s in self.steps):
+            if any(s['op'] in ('rotate','advance','travel') for s in self.steps):
                 failures=[]
                 with self.runtime.io:
                     for address,length in ((46,2),(40,1)):
@@ -230,6 +246,42 @@ class AgentRunner:
         self.consumed_drive_evidence.add(evidence['run_id'])
         return {**bounded_advance(self.runtime,self.lt._check_abort,step.get('duration',.18),step.get('max_raw',80)),
                 'observation':evidence}
+
+    def _op_travel(self,n,step):
+        from .rotation_scan import bounded_travel
+        evidence=self._advance_evidence(step)
+        returning=self._return_evidence(step) if step['distance_m']<0 else None
+        self.consumed_drive_evidence.add(evidence['run_id'])
+        if returning:self.consumed_return_evidence.add(returning['run_id'])
+        return {**bounded_travel(self.runtime,self.lt._check_abort,step['distance_m'],step.get('max_raw',220)),
+                'observation':evidence,'boundary_id':step['boundary_id'],
+                **({'return_path':returning} if returning else {}),
+                'boundary_enforcement':'supervisor_visual_reference_not_metric_geofence'}
+
+    def _return_evidence(self,step):
+        """Reverse only the immediately preceding, successfully cleared leg.
+
+        This constrains wheel rotation, not people moving into a blind area.
+        Fresh visual clearance is independently required for each return.
+        """
+        rid=step.get('return_run_id','')
+        if (not isinstance(rid,str) or not re.fullmatch(r'\d{8}-\d{6}',rid)
+                or rid in self.consumed_return_evidence):
+            raise ValueError('后退需引用尚未返回过的前进路段')
+        prior=json.loads((self.root/rid/'result.json').read_text(encoding='utf-8'))
+        moves=[r for r in prior.get('results',[]) if r.get('op')=='travel' and r.get('status')=='done']
+        if prior.get('error') or len(moves)!=1:raise ValueError('返回依据必须是成功的单段前进')
+        row=moves[0]
+        age=(datetime.now().astimezone()-datetime.fromisoformat(row['at'])).total_seconds()
+        if (row.get('direction')!='forward' or row.get('boundary_id')!=step['boundary_id']
+                or not 0<=age<=300 or abs(step['distance_m'])>row.get('requested_distance_m',0)):
+            raise ValueError('后退超出本次边界、前进距离或五分钟返回窗口')
+        current=self.runtime.motors()
+        for motor in (9,10):
+            stop=row['stop_readback'][str(motor)]
+            delta=(current[('COM4',motor)]['position']-stop['position']+2048)%4096-2048
+            if abs(delta)>2:raise ValueError('已离开前进终点，不能使用旧路段后退')
+        return {'run_id':rid,'age_s':round(age,2),'kind':'previous_leg_only_not_rear_obstacle_detection'}
 
     def _watch_joints(self,step):
         try:
