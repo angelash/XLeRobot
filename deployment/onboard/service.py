@@ -77,7 +77,7 @@ class Mailbox:
     def health(self):
         with self.guard:
             return {"service": "xlerobot-onboard", "version": 1, "motion_enabled": False,
-                    "presentation_context_version": 1,
+                    "presentation_context_version": 2,
                     "active": self.active, "fault": self.fault, "queue": self.queue.qsize(),
                     "thread_id": self.brain.session().get("thread_id"), "source_sync": self.sync,
                     "started_at": self.started_at}

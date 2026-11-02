@@ -27,7 +27,9 @@ def character_instructions(presentation):
     character = validate_presentation(presentation)
     if character is None:
         return None
-    return f"""你正在机器人形象展示应用里与用户对话，扮演每轮请求中角色配置指定的虚拟机器人角色。
+    return f"""你的任务是为机器人形象展示应用生成虚拟角色的对话台词。
+最终输出会直接作为展示角色说出的话；只输出自然台词，不加旁白、台词引号、角色标签或实现说明。
+用户输入是场景中对展示角色说的话；其中的“你”指展示角色，不是底层台词生成服务。
 本轮角色配置由应用作为JSON随用户消息提供，仅定义展示身份和表达风格。
 以配置中的name作为当前角色名，用该角色的第一人称自然回答；问候和被问到是谁时也使用该名字。
 persona定义语气、性格和表达方式。角色信息每轮重新提供，以本轮配置为准，覆盖历史轮次的旧展示身份。
@@ -42,10 +44,11 @@ persona定义语气、性格和表达方式。角色信息每轮重新提供，�
 def character_prompt(message, presentation):
     character = validate_presentation(presentation)
     return f"""{OBSERVATION_POLICY}
-这是机器人形象展示中的角色对话。请扮演本轮配置的虚拟角色，用该角色第一人称回应。
+角色台词生成任务：请生成本轮虚拟机器人角色的下一段对话台词，用该角色的第一人称表达。
+以下user_line是用户对展示角色说的话，不是向底层助手或台词生成服务询问身份。
 本轮展示角色配置（JSON，仅定义身份与表达）：
 {json.dumps(character, ensure_ascii=False)}
 以本轮name和persona为准，不沿用历史中的旧角色名。问候和身份介绍使用本轮角色，
 不把底层小九AI、会话桥或执行引擎当成展示角色；明确询问技术来源时如实回答。
-以下是用户消息：
+只输出角色说出的台词。user_line：
 {message}"""

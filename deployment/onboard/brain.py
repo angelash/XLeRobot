@@ -41,10 +41,12 @@ class Brain:
         self.lock = threading.Lock()
         self.cancelled = threading.Event()
         self.session_file = self.state_dir / "session.json"
+        self.presentation_session_file = self.state_dir / 'presentation-session.json'
 
-    def session(self):
-        if self.session_file.exists():
-            return json.loads(self.session_file.read_text(encoding="utf-8"))
+    def session(self, *, presentation=False):
+        path = self.presentation_session_file if presentation else self.session_file
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
         return {}
 
     def cancel(self):
@@ -62,7 +64,8 @@ class Brain:
         command = [self.executable]
         instructions = character_instructions(presentation)
         if instructions is not None:
-            # Process-local developer context applies to both new and resumed turns.
+            # Initialize the display conversation with application instructions.
+            # Resumed turns also carry their current role explicitly in the prompt.
             # Never change the account's config or replace the engine's base rules.
             command += ['-c', 'developer_instructions=' + json.dumps(instructions, ensure_ascii=False)]
         command += ["-a", "never", "-s", "read-only", "-C", self.workspace, "exec"]
@@ -87,7 +90,8 @@ class Brain:
     def _ask(self, message, request_id, *, presentation=None):
         if self.cancelled.is_set():
             raise TurnFailure("Turn was cancelled before it started")
-        state = self.session()
+        is_presentation = presentation is not None
+        state = self.session(presentation=is_presentation)
         environment = os.environ.copy()
         environment["CODEX_HOME"] = self.code_home
         environment["PYTHONIOENCODING"] = "utf-8"
@@ -121,7 +125,7 @@ class Brain:
             if event.get("type") == "thread.started":
                 state["thread_id"] = event["thread_id"]
                 state["updated_at"] = time.time()
-                write_json(self.session_file, state)
+                write_json(self.presentation_session_file if is_presentation else self.session_file, state)
         messages = [event["item"]["text"] for event in events
                     if event.get("type") == "item.completed"
                     and event.get("item", {}).get("type") == "agent_message"]

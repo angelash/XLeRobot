@@ -8,7 +8,7 @@ from http.server import ThreadingHTTPServer
 from fastapi.testclient import TestClient
 import pytest
 
-from deployment.onboard.brain import Brain
+from deployment.onboard.brain import Brain, write_json
 from deployment.onboard.persona import OBSERVATION_POLICY
 from deployment.onboard.service import Mailbox, handler_for
 from presentation.api import create_app
@@ -95,6 +95,8 @@ def test_character_is_developer_context_for_new_and_resumed_turns_with_permissio
 
     monkeypatch.setattr('deployment.onboard.brain.subprocess.Popen', launch)
     brain = Brain('test-engine', tmp_path/'account', tmp_path, tmp_path/'state')
+    write_json(brain.session_file, {'thread_id': 'original-engineering-conversation'})
+    original_session = brain.session_file.read_bytes()
     characters = [{'name': 'MOSS', 'persona': '冷静、简洁。'}, {'name': 'LUNA', 'persona': '温暖直接。'}]
     for index, character in enumerate(characters):
         result = brain.ask('你好', f'character-{index}', presentation=character)
@@ -108,6 +110,8 @@ def test_character_is_developer_context_for_new_and_resumed_turns_with_permissio
         assert command[command.index('-a')+1] == 'never'
         assert ('resume' in command) == bool(index)
         assert result['thread_id'] == 'same-conversation'
+        assert brain.session_file.read_bytes() == original_session
+        assert brain.session(presentation=True)['thread_id'] == 'same-conversation'
         prompt = capture.read_text(encoding='utf-8')
         assert prompt.endswith('你好') and '你是车载小九AI' not in prompt
         assert json.dumps(character, ensure_ascii=False) in prompt
