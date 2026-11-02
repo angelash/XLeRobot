@@ -2,10 +2,10 @@
   "date": "2026-11-02",
   "scope": "silent software validation; physical microphone and speakers deferred to user",
   "local_python": {
-    "passed": 76
+    "passed": 77
   },
   "local_node": {
-    "passed": 23
+    "passed": 24
   },
   "browser": {
     "passed": true,
@@ -65,11 +65,88 @@
       "unsupported_names": []
     }
   },
-  "production_published": false,
+  "production_published": true,
   "limitations": [
     "No real microphone opened",
     "No audio playback",
     "No real recognition accuracy or echo verification",
-    "Two isolated text turns are not a p95 estimate"
+    "Two isolated text turns are not a p95 estimate",
+    "Native AudioWorklet loading was not verified in workstation headless browsers; compatibility capture graph passed",
+    "No voice accuracy, false wake or echo acceptance performed"
+  ],
+  "laptop_python": {
+    "passed": 77,
+    "warning": "Test-only anyio BlockingPortal alias deprecation"
+  },
+  "generated_silence_browser_graph": {
+    "passed": true,
+    "actual_browser_audio_graph": true,
+    "capture_mode": "compatibility-script-processor",
+    "generated_zero_signal": true,
+    "physical_mic_opened": false,
+    "browser_muted": true,
+    "pcm_frames_received": 46,
+    "bytes_per_frame": 640,
+    "all_zero_pcm": true,
+    "play_calls": 0,
+    "page_errors": []
+  },
+  "production_page": {
+    "passed": true,
+    "http_static_sha_matches": 6,
+    "input_default_off": true,
+    "model_cache_available_unloaded": true,
+    "mic_calls": 0,
+    "sound_play_calls": 0,
+    "speech_requests": 0,
+    "production_writes": 0,
+    "page_errors": [],
+    "profile_response_preserved": true
+  },
+  "publication": {
+    "success": true,
+    "backup": "D:\\Robot\\XLeRobot\\.local-deploy\\presence-voice-input-20261102-180030",
+    "source_head": "3209108e35070cf6cc3fdc5207d6b5da7b4bc59e",
+    "runtime_files": 19,
+    "model_files": 11,
+    "controller_pid": [
+      10688
+    ],
+    "studio_pid": [
+      4792
+    ],
+    "onboard_pid": [
+      332
+    ],
+    "profile_bytes_preserved": true,
+    "protected_files": 7,
+    "voice_input_enabled": false,
+    "active_capture": false,
+    "models_loaded": false,
+    "models_available": true,
+    "speech_enabled": true,
+    "production_test_messages": 0,
+    "audio_played": false,
+    "physical_microphone_opened": false
+  },
+  "static_patches": {
+    "compatible_capture": {
+      "success": true,
+      "http_sha256": "1e41f3c2a13cf7cd36e4bd2f5ed23f832986c7f8e24f77fa54397087fe9a11cc",
+      "controller_pid": 10688,
+      "studio_pid": 4792,
+      "restarted": false,
+      "input_enabled": false
+    },
+    "reply_deduplication": {
+      "success": true,
+      "http_sha256": "abdc15478a29eea6866a7634085ee933e3e6af847437127c5a803f9b6e83ae19",
+      "restarted": false
+    }
+  },
+  "failures_and_corrections": [
+    "Windows concurrent receipt/read replacement race: locks and concurrent regression added; laptop 77 passed",
+    "Workstation headless Chromium149/156 AudioWorklet module loading stalled: startup timeout and explicit compatibility graph added; zero signal pipeline passed",
+    "Completed receipt versus SSE ordering: single playback owner per request; both orderings tested without audio"
   ]
 }

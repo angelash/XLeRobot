@@ -4,6 +4,7 @@ export class SpeechPlayer {
     this.settings={enabled:false,volume:.8};this.queue=[];this.seen=new Set();this.generation=0;this.armed=false;
     this.streamedRequests=new Set();this.nextParts=new Map();
     this.mutedRequests=new Set();
+    this.fallbackRequests=new Set();
   }
   configure(settings) {
     if(JSON.stringify(this.settings)!==JSON.stringify(settings))this.stop();
@@ -25,9 +26,11 @@ export class SpeechPlayer {
       if(event.kind!=='message'||event.phase!=='completed'||!event.text?.trim())continue;
       if(this.streamedRequests.has(event.task_id))continue;
       if(!event.received_at||Date.now()-Date.parse(event.received_at)>20000)continue;
-      this.queue.push({epoch,event_id:event.event_id});
+      if(event.task_id)this.fallbackRequests.add(event.task_id);
+      this.queue.push({epoch,event_id:event.event_id,task_id:event.task_id});
     }
     while(this.seen.size>1000)this.seen.delete(this.seen.values().next().value);
+    while(this.fallbackRequests.size>128)this.fallbackRequests.delete(this.fallbackRequests.values().next().value);
     if(!this.busy&&this.queue.length)void this.drain();
   }
   observeLive(value,{baseline=false}={}) {
@@ -35,8 +38,11 @@ export class SpeechPlayer {
     const id=value.request_id;
     if(['reply.cancelled','reply.failed','reply.interrupted'].includes(value.kind)){
       if(this.currentRequest===id)this.stop();
-      this.queue=this.queue.filter(x=>x.request_id!==id);return;
+      this.queue=this.queue.filter(x=>x.request_id!==id&&x.task_id!==id);return;
     }
+    // A receipt poll can beat SSE delivery. The first observed path owns this
+    // request's audio; never start sentence playback after whole-reply fallback.
+    if(this.fallbackRequests.has(id))return;
     const key=id+':'+value.generation_id,start=this.nextParts.get(key)||0;
     this.nextParts.set(key,value.part_count||0);this.streamedRequests.add(id);
     if(!baseline&&!this.mutedRequests.has(id)&&this.settings.enabled&&this.armed&&Date.now()/1000-value.updated_at<20){
@@ -83,7 +89,7 @@ export class SpeechPlayer {
     const generation=this.generation;this.busy=true;
     try {
       while(this.queue.length&&generation===this.generation&&this.settings.enabled) {
-        const item=this.queue.shift();this.currentRequest=item.request_id;let parts=1;
+        const item=this.queue.shift();this.currentRequest=item.request_id||item.task_id;let parts=1;
         for(let part=0;part<parts;part++) {
           this.status(part?'继续生成语音…':'正在生成语音…');
           const path=item.request_id?'/api/presence/speech/reply':'/api/presence/speech';

@@ -53,3 +53,11 @@ test('streamed sentences play once, terminal fallback never repeats and stop mut
   p.observe([event('done',{task_id:'stream'})],{epoch:'one'});await tick();assert.equal(calls.length,1);
   p.stop();p.observeLive({...live,part_count:2});await tick();assert.equal(calls.length,1);
 });
+
+test('completed receipt arriving before its coalesced live reply chooses exactly one playback path',async()=>{
+  const calls=[];const p=new SpeechPlayer({audio:audio(),request:async(path,value)=>{calls.push(path);return reply();}});
+  p.configure({...settings,enabled:true});p.armed=true;p.observe([],{epoch:'one',baseline:true});
+  p.observe([event('first-terminal',{task_id:'same-request'})],{epoch:'one'});
+  p.observeLive({kind:'reply.completed',request_id:'same-request',generation_id:'b'.repeat(32),part_count:2,updated_at:Date.now()/1000});
+  await tick();await tick();assert.deepEqual(calls,['/api/presence/speech']);p.stop();
+});

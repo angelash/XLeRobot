@@ -200,4 +200,3 @@ export class VoiceInputController {
     catch{await this.stop('麦克风许可已变化，请重新启用');}
   }
 }
-
