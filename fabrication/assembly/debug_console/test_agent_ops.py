@@ -96,6 +96,15 @@ def test_variant_d_is_refused_on_gravity_joints(runtime,agent):
     assert agent.results[0]['status']=='failed' and '掉臂' in agent.results[0]['message'] and agent.results[1]['status']=='done'
 
 
+def test_pan_probe_refuses_when_the_other_arm_is_parked_inward(runtime,agent,monkeypatch):
+    import fabrication.assembly.debug_console.agent_ops as ops
+    monkeypatch.setattr(ops,'PAN_CENTRE',{'left':2050,'right':2050})
+    set_word(reg(runtime,'COM4',1),56,1750)   # right arm (COM4 in the fake's normal mapping) turned 26 deg inward
+    agent.start([{'op':'probe','item':'left:pan'}],True,background=False)
+    assert agent.results[0]['status']=='failed' and '转回中间' in agent.results[0]['message']
+    assert word(reg(runtime,'COM3',1),56)==2050,'The probed arm did not move'
+
+
 def test_runs_exclude_self_tests_and_the_api_works(runtime,agent,monkeypatch):
     runtime.limit_test.running=True
     with pytest.raises(ValueError,match='正在进行'):agent.start([{'op':'wait','seconds':0}],True,background=False)

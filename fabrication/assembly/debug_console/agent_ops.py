@@ -22,6 +22,11 @@ OPS=MOTION_OPS|{'snapshot','sample','wait'}
 ARM_KINDS={1:'pan',2:'lift',3:'elbow',4:'pitch',5:'roll',6:'grip'}
 HEAD_KINDS={7:'pan',8:'tilt'}
 LAPTOP_CAMERA='HD Camera'
+# Folded-arm shoulder pan centres and the raw direction that turns each arm
+# toward the robot's front centre (measured 2026-11-02). A shoulder-pan probe
+# sweeps the folded arm inward, so the other arm must not be parked there: on
+# 2026-11-02 the right gripper hit the left observer's gripper at +45 deg.
+PAN_CENTRE={'left':2037,'right':2045};PAN_INWARD={'left':1,'right':-1};PAN_CLEAR_RAW=228
 
 
 class AgentRunner:
@@ -195,7 +200,13 @@ class AgentRunner:
         return {'positions':self._positions(targets)}
 
     def _op_probe(self,n,step):
-        item=step['item'];result=self.lt._run_item(item)
+        item=step['item'];side,kind=item.split(':',1)
+        if kind=='pan' and side in PAN_CENTRE:
+            other='right' if side=='left' else 'left';port=self.runtime.arm_ports()[other]
+            inward=(word(self.lt._read(port,1),56)-PAN_CENTRE[other])*PAN_INWARD[other]
+            if inward>PAN_CLEAR_RAW:
+                raise ValueError(f'{"右臂" if other=="right" else "左臂"}肩水平向内转了{inward*360/4096:.0f}°，测{"左臂" if side=="left" else "右臂"}肩水平时会扫到它；先把它转回中间')
+        result=self.lt._run_item(item)
         rest=[s.get('item') for s in self.steps[n+1:] if s.get('op')=='probe']
         self.lt._restore_arm(item,rest)
         return {'item':item,**result}
