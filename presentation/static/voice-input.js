@@ -1,3 +1,5 @@
+import {PcmResampler} from './audio-resampler.js';
+
 const LOCAL_NAMES=new Set(['127.0.0.1','localhost','[::1]','::1']);
 const VIRTUAL=/stereo mix|立体声混音|混音|pico|virtual|voicemeeter|cable|loopback/i;
 const STATES={off:'麦克风关闭',preparing:'正在准备本地识别…',armed:'等你叫我',listening:'我在听',
@@ -77,6 +79,10 @@ export class VoiceInputController {
     this.$('mic-start').disabled=true;this.$('mic-detail').textContent='正在准备本地识别与音频连接…';
     let media;
     try{
+      // Unlock the capture graph in the original click, before permission,
+      // model loading or network awaits consume transient user activation.
+      this.context=new AudioContext({latencyHint:'interactive'});
+      const contextReady=this.context.resume();contextReady.catch(()=>{});
       media=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:id},channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       if(generation!==this.generation){media.getTracks().forEach(t=>t.stop());return;}
       this.media=media;
@@ -98,10 +104,30 @@ export class VoiceInputController {
       socket.onmessage=event=>{if(JSON.parse(event.data).kind==='heartbeat')this.lastHeartbeat=performance.now();};
       socket.onclose=()=>{if(this.socket===socket)void this.stop('连接已关闭，需显式重新启用');};
       socket.onerror=()=>{if(this.socket===socket)void this.stop('音频连接中断');};
-      this.context=new AudioContext({latencyHint:'interactive'});await this.context.resume();
-      await this.context.audioWorklet.addModule('/presence/assets/mic-worklet.js');
+      await Promise.race([contextReady,new Promise((_,reject)=>setTimeout(()=>reject(new Error('音频采样未启动，请重新点击启用麦克风')),5000))]);
+      let worklet=true;
+      try{
+        await Promise.race([this.context.audioWorklet.addModule(new URL('./mic-worklet.js',import.meta.url).href),
+          new Promise((_,reject)=>setTimeout(()=>reject(new Error('音频模块加载超时')),3000))]);
+      }catch{
+        // Some Windows embedded/headless browsers expose AudioWorklet but never
+        // load its module. A bounded compatibility graph uses the same filter;
+        // transport backpressure still invalidates delayed/partial utterances.
+        worklet=false;
+      }
       if(generation!==this.generation)return;
-      this.node=new AudioWorkletNode(this.context,'presence-microphone',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
+      if(worklet){
+        this.node=new AudioWorkletNode(this.context,'presence-microphone',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:1,channelCountMode:'explicit'});
+      }else{
+        this.node=this.context.createScriptProcessor(1024,1,1);
+        const port={enabled:true,postMessage:value=>{port.enabled=value.enabled;resampler.reset();}};
+        const resampler=new PcmResampler(this.context.sampleRate);
+        this.node.port=port;
+        this.node.onaudioprocess=event=>{
+          event.outputBuffer.getChannelData(0).fill(0);
+          if(port.enabled)resampler.push(event.inputBuffer.getChannelData(0),(pcm,level)=>port.onmessage?.({data:{pcm,level}}));
+        };
+      }
       this.source=this.context.createMediaStreamSource(media);this.silent=this.context.createGain();this.silent.gain.value=0;
       this.source.connect(this.node);this.node.connect(this.silent);this.silent.connect(this.context.destination);
       this.seq=0;this.owned=true;this.paused=false;
@@ -114,7 +140,7 @@ export class VoiceInputController {
       media.getTracks().forEach(track=>track.onended=()=>void this.stop('麦克风已断开，请重新选择'));
       try{localStorage.setItem('presence-microphone',id);}catch{}
       const settings=media.getAudioTracks()[0].getSettings();
-      this.$('mic-device-note').textContent=`${media.getAudioTracks()[0].label} · ${settings.sampleRate||this.context.sampleRate} Hz → 16 kHz · 回声消除${settings.echoCancellation?'已请求并启用':'由设备决定'}`;
+      this.$('mic-device-note').textContent=`${media.getAudioTracks()[0].label} · ${settings.sampleRate||this.context.sampleRate} Hz → 16 kHz${worklet?'':' · 兼容采样模式'} · 回声消除${settings.echoCancellation?'已请求并启用':'由设备决定'}`;
       this.$('mic-state').textContent=claim.status.wake_ready?'等你叫我：'+claim.status.wake_names.join(' / '):'按住说话可用 · 请设置可发音别名';
       if(claim.status.unsupported_names.length)this.notify('未支持的唤醒名：'+claim.status.unsupported_names.join('、')+'；可在设置中添加发音别名');
       this.$('mic-settings').close();this.render();
@@ -124,6 +150,7 @@ export class VoiceInputController {
   async stop(reason='麦克风关闭'){
     ++this.generation;this.owned=false;this.ptt=false;clearInterval(this.heartbeat);clearTimeout(this.echoTimer);
     this.media?.getTracks().forEach(track=>{track.onended=null;track.stop();});this.media=null;
+    if(this.node?.onaudioprocess)this.node.onaudioprocess=null;
     this.node?.disconnect();this.source?.disconnect();this.silent?.disconnect();this.node=null;this.source=null;this.silent=null;
     const context=this.context;this.context=null;if(context&&context.state!=='closed')void context.close();
     const socket=this.socket;this.socket=null;if(socket){socket.onclose=null;socket.onerror=null;socket.close();}
@@ -173,3 +200,4 @@ export class VoiceInputController {
     catch{await this.stop('麦克风许可已变化，请重新启用');}
   }
 }
+
