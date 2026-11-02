@@ -387,3 +387,23 @@ def test_printable_targets_have_a4_physical_size():
         data = (assets/name).read_bytes()
         box = [float(v) for v in re.search(rb'/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)', data).groups()]
         assert box[2] == pytest.approx(841.89, abs=1.5) and box[3] == pytest.approx(595.28, abs=1.5)
+
+
+def test_worker_degrades_speech_to_cpu_and_classifies_failures(monkeypatch):
+    import sys
+    import types
+    from deployment.autonomy import worker
+    package, utils = types.ModuleType('faster_whisper'), types.ModuleType('faster_whisper.utils')
+    utils.download_model = lambda name, local_files_only=True: '/models/'+name
+    monkeypatch.setitem(sys.modules, 'faster_whisper', package)
+    monkeypatch.setitem(sys.modules, 'faster_whisper.utils', utils)
+    providers = worker.Providers(None, 'small', whisper_device='cpu')
+    assert providers.cuda_checked.wait(5) and not providers.cuda_ok
+    assert 'speech.transcribe' in providers.available and providers.details['speech.transcribe']['device'] == 'cpu'
+    node = worker.Worker('http://127.0.0.1:9', 'token', 'n', 'n', providers)
+    assert 'speech.transcribe' in node.capabilities() and 'system.echo' in node.capabilities()
+    assert node.execute({'capability': 'system.echo', 'payload': {'message': 'a'}})['ok']
+    bad_input = node.execute({'capability': 'vision.triangulate', 'payload': {}})
+    assert not bad_input['ok'] and not bad_input['retryable']
+    unsupported = node.execute({'capability': 'llm.chat', 'payload': {}})
+    assert not unsupported['ok'] and unsupported['retryable']

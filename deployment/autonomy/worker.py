@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -27,17 +28,30 @@ from . import resources
 
 VERSION = 'autonomy-worker-1'
 DEFAULT_TOKEN = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'XLeRobotRemote'/'autonomy-token.txt'
+# A missing cuDNN DLL aborts the whole process inside native code, so CUDA is
+# first proven in a disposable child process before this node relies on it.
+CUDA_PROBE = '''
+import sys, numpy as np
+from faster_whisper import WhisperModel
+model = WhisperModel(sys.argv[1], device="cuda", compute_type="float16")
+segments, _ = model.transcribe(np.zeros(8000, np.float32), language="zh")
+list(segments)
+print("cuda-ok")
+'''
 
 
 class Providers:
     """Optional workstation-only capabilities, enabled only when really available."""
 
-    def __init__(self, llm_url=None, whisper_model='small', allow_download=False, timeout=2.0):
+    def __init__(self, llm_url=None, whisper_model='small', allow_download=False, timeout=2.0, whisper_device='auto'):
         self.llm_url = llm_url.rstrip('/') if llm_url else None
         self.whisper_model_name = whisper_model
         self.allow_download = allow_download
+        self.whisper_device_mode = whisper_device
         self.whisper = None
         self.whisper_lock = threading.Lock()
+        self.cuda_checked = threading.Event()
+        self.cuda_ok = False
         self.details = {}
         self.available = {}
         self._probe(timeout)
@@ -50,8 +64,9 @@ class Providers:
             from faster_whisper.utils import download_model
             path = download_model(self.whisper_model_name, local_files_only=not self.allow_download)
             self.whisper_path = path
+            self.details['speech.transcribe'] = {'model': self.whisper_model_name, 'cached': True, 'device': 'probing'}
+            threading.Thread(target=self._cuda_probe, daemon=True).start()
             self.available['speech.transcribe'] = self.transcribe
-            self.details['speech.transcribe'] = {'model': self.whisper_model_name, 'cached': True}
         except Exception as exc:  # noqa: BLE001 - optional capability
             self.details['speech.transcribe'] = {'available': False, 'reason': f'{type(exc).__name__}: {exc}'[:200]}
         if self.llm_url:
@@ -67,6 +82,22 @@ class Providers:
             except Exception as exc:  # noqa: BLE001
                 self.details['llm.chat'] = {'available': False, 'reason': f'{type(exc).__name__}: {exc}'[:200]}
 
+    def _cuda_probe(self):
+        try:
+            if self.whisper_device_mode == 'cpu':
+                reason = '按参数使用CPU'
+            else:
+                done = subprocess.run([sys.executable, '-c', CUDA_PROBE, str(self.whisper_path)], capture_output=True, text=True,
+                                      timeout=180, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                self.cuda_ok = done.returncode == 0 and 'cuda-ok' in done.stdout
+                tail = (done.stderr or done.stdout or '').strip().splitlines()[-2:]
+                reason = 'CUDA可用' if self.cuda_ok else 'CUDA不可用，改用CPU：'+' '.join(tail)[:200]
+        except (OSError, subprocess.SubprocessError) as exc:
+            reason = f'CUDA探测失败，改用CPU：{type(exc).__name__}'
+        finally:
+            self.cuda_checked.set()
+        self.details['speech.transcribe'].update(device='cuda' if self.cuda_ok else 'cpu', device_reason=reason)
+
     def hand_eye(self, payload):
         from .stereo import hand_eye
         return hand_eye(payload['gripper_rotations'], payload['gripper_translations'],
@@ -76,12 +107,8 @@ class Providers:
         with self.whisper_lock:
             if self.whisper is None:
                 from faster_whisper import WhisperModel
-                try:
-                    import ctranslate2
-                    cuda = ctranslate2.get_cuda_device_count() > 0
-                except Exception:  # noqa: BLE001
-                    cuda = False
-                attempts = [('cuda', 'float16'), ('cpu', 'int8')] if cuda else [('cpu', 'int8')]
+                self.cuda_checked.wait(200)
+                attempts = [('cuda', 'float16'), ('cpu', 'int8')] if self.cuda_ok else [('cpu', 'int8')]
                 last = None
                 for device, compute_type in attempts:
                     try:
@@ -104,15 +131,21 @@ class Providers:
             raise ValueError('单段音频最长120秒')
         model = self._load_whisper()
         started = time.perf_counter()
-        segments, info = model.transcribe(io.BytesIO(audio), language=payload.get('language') or None,
-                                          beam_size=int(payload.get('beam_size', 1)), vad_filter=bool(payload.get('vad', False)))
+        options = {'language': payload.get('language') or None, 'beam_size': max(1, min(8, int(payload.get('beam_size', 1)))),
+                   'vad_filter': bool(payload.get('vad', False))}
+        # Names such as the robot persona are easily replaced by homophones.
+        if payload.get('initial_prompt'):
+            options['initial_prompt'] = str(payload['initial_prompt'])[:200]
+        if payload.get('hotwords'):
+            options['hotwords'] = str(payload['hotwords'])[:200]
+        segments, info = model.transcribe(io.BytesIO(audio), **options)
         parts = [{'start': round(s.start, 2), 'end': round(s.end, 2), 'text': s.text.strip(),
                   'avg_logprob': round(s.avg_logprob, 3)} for s in segments]
         elapsed = time.perf_counter()-started
         return {'text': ''.join(p['text'] for p in parts), 'segments': parts, 'language': info.language,
                 'language_probability': round(info.language_probability, 3), 'audio_s': round(seconds, 2),
                 'compute_s': round(elapsed, 3), 'real_time_factor': round(elapsed/max(seconds, 1e-6), 3),
-                'device': self.whisper_device, 'model': self.whisper_model_name,
+                'device': self.whisper_device, 'model': self.whisper_model_name, 'prompted': 'initial_prompt' in options or 'hotwords' in options,
                 'model_load_s': round(getattr(self, 'whisper_load_s', 0), 2)}
 
     def chat(self, payload):
@@ -168,14 +201,14 @@ class Worker:
     def execute(self, job):
         name, payload = job['capability'], job['payload']
         started = time.perf_counter()
+        if name not in self.providers.available and name not in caps.REGISTRY:
+            return {'ok': False, 'error': f'工作端不支持{name}', 'retryable': True, 'run_ms': 0.0}
         try:
             if name in self.providers.available:
                 result = self.providers.available[name](payload)
             else:
                 result = caps.run(name, payload)
             return {'ok': True, 'result': result, 'run_ms': (time.perf_counter()-started)*1000}
-        except KeyError as exc:
-            return {'ok': False, 'error': f'工作端不支持{exc}', 'retryable': True, 'run_ms': (time.perf_counter()-started)*1000}
         except (ImportError, RuntimeError, OSError) as exc:
             return {'ok': False, 'error': f'{type(exc).__name__}: {exc}'[:600], 'retryable': True,
                     'run_ms': (time.perf_counter()-started)*1000}
@@ -253,11 +286,17 @@ def main(argv=None):
     parser.add_argument('--parallel', type=int, default=2)
     parser.add_argument('--llm-url', default='http://127.0.0.1:11434/v1', help='OpenAI兼容本地模型服务；不可用时自动不注册')
     parser.add_argument('--whisper-model', default='small')
+    parser.add_argument('--whisper-device', choices=('auto', 'cpu'), default='auto')
+    parser.add_argument('--cuda-dll-dir', action='append', default=[], help='cuDNN/cuBLAS所在目录，可多次指定')
     parser.add_argument('--allow-model-download', action='store_true')
     parser.add_argument('--duration', type=float, default=None, help='运行指定秒数后退出（测试用）')
     args = parser.parse_args(argv)
+    for folder in args.cuda_dll_dir:
+        os.environ['PATH'] = folder+os.pathsep+os.environ.get('PATH', '')
+        if hasattr(os, 'add_dll_directory'):
+            os.add_dll_directory(folder)
     token = Path(args.token_file).read_text(encoding='ascii').strip()
-    providers = Providers(args.llm_url or None, args.whisper_model, args.allow_model_download)
+    providers = Providers(args.llm_url or None, args.whisper_model, args.allow_model_download, whisper_device=args.whisper_device)
     worker = Worker(args.server, token, args.node_id, platform.node(), providers, args.parallel,
                     log=lambda m: print(time.strftime('%H:%M:%S'), m, flush=True))
     print(json.dumps({'node_id': args.node_id, 'capabilities': worker.capabilities(), 'providers': providers.details},
