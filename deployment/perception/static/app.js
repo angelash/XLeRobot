@@ -21,7 +21,8 @@ function render(s){
     fact('盲区',l.blind_m!==undefined&&l.blind_m!==null?`车头前 ${l.blind_m}m 内看不到`:'—')+
     fact('走廊遮挡',l.occluded_fraction!==undefined?Math.round(l.occluded_fraction*100)+'%':'—')+
     fact('障碍点',(l.obstacles||[]).length?(l.obstacles||[]).slice(0,4).map(o=>`${o.kind==='person'?'人':'物'} ${o.x_m}m/${o.y_m}m`).join('，'):'无')+
-    fact('已发送闸门',`${s.published} 条${s.publish_errors?' · 失败 '+s.publish_errors:''}`,s.publish_errors?'warn':'');
+    fact('已发送闸门',`${s.published} 条${s.publish_errors?' · 失败 '+s.publish_errors:''}`,s.publish_errors?'warn':'')+
+    fact('行人提示',esc(s.people_detector||'—'),String(s.people_detector||'').startsWith('可用')?'':'warn');
   $('reasons').innerHTML=(l.reasons||[]).map(r=>`<p>· ${esc(r)}</p>`).join('')+(s.reader_error?`<p>· 相机：${esc(s.reader_error)}</p>`:'');
   const c=s.calibration||{},h=s.head||{};
   $('calibration').innerHTML=`<dl>${fact('地面单应',c.status==='adopted'?`已采用 · 误差 ${c.rms_m!=null?(c.rms_m*100).toFixed(1)+'cm':'—'}`:'未采用（请先完成C2并在“自主学习”页采用）',c.status==='adopted'?'ok':'warn')}

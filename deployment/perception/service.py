@@ -89,7 +89,13 @@ class PerceptionService:
         self.published = 0
         self.head = {'ok': False, 'reason': '尚未读取头部姿态', 'positions': None, 'at': None}
         self.calibration, self.calibration_info, self.calibration_checked = None, {'status': 'none'}, -1e9
-        self.people = PeopleDetector() if self.config.get('people_detector') else None
+        # OpenCV 5.0 (the laptop build) no longer ships HOGDescriptor; floor contact still works.
+        self.people, self.people_note = None, '已关闭'
+        if self.config.get('people_detector'):
+            if hasattr(cv2, 'HOGDescriptor'):
+                self.people, self.people_note = PeopleDetector(), '可用（每0.5秒）'
+            else:
+                self.people_note = f'不可用：OpenCV {cv2.__version__} 未包含HOG行人检测'
         self.people_boxes, self.people_at = [], -1e9
 
     # ---- persistence -------------------------------------------------------
@@ -324,4 +330,4 @@ class PerceptionService:
                 'processing_ms_p90': timings[int(len(timings)*0.9)] if timings else None,
                 'latest': latest, 'head': {k: v for k, v in self.head.items() if k != 'at'}, 'calibration': self.calibration_info,
                 'floor_model': {'ready': self.model.ready, 'samples': self.model.samples}, 'config': self.config,
-                'work_size': list(WORK), 'calibration_size': list(CALIB)}
+                'people_detector': self.people_note, 'work_size': list(WORK), 'calibration_size': list(CALIB)}

@@ -146,6 +146,7 @@ def test_head_pose_drift_and_missing_frames_block(tmp_path):
 
 def test_config_validation_and_http_surface(tmp_path):
     service, _ = make_service(tmp_path)
+    assert service.status()['people_detector'].startswith(('可用', '不可用'))
     with pytest.raises(ValueError):
         service.update_config({'controller': 'http://evil'})
     with pytest.raises(ValueError):

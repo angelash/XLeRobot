@@ -4,7 +4,7 @@ const html=fs.readFileSync(path.join(__dirname,'static','index.html'),'utf8');
 const elements={};
 for(const id of [...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]))elements[id]={id,innerHTML:'',textContent:'',hidden:false,className:'',disabled:false,checked:false,src:null,
   setAttribute(k,v){this[k]=v;},removeAttribute(k){this[k]=null;},addEventListener(){}};
-const status={running:true,stream:'perception-1',camera:0,frames_in:120,frame_age_ms:40,published:110,publish_errors:0,processing_ms_median:18.2,processing_ms_p90:24,
+const status={running:true,stream:'perception-1',camera:0,frames_in:120,frame_age_ms:40,published:110,publish_errors:0,processing_ms_median:18.2,processing_ms_p90:24,people_detector:'不可用：OpenCV 5.0.0 未包含HOG行人检测',
   latest:{valid:false,metric:false,clear_m:null,blind_m:null,obstacles:[{x_m:0.8,y_m:0.02,kind:'person'}],reasons:['未完成地面标定：<b>']},
   head:{ok:false,reason:'地面标定没有记录头部姿态',positions:{'COM3:7':2005}},calibration:{status:'none'},floor_model:{ready:true,samples:40000},
   gate:{present:true,age_ms:60,max_age_ms:350,valid:false,metric:false,head_pose_ok:false,blocks:3}};
