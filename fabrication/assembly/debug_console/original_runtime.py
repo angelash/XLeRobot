@@ -7,6 +7,7 @@ from pathlib import Path
 from .control_runtime import ControlRuntime,EXPECTED_SERIALS,ROOT,now,LOG_DIR
 from .whole_calibration import WholeCalibration,DESIGN_GEOMETRY,KEYS as RANGE_KEYS,atomic_json
 from .limit_selftest import LimitSelfTest
+from .agent_ops import AgentRunner
 from .control_settings import ControllerSettings,remap_motor_labels,MAPPING_KEYS
 from .torque_control import EXPECTED,read_registers,word,write_register,write_limits
 from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse,wheel_raw
@@ -44,6 +45,7 @@ class OriginalRuntime(ControlRuntime):
         self._settings_from_calibration=False
         self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
         self.limit_test=LimitSelfTest(self,LOG_DIR/'limit-selftest',KINEMATIC_PROFILE,upright_path=UPRIGHT_POSES)
+        self.agent=AgentRunner(self,LOG_DIR/'agent-runs')
 
     def arm_ports(self):return self.settings.arm_ports()
 
@@ -1019,7 +1021,7 @@ class OriginalRuntime(ControlRuntime):
             result=super().snapshot()
             setup=self.whole_robot_setup()
             preferred='preview' if isinstance(self,PreviewRuntime) else 'hardware' if setup['ready'] else 'preset'
-            result.update(version='3.9-upright-selftest',control_profile=self.control_profile,
+            result.update(version='4.0-agent-runs',control_profile=self.control_profile,
                           preferred_target=preferred,
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),
@@ -1027,6 +1029,7 @@ class OriginalRuntime(ControlRuntime):
                           preset_blocked=self.preset_blocked,joint_faults={k:v['reason'] for k,v in self.joint_faults.items()},
                           stall_marks=self.stall_marks,saved_ranges=self.saved_ranges(),
                           limit_selftest=self.limit_test.snapshot(),
+                          agent_run=self.agent.snapshot(),
                           whole_robot_setup=setup,hardware_preparation=self.preparation,service_blocked=self.service_blocked,
                       manual_calibration=self.manual_calibration.snapshot(),control_settings=self.settings.snapshot())
             return result

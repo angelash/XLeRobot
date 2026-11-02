@@ -353,7 +353,7 @@ class LimitSelfTest:
         if not threshold:return wanted
         return max(300,min(wanted,threshold*10-PROBE_TORQUE_MARGIN))
 
-    def _probe(self,port,i,direction,cfg):
+    def _probe(self,port,i,direction,cfg,backoff=True):
         reg=self._read(port,i);pos=word(reg,56);low,high=word(reg,9),word(reg,11)
         extend=round(cfg['extend_deg']*4096/360)
         bound=max(8,low-extend) if direction<0 else min(4087,high+extend)
@@ -384,7 +384,7 @@ class LimitSelfTest:
         edge=pos
         self._log(f'{name}{"负" if direction<0 else "正"}向：'+{'stall':f'在{pos}顶到止挡（负载峰值{peak/10:.0f}%）','bound':f'到探测上限{pos}仍未遇到止挡','timeout':f'超时停在{pos}'}[kind],
                   port=port,id=i,direction=direction,edge=edge,stop_kind=kind,peak_load=peak)
-        if kind=='stall':self._move_retry({(port,i):edge-direction*BACKOFF_RAW},cfg['speed_deg'],'退离止挡',strict=True)
+        if kind=='stall' and backoff:self._move_retry({(port,i):edge-direction*BACKOFF_RAW},cfg['speed_deg'],'退离止挡',strict=True)
         return {'edge':edge,'kind':kind,'peak_load':peak}
 
     # ---- items -------------------------------------------------------------

@@ -139,6 +139,30 @@ def limit_test_upright(payload:UprightCommand):
         runtime.log('limit_selftest','竖直姿态未修改：'+str(exc))
         raise HTTPException(409,str(exc)) from exc
 
+# Assistant runs: called on the laptop itself over SSH, not proxied by Studio.
+class AgentRunCommand(BaseModel):
+    steps:list[dict]
+    confirmed:bool=False
+    label:str=''
+
+@app.post('/api/agent/run')
+def agent_run(payload:AgentRunCommand):
+    try:
+        if isinstance(runtime,PreviewRuntime):raise ValueError('隔离预览不操作实机')
+        return runtime.agent.start(payload.steps,payload.confirmed,payload.label)
+    except Exception as exc:
+        runtime.log('agent','助手运行未开始：'+str(exc))
+        raise HTTPException(409,str(exc)) from exc
+
+@app.post('/api/agent/stop')
+def agent_stop():
+    runtime.limit_test.stop('助手运行被停止')
+    return runtime.agent.snapshot()
+
+@app.get('/api/agent/status')
+def agent_status():
+    return runtime.agent.snapshot()
+
 class ManualPoseCommand(BaseModel):
     action:str
     motors:dict[str,list[int]]|None=None

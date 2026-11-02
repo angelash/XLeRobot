@@ -88,5 +88,9 @@
 
 现有：限位自检接口（含“竖直此臂”“收起此臂”、退离重试）、手动摆位接口（卸力 / 锁定）、状态接口、三路相机 MJPEG、笔记本相机抓图、部署脚本。
 
-缺口（第一轮前补齐，设计见 [AGENT_ROUND1_ZH.md](AGENT_ROUND1_ZH.md)）：通用的助手动作接口，用于按关节目标序列移动，复用自检的安全动作；单帧抓图接口；运行记录器。
+2026-11-02 起（版本 `4.0-agent-runs`）新增助手运行接口 `agent_ops.py`，只在笔记本本机经 SSH 调用，Studio 不转发：
+
+- `POST /api/agent/run`，请求体 `{"steps":[...],"confirmed":true,"label":"…"}`，后台按顺序执行，与限位自检互斥，手柄任意输入或停止接口即中止，结束时恢复扭矩上限和临时限位。
+- 步骤：`move`（`targets` 写成 `"left:2":2211`、`"head:7":1990` 或 `"COM4:2"`，只能在当前限位内，越限直接拒绝）、`probe`（自检项，如 `"left:elbow"`）、`snapshot`（相机 0/1/2 和 `"laptop"`；网页正在推流的相机会跳过并说明）、`sample`（按 1–50 Hz 记录寄存器）、`wait`、`backoff_trial`（退离实验 A/B/C/D）。`move` 和 `backoff_trial` 失败默认停止整次运行，其余失败继续；可用 `continue_on_fail` 改。底盘轮不接受。
+- `POST /api/agent/stop`、`GET /api/agent/status`；每次运行写入 `evidence/<日期>/agent-runs/<run-id>/`（plan.json、steps.jsonl、result.json、图片和采样）。
 
