@@ -51,6 +51,7 @@ def main():
             emit('off-text','关闭语音时，文字仍然显示。')
             expect(page.locator('#robot-response')).to_have_text('关闭语音时，文字仍然显示。')
             assert not calls
+            page.locator('#settings-open').click()
             page.locator('#voices-open').click()
             expect(page.locator('.voice-row')).to_have_count(332)
             page.locator('#voice-recommended').click();expect(page.locator('.voice-row')).to_have_count(5)
@@ -66,6 +67,7 @@ def main():
             page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(out/'03-voices-mobile.png'))
             assert page.evaluate('()=>document.documentElement.scrollWidth<=innerWidth')
             page.set_viewport_size({'width':1366,'height':900});page.locator('#voices-close').click()
+            page.locator('#settings-close').click()
             page.locator('#voice-toggle').click();expect(page.locator('#voice-toggle')).to_have_text('语音开启')
             assert len(calls)==1  # No replay of the earlier reply.
             emit('on-text','开启后，只播报新的公开回复。')

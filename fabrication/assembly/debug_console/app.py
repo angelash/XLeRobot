@@ -1,6 +1,7 @@
 """Local XLeRobot hardware console: one bus owner and measured control feedback."""
 from __future__ import annotations
 from contextlib import asynccontextmanager
+import asyncio
 from pathlib import Path
 import json
 import subprocess
@@ -49,6 +50,23 @@ def diagnostic_index():
 @app.get('/api/status')
 def status():
     return {**runtime.snapshot(),'server_pid':os.getpid(),'control_map':ORIGINAL_MAP if getattr(runtime,'control_profile','diagnostic')!='diagnostic' else CONTROL_MAP}
+
+@app.get('/api/operator/state')
+def operator_state():
+    return runtime.operator_events.read()
+
+@app.get('/api/operator/stream')
+async def operator_stream(request:Request):
+    async def generate():
+        value=runtime.operator_events.read()
+        yield 'event: operator\ndata: '+json.dumps(value,ensure_ascii=False)+'\n\n'
+        while not await request.is_disconnected():
+            next_value=await asyncio.to_thread(runtime.operator_events.wait,value['seq'],2)
+            kind='operator' if next_value['seq']!=value['seq'] else 'heartbeat'
+            value=next_value
+            yield 'event: '+kind+'\ndata: '+json.dumps(value,ensure_ascii=False)+'\n\n'
+    return StreamingResponse(generate(),media_type='text/event-stream',
+        headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 
 @app.get('/original')
 def original_index():

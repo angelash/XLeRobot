@@ -48,7 +48,7 @@ if(active&&ours)$('target').value=s.control_profile==='original_hardware'?'hardw
 const target=$('target').value,direct=target==='preset'||target==='joint';const hardwareReady=s.ports.length===2&&s.ports.reduce((n,p)=>n+(p.motors?.length||0),0)===16&&!s.error;const setup=s.whole_robot_setup,wholeReady=!!setup?.ready;
 const presetRows=Object.entries(s.preset_readiness||{}),presetReady=presetRows.filter(([k,v])=>v.ready).length,saved=(s.saved_ranges||[]).length;
 $('session-state').textContent=active?(ours?(paused?'接管保留 · 动作暂停':target==='preset'?'预设直控接管中':'原版映射接管中'):'单关节调试接管保留'):'接管未开启';
-$('session-description').textContent=active?(ours?(paused?c.pause_reason:target==='preset'?'拨杆直接驱动关节；LB/RB切腕，LS/RS切肩水平；Menu暂停，View结束。':'拨杆直接动作；LB/RB切腕姿，Menu暂停，View结束。'):'当前有单关节会话，请由你在原页面结束后再切换。'):'选择控制目标，手柄回中后开启；开启时保持当前位置，不归零。';
+$('session-description').textContent=active?(ours?(paused?c.pause_reason:target==='preset'?'拨杆直接驱动关节；LB/RB切腕，LS/RS切肩水平；Menu结束接管，View也可结束。':'拨杆直接动作；LB/RB切腕姿，Menu结束接管，View也可结束。'):'当前有单关节会话，请由你在原页面结束后再切换。'):'选择控制目标，手柄回中后开启；开启时保持当前位置，不归零。';
 $('target').disabled=active||busy||calibrating;$('confirm').disabled=active||busy||calibrating;
 if(s.preview_only){for(const v of ['hardware','joint','preset'])$('target').querySelector(`option[value="${v}"]`).disabled=true;}
 $('prepare').hidden=true;

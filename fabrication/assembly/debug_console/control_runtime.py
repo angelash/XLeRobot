@@ -409,11 +409,16 @@ class ControlRuntime:
                 # Offline preparation can hold the serial lock for a while.
                 # Keep XInput fresh without waiting on a controller that has
                 # no active session; the next sample handles a newly started one.
-                if not self.diagnostic_replay and self.controller['controller']=='online':self.process_input(raw)
+                if not self.diagnostic_replay:
+                    handler=getattr(self,'native_pad_event',None)
+                    handled=handler(raw) if handler else False
+                    if not handled and self.controller['controller']=='online':self.process_input(raw)
             except Exception as exc:
                 with self.io:
                     if self.controller['controller']=='online':self._pause('手柄输入异常：'+str(exc))
                 self.gamepad={'connected':False,'devices':[],'error':str(exc),'buttons':[],'axes':[],'hat':[0,0]}
+                publish=getattr(self,'publish_operator_state',None)
+                if publish:publish()
             self.stop_event.wait(.025)
 
     def torque(self, enabled, selection=None):

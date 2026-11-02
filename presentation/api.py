@@ -227,6 +227,8 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
 
     from .speech_api import install_speech
     install_speech(router,store,guard)
+    from .operator_stream import install_operator_stream
+    install_operator_stream(router,controller)
     app.include_router(router)
     app.mount('/presence/assets', StaticFiles(directory=ROOT / 'static'), name='presence-assets')
 

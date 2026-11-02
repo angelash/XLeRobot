@@ -195,8 +195,8 @@ def test_default_api_means_complete_real_robot_and_never_silently_partial(runtim
     response=client.post('/api/original/start',json={'confirmed':True})
     assert response.status_code==409 and '整机初始化' in response.json()['detail']
     assert runtime.controller['controller']=='offline'
-    # Until the whole mapping is ready, the page opens on direct preset control.
-    assert client.get('/api/original/status').json()['preferred_target']=='preset'
+    # Prefer whole-robot control; the native Menu path reports an explicit fallback.
+    assert client.get('/api/original/status').json()['preferred_target']=='hardware'
 
 
 def test_preview_never_writes_any_hardware(runtime):

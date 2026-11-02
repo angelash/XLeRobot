@@ -3,10 +3,13 @@ import {createRequestId} from './request-id.js';
 import {Demo} from './demo.js';
 import {SpeechPlayer} from './speech-player.js';
 import {VoicePicker} from './voice-picker.js';
+import {OperatorStatus} from './operator-status.js';
 import {mergeEvents, filterEvents, visualFrame, viewState} from './model.js';
 
 const $ = id => document.getElementById(id);
 const apiRoot = '/api/presence';
+const operatorStatus = new OperatorStatus($('operator-status'));
+operatorStatus.start();
 let profile, draft, avatarDraft, source, demo, frame, stream;
 let live = {epoch: null, seq: 0, events: []}, sample = {epoch: 'demo', seq: 0, events: []};
 let filter = 'all', follow = true, showOverlays = true, cameraOn = false, visionDismissed = false;
@@ -457,11 +460,11 @@ document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'i') {event.preventDefault(); $('process-toggle').click();}
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {speech.stop();stream?.close(); stopCamera(); stopDemo();}
-  else {connectStream(); clearTimeout(pollTimer); poll();}
+  if (document.hidden) {operatorStatus.stop();speech.stop();stream?.close(); stopCamera(); stopDemo();}
+  else {operatorStatus.start();connectStream(); clearTimeout(pollTimer); poll();}
 });
-window.addEventListener('pagehide', () => {speech.stop();disposed = true; clearTimeout(pollTimer); stream?.close(); stopCamera(); demo?.stop(); avatar.dispose();});
+window.addEventListener('pagehide', () => {operatorStatus.stop();speech.stop();disposed = true; clearTimeout(pollTimer); stream?.close(); stopCamera(); demo?.stop(); avatar.dispose();});
 window.addEventListener('pageshow', event => {if (event.persisted) location.reload();});
 
 await poll(); connectStream();
-if(new URLSearchParams(location.search).get('voices')==='1')await voices.open();
+if(new URLSearchParams(location.search).get('voices')==='1'){$('settings-open').click();await voices.open();}

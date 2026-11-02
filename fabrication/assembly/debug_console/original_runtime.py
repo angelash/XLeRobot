@@ -11,6 +11,7 @@ from .agent_ops import AgentRunner
 from .control_settings import ControllerSettings,remap_motor_labels,MAPPING_KEYS
 from .torque_control import EXPECTED,read_registers,word,write_register,write_limits
 from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse,wheel_raw
+from .operator_control import LinkedModeUnavailable, NativeMenuControl, OperatorEvents
 
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
 SERVICE_PROFILE=ROOT.parents[1]/'.local-deploy'/'hardware-service.json'
@@ -46,6 +47,43 @@ class OriginalRuntime(ControlRuntime):
         self.manual_calibration=WholeCalibration(self,LOG_DIR/'whole-calibration'/'session.json',KINEMATIC_PROFILE)
         self.limit_test=LimitSelfTest(self,LOG_DIR/'limit-selftest',KINEMATIC_PROFILE,upright_path=UPRIGHT_POSES)
         self.agent=AgentRunner(self,LOG_DIR/'agent-runs')
+        self.operator_events=OperatorEvents()
+        self.operator_setup={'ready':False,'reason':'等待读取控制状态'}
+        self.native_menu=NativeMenuControl(self)
+        self.publish_operator_state()
+
+    def log(self,kind,message,**fields):
+        event=super().log(kind,message,**fields)
+        if hasattr(self,'operator_events'):self.publish_operator_state()
+        return event
+
+    def publish_operator_state(self,refresh_setup=False):
+        if not hasattr(self,'operator_events'):return
+        if refresh_setup:
+            with self.io:
+                setup=self.whole_robot_setup()
+                reasons=[reason for item in setup['checks'] if not item['ready'] and not item.get('optional') for reason in item['reasons']]
+                self.operator_setup={'ready':setup['ready'],'reason':'；'.join(dict.fromkeys(reasons))[:1200]}
+        c=self.controller;menu=self.native_menu.status()
+        fresh=bool(self.gamepad.get('connected') and time.monotonic()-self.pad_time<=.5)
+        active=c['controller']=='online'
+        warning=c.get('error') or ((self.notice or {}).get('message') if (self.notice or {}).get('level')=='error' else None)
+        phase=(menu['busy'] or ('waiting-release' if menu['pending'] else
+            'paused' if active and c['paused'] else 'active' if active else
+            'blocked' if menu['error'] or warning else 'offline'))
+        self.operator_events.publish({'connected':bool(self.gamepad.get('connected')),'input_fresh':fresh,
+            'device':str(self.gamepad.get('name') or 'Xbox手柄')[:120], 'phase':phase,
+            'active':active,'paused':bool(c['paused']),'mode':self.control_profile if active else None,
+            'preferred_mode':'hardware','whole_ready':self.operator_setup['ready'],
+            'setup_reason':self.operator_setup['reason'], 'fallback_reason':menu['fallback_reason'] if active else None,
+            'reason':menu['error'] or c.get('pause_reason') or warning or '',
+            'preview_only':isinstance(self,PreviewRuntime)})
+
+    def native_pad_event(self,raw):
+        if isinstance(self,PreviewRuntime):return False
+        handled=self.native_menu.sample(raw)
+        self.publish_operator_state()
+        return handled
 
     def arm_ports(self):return self.settings.arm_ports()
 
@@ -72,6 +110,7 @@ class OriginalRuntime(ControlRuntime):
         super().scan()
         remap_motor_labels(self.report,self.settings)
         if getattr(self,'manual_calibration',None):self.manual_calibration.observe(self.report)
+        self.publish_operator_state(refresh_setup=True)
 
     def _require_not_calibrating(self):
         if getattr(self,'limit_test',None) and self.limit_test.running:
@@ -259,6 +298,7 @@ class OriginalRuntime(ControlRuntime):
     def capture_profile(self):
         result=super().capture_profile()
         self.load_kinematic_profile()
+        self.publish_operator_state(refresh_setup=True)
         return result
 
     def select(self,name,motor_id):
@@ -290,6 +330,7 @@ class OriginalRuntime(ControlRuntime):
                 self.original_notice('calibration','运动学标定不可用：'+str(exc))
 
     def check_watchdog(self):
+        self.publish_operator_state()
         if self.control_profile not in ('original_hardware','original_joint','original_preset'):
             return super().check_watchdog()
         if self.controller['controller']!='online' or self.controller['paused']:return
@@ -499,7 +540,7 @@ class OriginalRuntime(ControlRuntime):
             setup=self.whole_robot_setup()
             if not setup['ready']:
                 missing=[c['label']+'：'+'；'.join(c['reasons']) for c in setup['checks'] if not c['ready']]
-                raise ValueError('整机初始化未完成。'+' | '.join(missing))
+                raise LinkedModeUnavailable('整机初始化未完成。'+' | '.join(missing))
             for side,port in self.arm_ports().items():
                 angles=[]
                 for i in (2,3):
@@ -510,7 +551,7 @@ class OriginalRuntime(ControlRuntime):
                     if max(abs(a-b) for a,b in zip(angles,solved))>2:raise ValueError('不在上游逆解分支')
                 except ValueError as exc:
                     label='左臂' if side=='left' else '右臂'
-                    raise ValueError(label+'当前姿态超出末端联动分支；请在支撑下回到标定姿态B附近再开启') from exc
+                    raise LinkedModeUnavailable(label+'当前姿态超出末端联动分支；请在支撑下回到标定姿态B附近再开启') from exc
             prepared=self.prepare_hardware(True)
             if prepared['blocked']:raise ValueError('整机准备仍有未通过项，请查看初始化清单')
             return self.begin_original('hardware',True,full_range=True)
@@ -683,6 +724,8 @@ class OriginalRuntime(ControlRuntime):
             return self.controller.copy()
 
     def process_input(self,raw,source='native_gamepad'):
+        # Physical Menu and disconnect events are intercepted by native_pad_event
+        # before this call. The pause toggles below remain for isolated replay/preview.
         if self.control_profile=='diagnostic':return super().process_input(raw,source)
         with self.io:
             if self.controller['controller']!='online':return
@@ -1020,9 +1063,9 @@ class OriginalRuntime(ControlRuntime):
         with self.io:
             result=super().snapshot()
             setup=self.whole_robot_setup()
-            preferred='preview' if isinstance(self,PreviewRuntime) else 'hardware' if setup['ready'] else 'preset'
+            preferred='preview' if isinstance(self,PreviewRuntime) else 'hardware'
             result.update(version='4.0-agent-runs',control_profile=self.control_profile,
-                          preferred_target=preferred,
+                          preferred_target=preferred,operator=self.operator_events.read(),
                           original=self.engine.snapshot(),original_readiness=self.readiness(),
                           trial_readiness=self.readiness('original_joint'),
                           preset_readiness=self.preset_readiness() if not isinstance(self,PreviewRuntime) else {},
@@ -1033,6 +1076,10 @@ class OriginalRuntime(ControlRuntime):
                           whole_robot_setup=setup,hardware_preparation=self.preparation,service_blocked=self.service_blocked,
                       manual_calibration=self.manual_calibration.snapshot(),control_settings=self.settings.snapshot())
             return result
+
+    def close(self):
+        self.native_menu.cancel('控制服务正在关闭')
+        super().close()
 
 
 class PreviewRuntime(OriginalRuntime):
