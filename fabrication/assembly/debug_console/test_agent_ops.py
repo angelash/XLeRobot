@@ -95,6 +95,8 @@ def test_snapshot_saves_frames_and_reports_busy_cameras(runtime,agent,monkeypatc
     shots={s['camera']:s for s in agent.results[0]['shots']}
     assert (agent.dir/shots[0]['file']).is_file() and (agent.dir/shots['laptop']['file']).is_file()
     assert '推流' in shots[1]['error'] and 'COM4:3' in agent.results[0]['positions']
+    assert set(agent.results[0]['wheel_positions'])=={'COM4:9','COM4:10'}
+    assert agent.results[0]['capture_started_at']<=agent.results[0]['at']
 
 
 def test_sample_logs_telemetry_rows(runtime,agent):

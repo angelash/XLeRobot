@@ -1,4 +1,4 @@
-"""Small pure-rotation pulses inside the existing serial owner.
+"""Bounded survey pulses inside the existing serial owner.
 
 Each pulse has an independent local timer, zero-speed readback and an abort
 path. A timer cannot protect against killing the entire serial-owner process;
@@ -13,12 +13,26 @@ from .upstream_teleop import encode_velocity
 
 
 def bounded_rotate(runtime, check_abort, direction=1, duration=.18, max_raw=160):
+    return _bounded_pulse(runtime, check_abort, direction, duration, max_raw)
+
+
+def bounded_advance(runtime, check_abort, duration=.18, max_raw=80):
+    """A single forward-only pulse, after the caller checks fresh visual evidence.
+
+    Raw speed and wheel counts are not calibrated ground speed or distance.
+    """
+    return _bounded_pulse(runtime, check_abort, 1, duration, max_raw, advance=True)
+
+
+def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=False):
     if type(direction) is not int or direction not in (-1, 1):
         raise ValueError('转向只能是-1或1')
-    if isinstance(duration, bool) or not isinstance(duration, (float, int)) or not math.isfinite(duration) or not .04 <= duration <= .65:
-        raise ValueError('每个原地旋转脉冲只能持续40–650ms')
-    if type(max_raw) is not int or not 60 <= max_raw <= 160:
-        raise ValueError('扫描轮速仅允许60–160')
+    duration_limit = .65
+    speed_limit = 120 if advance else 160
+    if isinstance(duration, bool) or not isinstance(duration, (float, int)) or not math.isfinite(duration) or not .04 <= duration <= duration_limit:
+        raise ValueError(f'观察脉冲只能持续40–{round(duration_limit*1000)}ms')
+    if type(max_raw) is not int or not 60 <= max_raw <= speed_limit:
+        raise ValueError(f'观察轮速仅允许60–{speed_limit}')
     before = {}
     stopped = threading.Event()
     stop_lock = threading.Lock()
@@ -37,7 +51,8 @@ def bounded_rotate(runtime, check_abort, direction=1, duration=.18, max_raw=160)
         return all(
             all(row['wheels'][motor]['torque']==0 and row['wheels'][motor]['goal_velocity']==0
                 and (row['wheels'][motor]['speed'] & 0x7fff)<=50 for row in rows)
-            and max(row['wheels'][motor]['position'] for row in rows)-min(row['wheels'][motor]['position'] for row in rows)<=2
+            and max((row['wheels'][motor]['position']-rows[0]['wheels'][motor]['position']+2048)%4096-2048 for row in rows)
+              - min((row['wheels'][motor]['position']-rows[0]['wheels'][motor]['position']+2048)%4096-2048 for row in rows)<=2
             for motor in (9,10))
 
     def stop():
@@ -130,10 +145,12 @@ def bounded_rotate(runtime, check_abort, direction=1, duration=.18, max_raw=160)
             if not stable(rows):
                 raise ValueError('轮组编码器尚未稳定，未发送旋转')
             before={motor:rows[-1]['wheels'][motor]['position'] for motor in (9,10)}
-            # Equal raw wheel signs are pure rotation on the mirrored-left chassis.
-            command = runtime.wheel_command(0, direction*.25, max_raw=max_raw)
-            if set(command) != {9, 10} or command[9] != command[10] or not command[9]:
-                raise ValueError('拒绝非原地旋转的轮速组合')
+            # The mirrored-left chassis uses opposite raw signs for forward.
+            command = runtime.wheel_command(.02, 0, max_raw=max_raw) if advance else runtime.wheel_command(0, direction*.25, max_raw=max_raw)
+            if (set(command) != {9, 10} or not command[9]
+                    or command[9] != (-command[10] if advance else command[10])
+                    or max(abs(v) for v in command.values()) > max_raw):
+                raise ValueError('拒绝非直行的轮速组合' if advance else '拒绝非原地旋转的轮速组合')
             timer = threading.Timer(duration, stop)
             timer.daemon = True
             started = time.monotonic()
@@ -156,7 +173,7 @@ def bounded_rotate(runtime, check_abort, direction=1, duration=.18, max_raw=160)
         while not stopped.wait(.015):
             check_abort()
             if time.monotonic()-started > 1.5:
-                raise RuntimeError('旋转停车超时')
+                raise RuntimeError('观察脉冲停车超时')
         check_abort()
     finally:
         stop()
@@ -168,12 +185,19 @@ def bounded_rotate(runtime, check_abort, direction=1, duration=.18, max_raw=160)
     deltas = {motor: (final[motor]['position']-before[motor]+2048) % 4096-2048 for motor in (9, 10)}
     # A few counts differ under caster drag; record that as possible drift.
     # Larger disagreement or overshoot stops the scan instead of accumulating it.
-    if abs(deltas[9]-deltas[10]) > max(10,.30*max(abs(v) for v in deltas.values())) or max(abs(v) for v in deltas.values()) > 130:
-        error=RuntimeError('原地旋转轮子位移不对称或超限，已停')
+    disagreement=abs(deltas[9]+deltas[10]) if advance else abs(deltas[9]-deltas[10])
+    if (disagreement > max(8 if advance else 10,.30*max(abs(v) for v in deltas.values()))
+            or max(abs(v) for v in deltas.values()) > (100 if advance else 130)
+            or (advance and any(deltas[motor]*command[motor] <= 0 for motor in (9,10)))):
+        error=RuntimeError('观察轮子位移不对称、反向或超限，已停')
         error.rotation={'wheel_delta_raw':deltas,'stop_readback':final,'readbacks':readbacks}
         raise error
     if min(abs(v) for v in deltas.values()) < 2:
         raise RuntimeError('轮子未记录到有效转动，已停；需观察原因')
+    if advance:
+        return {'wheel_delta_raw': deltas, 'stop_readback': final, 'stop_trace': readbacks,
+                'duration_s': duration, 'command_raw': command, 'rotation_command_rad_s': 0,
+                'direction': 'forward', 'distance_source': 'not_measured_no_metric_claim'}
     radius, track = runtime._wheel_geometry()
     angle = sum(deltas.values())/2 * 2*math.pi/4096 * 2*radius/track
     return {'wheel_delta_raw': deltas, 'stop_readback': final,

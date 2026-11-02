@@ -6,7 +6,9 @@ the limit self-test (see AGENT_CONTROL_ZH.md). Every run writes its plan, a
 step log and any images into its own evidence folder.
 """
 from __future__ import annotations
+from datetime import datetime
 import json
+import re
 import subprocess
 import threading
 import time
@@ -17,7 +19,7 @@ from .limit_selftest import ARM_TESTS,HEAD_TESTS,BACKOFF_RAW,MOVE_TORQUE,RETURN_
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .whole_calibration import atomic_json
 
-MOTION_OPS={'move','probe','backoff_trial','rotate'}
+MOTION_OPS={'move','probe','backoff_trial','rotate','advance'}
 OPS=MOTION_OPS|{'snapshot','sample','wait'}
 ARM_KINDS={1:'pan',2:'lift',3:'elbow',4:'pitch',5:'roll',6:'grip'}
 HEAD_KINDS={7:'pan',8:'tilt'}
@@ -43,6 +45,7 @@ class AgentRunner:
         self.active=False;self.thread=None;self.run_id=None;self.dir=None;self.label=''
         self.steps=[];self.results=[];self.current=None;self.error=None
         self.started_at=None;self.finished_at=None
+        self.consumed_drive_evidence=set()
 
     @property
     def lt(self):return self.runtime.limit_test
@@ -75,6 +78,9 @@ class AgentRunner:
 
     def _validate(self,steps):
         if not isinstance(steps,list) or not steps:raise ValueError('至少需要一个步骤')
+        advances=[n for n,s in enumerate(steps) if isinstance(s,dict) and s.get('op')=='advance']
+        if advances and (advances!=[0] or any(s.get('op')!='snapshot' for s in steps[1:])):
+            raise ValueError('每次只允许一个直行脉冲，随后只拍照；重新观察后才能再发')
         for n,step in enumerate(steps):
             op=step.get('op') if isinstance(step,dict) else None
             if op not in OPS:raise ValueError(f'第{n+1}步操作未知：{op}')
@@ -92,6 +98,19 @@ class AgentRunner:
                     raise ValueError('原地扫描转向/轮速无效')
                 if isinstance(duration,bool) or not isinstance(duration,(int,float)) or not math.isfinite(duration) or not .04<=duration<=.65:
                     raise ValueError('原地扫描脉冲只能40–650ms')
+            if op=='advance':
+                if set(step)-{'op','duration','max_raw','label','observation_run_id','clearance_confirmed'}:
+                    raise ValueError('直行观察不接受转向、倒车、续跑或其他参数')
+                duration=step.get('duration',.18);raw=step.get('max_raw',80)
+                import math
+                if (isinstance(duration,bool) or not isinstance(duration,(int,float)) or not math.isfinite(duration)
+                        or not .04<=duration<=.65 or type(raw) is not int or not 60<=raw<=120):
+                    raise ValueError('直行观察仅允许40–650ms、60–120原始轮速')
+                if step.get('clearance_confirmed') is not True:
+                    raise ValueError('需先根据新照片确认短行程地面、人员和车体边界')
+                if step.get('observation_run_id')!=self.run_id:
+                    raise ValueError('直行需引用最近一次观察运行')
+                self._advance_evidence(step)
             if op=='probe':self.lt._ordered([step.get('item')])
             if op in ('sample','backoff_trial'):
                 for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
@@ -147,7 +166,7 @@ class AgentRunner:
                     lt._log(f'助手第{n+1}步（{step["op"]}）失败：{exc}')
                     self._record(n,step,result)
                     if isinstance(exc,OSError):raise
-                    if step['op']=='rotate' or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
+                    if step['op'] in ('rotate','advance') or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
                         self.error=f'第{n+1}步失败，运行停止：{exc}';break
                     continue
                 if shots:result['watch']=shots
@@ -157,6 +176,15 @@ class AgentRunner:
         except Exception as exc:
             self.error='助手运行中断：'+str(exc);lt._log(self.error)
         finally:
+            if any(s['op'] in ('rotate','advance') for s in self.steps):
+                failures=[]
+                with self.runtime.io:
+                    for address,length in ((46,2),(40,1)):
+                        for motor in (9,10):
+                            try:write_register(self.runtime.session.ports['COM4'],motor,address,0,length)
+                            except Exception as exc:failures.append(str(exc))
+                    self.runtime.wheels_commanded=False;self.runtime.wheel_goals=[0,0];self.runtime.engine.wheels=[0,0]
+                if failures:self.error=(self.error or '')+'；轮组清理失败：'+'; '.join(failures)
             lt._cleanup()
             lt.running=False;lt.current=None;lt.finished_at=now()
             self.active=False;self.current=None;self.finished_at=now()
@@ -170,6 +198,38 @@ class AgentRunner:
         from .rotation_scan import bounded_rotate
         return bounded_rotate(self.runtime,self.lt._check_abort,step.get('direction',1),
                               step.get('duration',.18),step.get('max_raw',160))
+
+    def _advance_evidence(self,step):
+        """Evidence limits stale/repeated commands; it is not automatic vision."""
+        rid=step.get('observation_run_id','')
+        if not isinstance(rid,str) or not re.fullmatch(r'\d{8}-\d{6}',rid) or rid in self.consumed_drive_evidence:
+            raise ValueError('直行观察依据无效或已用过，请重新拍照')
+        prior=json.loads((self.root/rid/'result.json').read_text(encoding='utf-8'))
+        if prior.get('error'):raise ValueError('不能使用失败运行的照片驱动')
+        rows=[s for s in prior['results'] if s['op']=='snapshot' and s['status']=='done']
+        if not rows:raise ValueError('缺少停车观察照片')
+        row=rows[-1]
+        captured=datetime.fromisoformat(row.get('capture_started_at',row['at']))
+        age=(datetime.now().astimezone()-captured).total_seconds()
+        cameras={s['camera'] for s in row['shots'] if 'file' in s and (self.root/rid/s['file']).is_file()}
+        if not 0<=age<=60 or 0 not in cameras or not cameras.intersection({1,2}):
+            raise ValueError('需60秒内头部和至少一路低处相机照片，再人工判断通路')
+        positions=row.get('wheel_positions',{})
+        if set(positions)!={'COM4:9','COM4:10'}:raise ValueError('照片缺少轮组位置，需重新拍照')
+        current=self.runtime.motors()
+        for key,pos in {**row['positions'],**positions}.items():
+            port,raw=key.split(':');i=int(raw)
+            delta=(current[(port,i)]['position']-pos+2048)%4096-2048
+            if abs(delta)>(2 if i in (9,10) else 10):
+                raise ValueError('拍照后姿态或轮组位置已变，请重新观察')
+        return {'run_id':rid,'age_s':round(age,2),'visual_clearance':'supervisor_assessed_not_automatic'}
+
+    def _op_advance(self,n,step):
+        from .rotation_scan import bounded_advance
+        evidence=self._advance_evidence(step)
+        self.consumed_drive_evidence.add(evidence['run_id'])
+        return {**bounded_advance(self.runtime,self.lt._check_abort,step.get('duration',.18),step.get('max_raw',80)),
+                'observation':evidence}
 
     def _watch_joints(self,step):
         try:
@@ -290,6 +350,7 @@ class AgentRunner:
             raise RuntimeError((done.stderr or b'').decode('utf-8','replace').strip()[-200:] or 'ffmpeg没有输出图像')
 
     def _op_snapshot(self,n,step):
+        capture_started_at=now()
         tag=''.join(c for c in str(step.get('tag','shot')) if c.isalnum() or c in '-_')[:40] or 'shot'
         shots=[]
         for camera in step.get('cameras',[0,1,2,'laptop']):
@@ -300,7 +361,9 @@ class AgentRunner:
                 self._capture(camera,path);shots.append({'camera':camera,'file':path.name,'bytes':path.stat().st_size})
             except Exception as exc:shots.append({'camera':camera,'error':str(exc)})
         if not any('file' in s for s in shots):raise RuntimeError('没有抓到任何图像：'+'；'.join(f'{s["camera"]}:{s.get("error")}' for s in shots))
-        return {'shots':shots,'positions':self._positions([(p,i) for p,ids in EXPECTED.items() for i in ids if not (p=='COM4' and i in (9,10))])}
+        return {'shots':shots,'capture_started_at':capture_started_at,
+                'positions':self._positions([(p,i) for p,ids in EXPECTED.items() for i in ids if not (p=='COM4' and i in (9,10))]),
+                'wheel_positions':self._positions([('COM4',9),('COM4',10)])}
 
     def _read_sample(self,port,i,start):
         reg=self.lt._read(port,i);load=word(reg,60)
