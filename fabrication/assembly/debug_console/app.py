@@ -319,6 +319,24 @@ def set_camera(camera,state,frames=None):
 
 from .camera_snapshot import CameraSnapshots
 camera_snapshots = CameraSnapshots()
+from .obstacle_gate import PerceptionGate
+runtime.perception_gate = PerceptionGate()
+runtime.agent.shared_frame = lambda camera: camera_snapshots.latest(camera, max_age=1.0).jpeg
+
+
+@app.post('/api/safety/perception')
+async def safety_perception(request: Request):
+    # Loopback-only service; the Studio perception process posts one message per frame.
+    try:
+        payload = await request.json()
+        return runtime.perception_gate.update(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get('/api/safety/perception')
+def safety_perception_status():
+    return runtime.perception_gate.snapshot()
 
 
 @app.get('/api/camera/{camera}/snapshot')

@@ -45,10 +45,43 @@ def bounded_travel(runtime, check_abort, distance_m=.05, max_raw=220):
     return result
 
 
-def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=False,target_counts=None):
+def bounded_drive(runtime, check_abort, gate, distance_m=.3, max_raw=220, stop_margin_m=.12):
+    """Forward drive watched continuously by the visual obstacle gate.
+
+    Each monitoring cycle asks for clearance covering the remaining distance
+    plus a stop margin. A blocked gate is a normal safety stop, not a fault.
+    The head camera cannot see behind, so reversing is not offered here.
+    """
+    if (isinstance(distance_m, bool) or not isinstance(distance_m, (int, float)) or not math.isfinite(distance_m)
+            or not .05 <= distance_m <= .6):
+        raise ValueError('避障行驶只接受0.05–0.6m前进估计距离')
+    if (isinstance(stop_margin_m, bool) or not isinstance(stop_margin_m, (int, float)) or not math.isfinite(stop_margin_m)
+            or not .08 <= stop_margin_m <= .5):
+        raise ValueError('停车余量需在0.08–0.5m')
+    radius, _ = runtime._wheel_geometry()
+    target = round(distance_m/(2*math.pi*radius)*4096)
+    clearances = []
+
+    def check(progress_m):
+        ok, reason, message = gate.check(max(0., distance_m-progress_m)+stop_margin_m)
+        if message and message.get('clear_m') is not None:
+            clearances.append(message['clear_m'])
+        return ok, reason
+    duration = min(90., 3.+distance_m/.006)
+    result = _bounded_pulse(runtime, check_abort, 1, duration, max_raw, advance=True, target_counts=target,
+                            gate=check, max_duration=90.)
+    result.update(requested_distance_m=distance_m, stop_margin_m=stop_margin_m, radius_m_used=radius,
+                  wheel_distance_m_estimate=sum(abs(d) for d in result['wheel_delta_raw'].values())/2*2*math.pi*radius/4096,
+                  min_clear_m=min(clearances) if clearances else None, gate_checks=len(clearances),
+                  distance_source='wheel_rotation_and_configured_geometry_not_ground_measurement')
+    return result
+
+
+def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=False,target_counts=None,
+                   gate=None, max_duration=None):
     if type(direction) is not int or direction not in (-1, 1):
         raise ValueError('转向只能是-1或1')
-    duration_limit = 6. if target_counts is not None else .65
+    duration_limit = max_duration if gate is not None and max_duration else 6. if target_counts is not None else .65
     speed_limit = 220 if target_counts is not None else 120 if advance else 160
     if isinstance(duration, bool) or not isinstance(duration, (float, int)) or not math.isfinite(duration) or not .04 <= duration <= duration_limit:
         raise ValueError(f'观察脉冲只能持续40–{round(duration_limit*1000)}ms')
@@ -66,6 +99,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     reached=False
     drive_elapsed=None
     fault=None
+    blocked=None
 
     def stable(rows):
         # STS speed is quantized in 50-count steps: idle encoder jitter by one
@@ -173,6 +207,10 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             if not stable(rows):
                 raise ValueError('轮组编码器尚未稳定，未发送旋转')
             before={motor:rows[-1]['wheels'][motor]['position'] for motor in (9,10)}
+            if gate is not None:
+                ok,reason=gate(0.)
+                if not ok:
+                    raise ValueError('视觉避障未放行：'+reason)
             # The mirrored-left chassis uses opposite raw signs for forward.
             command = runtime.wheel_command(direction*(.025 if target_counts is not None else .02), 0, max_raw=max_raw) if advance else runtime.wheel_command(0, direction*.25, max_raw=max_raw)
             if (set(command) != {9, 10} or not command[9]
@@ -216,6 +254,13 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 travel_trace.append({'t':round(time.monotonic()-started,3),'counts':progress})
                 if min(progress.values()) < -4 or abs(progress[9]-progress[10]) > max(35,.25*max(progress.values())):
                     raise RuntimeError('直行中轮位反向或不对称，已停')
+                if gate is not None:
+                    radius,_=runtime._wheel_geometry()
+                    ok,reason=gate(max(0,min(progress.values()))*2*math.pi*radius/4096)
+                    if not ok:
+                        blocked={'reason':reason,'t':travel_trace[-1]['t'],'counts':progress}
+                        stop()
+                        break
                 if time.monotonic()-started>1.2 and min(progress.values())<2:
                     raise RuntimeError('直行没有取得双轮有效进展，已停')
                 if max(progress.values())>=target_counts-10:
@@ -246,9 +291,9 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
         error=RuntimeError('观察轮子位移不对称、反向或超限，已停')
         error.rotation={'wheel_delta_raw':deltas,'stop_readback':final,'readbacks':readbacks}
         raise error
-    if min(abs(v) for v in deltas.values()) < 2:
+    if min(abs(v) for v in deltas.values()) < 2 and not blocked:
         raise RuntimeError('轮子未记录到有效转动，已停；需观察原因')
-    if target_counts is not None and (not reached or min(abs(v) for v in deltas.values())<target_counts*.75):
+    if target_counts is not None and not blocked and (not reached or min(abs(v) for v in deltas.values())<target_counts*.75):
         raise RuntimeError('直行未达到计数目标，已停；不自动续走')
     if advance:
         return {'wheel_delta_raw': deltas, 'stop_readback': final, 'stop_trace': readbacks,
@@ -256,7 +301,8 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 'command_raw': command, 'rotation_command_rad_s': 0,
                 'direction': 'forward' if direction>0 else 'backward', 'distance_source': 'not_measured_no_metric_claim',
                 **({'target_counts':target_counts,'travel_trace':travel_trace,'max_duration_s':duration,
-                    'wheel_start_raw':before} if target_counts is not None else {})}
+                    'wheel_start_raw':before} if target_counts is not None else {}),
+                **({'stopped_by':'obstacle_gate' if blocked else 'target','gate_block':blocked} if gate is not None else {})}
     radius, track = runtime._wheel_geometry()
     angle = sum(deltas.values())/2 * 2*math.pi/4096 * 2*radius/track
     return {'wheel_delta_raw': deltas, 'stop_readback': final,

@@ -61,6 +61,17 @@ def test_autonomy_module_shares_studio_navigation_and_has_no_motion_route(client
     assert client.post('/api/platform/autonomy/worker/register',json={'node_id':'x'}).status_code==401
 
 
+def test_obstacle_page_is_a_studio_module_without_motion_routes(client):
+    assert 'id="obstacle-page"' in client.get('/').text
+    script=client.get('/assets/studio.js').text
+    assert "['obstacle','实时避障'" in script and "obstacle:'/perception/view'" in script
+    assert any(c['id']=='obstacle' and c['route']=='obstacle' for c in client.get('/api/platform/catalog').json()['capabilities'])
+    assert client.get('/perception/view').status_code==200
+    assert client.post('/api/platform/perception/start',json={},headers={'Origin':'http://foreign.example'}).status_code==403
+    assert client.post('/api/platform/perception/drive',json={}).status_code==404
+    assert mod.app.state.perception.running is False
+
+
 def test_lan_origin_allows_tools_and_proxy_without_changing_takeover(client,tmp_path,monkeypatch):
     config=tmp_path/'studio-network.json'
     config.write_text(json.dumps({'allowed_origins':['http://192.0.2.20:8770']}),encoding='utf-8')
@@ -93,7 +104,7 @@ def test_invalid_lan_origin_never_expands_workbench_access(tmp_path,origin):
 
 def test_catalog_resolves_all_sources_and_media(client):
     c=client.get('/api/platform/catalog').json()
-    assert len(c['capabilities'])==22 and len(c['guides'])==14
+    assert len(c['capabilities'])==23 and len(c['guides'])==14
     assert all(p in c['source_ids'] for x in GUIDES+CAPABILITIES for p in x['sources'])
     for id in c['media']:assert client.get(c['media'][id]).status_code==200
     assert client.get('/api/platform/sources/'+c['sources'][0]['id']).json()['content']

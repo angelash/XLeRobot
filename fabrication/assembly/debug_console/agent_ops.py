@@ -19,7 +19,8 @@ from .limit_selftest import ARM_TESTS,HEAD_TESTS,BACKOFF_RAW,MOVE_TORQUE,RETURN_
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .whole_calibration import atomic_json
 
-MOTION_OPS={'move','probe','backoff_trial','rotate','advance','travel'}
+MOTION_OPS={'move','probe','backoff_trial','rotate','advance','travel','drive'}
+BASE_OPS=('rotate','advance','travel','drive')
 OPS=MOTION_OPS|{'snapshot','sample','wait'}
 ARM_KINDS={1:'pan',2:'lift',3:'elbow',4:'pitch',5:'roll',6:'grip'}
 HEAD_KINDS={7:'pan',8:'tilt'}
@@ -47,6 +48,8 @@ class AgentRunner:
         self.started_at=None;self.finished_at=None
         self.consumed_drive_evidence=set()
         self.consumed_return_evidence=set()
+        # Set by the controller app: latest JPEG from an active shared stream.
+        self.shared_frame=None
 
     @property
     def lt(self):return self.runtime.limit_test
@@ -79,7 +82,7 @@ class AgentRunner:
 
     def _validate(self,steps):
         if not isinstance(steps,list) or not steps:raise ValueError('至少需要一个步骤')
-        advances=[n for n,s in enumerate(steps) if isinstance(s,dict) and s.get('op') in ('advance','travel')]
+        advances=[n for n,s in enumerate(steps) if isinstance(s,dict) and s.get('op') in ('advance','travel','drive')]
         if advances and (advances!=[0] or any(s.get('op')!='snapshot' for s in steps[1:])):
             raise ValueError('每次只允许一个直行脉冲，随后只拍照；重新观察后才能再发')
         for n,step in enumerate(steps):
@@ -127,6 +130,23 @@ class AgentRunner:
                 self._advance_evidence(step)
                 if distance<0:self._return_evidence(step)
                 elif 'return_run_id' in step:raise ValueError('只有原路后退才接受返回依据')
+            if op=='drive':
+                if set(step)-{'op','distance_m','max_raw','stop_margin_m','label','observation_run_id','clearance_confirmed','boundary_id'}:
+                    raise ValueError('避障行驶不接受转向、倒车或续跑参数')
+                distance=step.get('distance_m');raw=step.get('max_raw',160);margin=step.get('stop_margin_m',.12)
+                import math
+                if (isinstance(distance,bool) or not isinstance(distance,(int,float)) or not math.isfinite(distance)
+                        or not .05<=distance<=.6 or type(raw) is not int or not 60<=raw<=220):
+                    raise ValueError('避障行驶限0.05–0.6m前进、60–220原始轮速')
+                if isinstance(margin,bool) or not isinstance(margin,(int,float)) or not .08<=margin<=.5:
+                    raise ValueError('停车余量需在0.08–0.5m')
+                if not re.fullmatch(r'[a-z0-9-]{1,64}',str(step.get('boundary_id',''))):
+                    raise ValueError('需要绑定本次用户指定的边界依据')
+                if step.get('clearance_confirmed') is not True or step.get('observation_run_id')!=self.run_id:
+                    raise ValueError('先检查最近一次停车照片和本次边界')
+                if getattr(self.runtime,'perception_gate',None) is None:
+                    raise ValueError('控制服务未接入视觉避障闸门')
+                self._advance_evidence(step)
             if op=='probe':self.lt._ordered([step.get('item')])
             if op in ('sample','backoff_trial'):
                 for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
@@ -182,7 +202,7 @@ class AgentRunner:
                     lt._log(f'助手第{n+1}步（{step["op"]}）失败：{exc}')
                     self._record(n,step,result)
                     if isinstance(exc,OSError):raise
-                    if step['op'] in ('rotate','advance','travel') or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
+                    if step['op'] in BASE_OPS or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
                         self.error=f'第{n+1}步失败，运行停止：{exc}';break
                     continue
                 if shots:result['watch']=shots
@@ -192,7 +212,7 @@ class AgentRunner:
         except Exception as exc:
             self.error='助手运行中断：'+str(exc);lt._log(self.error)
         finally:
-            if any(s['op'] in ('rotate','advance','travel') for s in self.steps):
+            if any(s['op'] in BASE_OPS for s in self.steps):
                 failures=[]
                 with self.runtime.io:
                     for address,length in ((46,2),(40,1)):
@@ -282,6 +302,16 @@ class AgentRunner:
             delta=(current[('COM4',motor)]['position']-stop['position']+2048)%4096-2048
             if abs(delta)>2:raise ValueError('已离开前进终点，不能使用旧路段后退')
         return {'run_id':rid,'age_s':round(age,2),'kind':'previous_leg_only_not_rear_obstacle_detection'}
+
+    def _op_drive(self,n,step):
+        from .rotation_scan import bounded_drive
+        evidence=self._advance_evidence(step)
+        self.consumed_drive_evidence.add(evidence['run_id'])
+        gate=self.runtime.perception_gate
+        return {**bounded_drive(self.runtime,self.lt._check_abort,gate,step['distance_m'],step.get('max_raw',160),
+                                step.get('stop_margin_m',.12)),
+                'observation':evidence,'boundary_id':step['boundary_id'],'gate_final':gate.snapshot(),
+                'boundary_enforcement':'visual_gate_plus_supervisor_boundary_not_geofence'}
 
     def _watch_joints(self,step):
         try:
@@ -409,7 +439,12 @@ class AgentRunner:
             if camera!='laptop' and camera not in (0,1,2):raise ValueError(f'相机编号无效：{camera}')
             path=self.dir/f'{n:02d}-{tag}-cam{camera}.jpg'
             try:
-                if camera!='laptop' and self._camera_busy(camera):raise RuntimeError('该相机正在网页上推流，暂不抓单帧')
+                if camera!='laptop' and self._camera_busy(camera):
+                    # The live stream owns the device; reuse its newest frame instead of reopening it.
+                    if not self.shared_frame:raise RuntimeError('该相机正在网页上推流，暂不抓单帧')
+                    path.write_bytes(self.shared_frame(camera))
+                    shots.append({'camera':camera,'file':path.name,'bytes':path.stat().st_size,'source':'shared_stream'})
+                    continue
                 self._capture(camera,path);shots.append({'camera':camera,'file':path.name,'bytes':path.stat().st_size})
             except Exception as exc:shots.append({'camera':camera,'error':str(exc)})
         if not any('file' in s for s in shots):raise RuntimeError('没有抓到任何图像：'+'；'.join(f'{s["camera"]}:{s.get("error")}' for s in shots))

@@ -1,8 +1,8 @@
 'use strict';
 const Studio = (() => {
-  const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['fieldmap','空间观察','04'],['data','数据工作室','05'],['simulation','仿真实验室','06'],['vision','视觉实验室','07'],['learning','学习实验室','08'],['autonomy','自主学习','09'],['manual','图文手册','10'],['capabilities','能力全景','11']];
+  const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['fieldmap','空间观察','04'],['obstacle','实时避障','05'],['data','数据工作室','06'],['simulation','仿真实验室','07'],['vision','视觉实验室','08'],['learning','学习实验室','09'],['autonomy','自主学习','10'],['manual','图文手册','11'],['capabilities','能力全景','12']];
   // Same-origin module views hosted by this Studio process.
-  const embedded={fieldmap:'/fieldmap/view',autonomy:'/autonomy/view'};
+  const embedded={fieldmap:'/fieldmap/view',obstacle:'/perception/view',autonomy:'/autonomy/view'};
   const labels={integrated:'已接入',adaptation:'待适配',guide:'图文指南',reference:'社区参考'};
   const groups={control:'遥操作',hardware:'硬件与设备',data:'数据',simulation:'仿真',vision:'视觉',learning:'学习',application:'应用与架构'};
   const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

@@ -300,6 +300,9 @@ install_fieldmap(app, data_dir=fieldmap_directory(REPO, DATA), allowed_origins=l
 from deployment.autonomy.integration import install as install_autonomy
 install_autonomy(app, data_dir=DATA/'autonomy', evidence_root=REPO/'fabrication/assembly/evidence',
                  allowed_origins=lambda: ALLOWED_ORIGINS)
+from deployment.perception.integration import install as install_perception
+install_perception(app, data_dir=DATA/'perception', allowed_origins=lambda: ALLOWED_ORIGINS,
+                   ledger_provider=lambda: app.state.autonomy['ledger'], controller=UPSTREAM)
 
 @app.middleware('http')
 async def local_only(request,call_next):
@@ -418,6 +421,11 @@ async def quality(request:Request):
 @app.get('/api/platform/camera/{camera}/frame')
 async def camera_frame(camera:int):
     if camera not in (0,1,2):raise HTTPException(404,'相机编号无效')
+    # A live consumer (e.g. obstacle perception) owns the device: reuse its newest frame.
+    try:
+        shared=await service.client.get(UPSTREAM+f'/api/camera/{camera}/snapshot',timeout=2)
+        if shared.status_code==200:return Response(shared.content,media_type='image/jpeg')
+    except httpx.HTTPError:pass
     data=bytearray()
     try:
         async with service.client.stream('GET',UPSTREAM+f'/camera/{camera}.mjpg',timeout=4) as response:

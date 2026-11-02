@@ -77,7 +77,8 @@ def test_a_low_load_stall_is_flagged_as_a_pose_contact(runtime,agent):
 
 def test_wheels_and_unknown_ops_are_rejected_up_front(runtime,agent):
     with pytest.raises(ValueError,match='底盘'):agent.start([{'op':'move','targets':{'COM4:9':10}}],True,background=False)
-    with pytest.raises(ValueError,match='未知'):agent.start([{'op':'drive'}],True,background=False)
+    with pytest.raises(ValueError,match='未知'):agent.start([{'op':'teleport'}],True,background=False)
+    with pytest.raises(ValueError,match='避障行驶'):agent.start([{'op':'drive'}],True,background=False)
     with pytest.raises(ValueError,match='空间'):agent.start([{'op':'wait','seconds':0}],False,background=False)
 
 
