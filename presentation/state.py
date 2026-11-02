@@ -53,6 +53,15 @@ class Layout(Contract):
     animate: bool = True
 
 
+class Speech(Contract):
+    enabled: bool = False
+    voice_id: str = Field('Chinese (Mandarin)_Reliable_Executive',min_length=1,max_length=200,pattern=r'^[^\r\n\x00]+$')
+    speed: float = Field(1.0,ge=.5,le=2)
+    pitch: int = Field(0,ge=-12,le=12)
+    volume: float = Field(.8,ge=0,le=1)
+    emotion: Literal['auto','calm'] = 'auto'
+
+
 class Profile(Contract):
     version: Literal[1] = 1
     name: str = Field('MOSS', min_length=1, max_length=40)
@@ -62,6 +71,7 @@ class Profile(Contract):
     accent: str = Field('#ef493e', pattern=r'^#[0-9a-fA-F]{6}$')
     avatar: Avatar = Field(default_factory=Avatar)
     layout: Layout = Field(default_factory=Layout)
+    speech: Speech = Field(default_factory=Speech)
 
 
 class Overlay(Contract):
