@@ -1,6 +1,8 @@
 'use strict';
 const Studio = (() => {
-  const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['fieldmap','空间观察','04'],['data','数据工作室','05'],['simulation','仿真实验室','06'],['vision','视觉实验室','07'],['learning','学习实验室','08'],['manual','图文手册','09'],['capabilities','能力全景','10']];
+  const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['fieldmap','空间观察','04'],['data','数据工作室','05'],['simulation','仿真实验室','06'],['vision','视觉实验室','07'],['learning','学习实验室','08'],['autonomy','自主学习','09'],['manual','图文手册','10'],['capabilities','能力全景','11']];
+  // Same-origin module views hosted by this Studio process.
+  const embedded={fieldmap:'/fieldmap/view',autonomy:'/autonomy/view'};
   const labels={integrated:'已接入',adaptation:'待适配',guide:'图文指南',reference:'社区参考'};
   const groups={control:'遥操作',hardware:'硬件与设备',data:'数据',simulation:'仿真',vision:'视觉',learning:'学习',application:'应用与架构'};
   const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -52,8 +54,8 @@ const Studio = (() => {
     $('current-page').textContent=pages.find(x=>x[0]===route)[1];document.title=`${$('current-page').textContent} · XLeRobot Studio`;
     $('navigation').querySelectorAll('a').forEach(a=>{const active=a.hash==='#'+route;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     $('sidebar').classList.remove('open');$('control-page').hidden=route!=='control';$('page').hidden=route==='control';window.scrollTo({top:0});
-    $('fieldmap-page').hidden=route!=='fieldmap';
-    if(route==='fieldmap'){$('page').hidden=true;mountFieldmap();return;}
+    for(const name of Object.keys(embedded))$(name+'-page').hidden=route!==name;
+    if(embedded[route]){$('page').hidden=true;mountEmbedded(route);return;}
     if(route==='control'){mountRuntime('original');return;}
     const renderers={home,devices:devicePage,data:dataPage,simulation:simulationPage,vision:visionPage,learning:learningPage,manual:()=>manualPage(parts[1]),capabilities:capabilitiesPage};
     $('page').innerHTML=renderers[route]();updateStatusUI();
@@ -62,15 +64,15 @@ const Studio = (() => {
       if(route==='simulation'){sandbox=await api('/api/platform/sandbox');if(version!==routeVersion)return;renderSandbox();}
     }catch(e){toast(e.message,true);}
   }
-  function mountFieldmap(){
-    const frame=$('fieldmap-frame');
+  function mountEmbedded(name){
+    const frame=$(name+'-frame');
     if(!frame.getAttribute('src')){
       frame.addEventListener('load',()=>{
         const doc=frame.contentDocument;if(!doc?.body)return;
-        frame.studioResize=()=>{if(!$('fieldmap-page').hidden)frame.style.height=Math.ceil(doc.body.getBoundingClientRect().height+4)+'px';};
+        frame.studioResize=()=>{if(!$(name+'-page').hidden)frame.style.height=Math.ceil(doc.body.getBoundingClientRect().height+4)+'px';};
         new ResizeObserver(frame.studioResize).observe(doc.body);frame.studioResize();
       });
-      frame.src='/fieldmap/view';
+      frame.src=embedded[name];
     }
     frame.studioResize?.();
   }

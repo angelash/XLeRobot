@@ -297,6 +297,9 @@ install_presence(app, data_dir=DATA/'presence', onboard_url='http://127.0.0.1:87
                  controller_url=UPSTREAM, allowed_origins=lambda: ALLOWED_ORIGINS)
 from deployment.fieldmap.integration import install as install_fieldmap, data_directory as fieldmap_directory
 install_fieldmap(app, data_dir=fieldmap_directory(REPO, DATA), allowed_origins=lambda: ALLOWED_ORIGINS)
+from deployment.autonomy.integration import install as install_autonomy
+install_autonomy(app, data_dir=DATA/'autonomy', evidence_root=REPO/'fabrication/assembly/evidence',
+                 allowed_origins=lambda: ALLOWED_ORIGINS)
 
 @app.middleware('http')
 async def local_only(request,call_next):

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>自主学习 · XLeRobot Studio</title><link rel="stylesheet" href="/autonomy/assets/style.css">
+  <script src="/autonomy/assets/app.js" defer></script>
+</head>
+<body>
+<main>
+  <section class="intro">
+    <div><p class="eyebrow">AUTONOMY / LEARN · MEASURE · SHARE</p><h1>算得动，也学得会<span class="accent">。</span></h1>
+      <p class="summary">车载笔记本负责实时与安全，工作端按需加速，大模型负责理解与判断。每次实验都留下带真值来源的样本，经验证和你的审核后才成为可用模型。</p></div>
+    <div class="badge-stack"><span id="live" class="connection">正在连接</span><span class="hint">本页不发出任何电机指令</span></div>
+  </section>
+
+  <section class="card" aria-labelledby="nodes-title">
+    <div class="card-head"><h2 id="nodes-title"><span class="num">01</span>算力节点</h2>
+      <div class="actions"><button id="echo">连通测试</button><button id="bench">两节点基准</button></div></div>
+    <div id="nodes" class="nodes"></div>
+    <div id="action-result" class="result" hidden></div>
+  </section>
+
+  <section class="card" aria-labelledby="caps-title">
+    <div class="card-head"><h2 id="caps-title"><span class="num">02</span>能力与路由</h2><span class="hint" id="routes"></span></div>
+    <div class="table-wrap"><table><thead><tr><th>能力</th><th>说明</th><th>层级</th><th>当前可在</th></tr></thead><tbody id="capabilities"></tbody></table></div>
+  </section>
+
+  <section class="card" aria-labelledby="jobs-title">
+    <div class="card-head"><h2 id="jobs-title"><span class="num">03</span>近期计算任务</h2><span class="hint">截止时间后到达的结果自动丢弃</span></div>
+    <div class="table-wrap"><table><thead><tr><th>时间</th><th>能力</th><th>路由</th><th>执行</th><th>状态</th><th>耗时</th></tr></thead><tbody id="jobs"></tbody></table></div>
+  </section>
+
+  <section class="card" aria-labelledby="protocols-title">
+    <div class="card-head"><h2 id="protocols-title"><span class="num">04</span>实验目录</h2>
+      <div class="tabs" id="groups" role="tablist"></div></div>
+    <div id="protocols" class="protocols"></div>
+  </section>
+
+  <section class="grid">
+    <div class="card" aria-labelledby="sessions-title"><div class="card-head"><h2 id="sessions-title"><span class="num">05</span>学习会话</h2></div><div id="sessions" class="list"></div></div>
+    <div class="card" aria-labelledby="models-title"><div class="card-head"><h2 id="models-title"><span class="num">06</span>模型与标定</h2></div><div id="models" class="list"></div></div>
+  </section>
+
+  <section class="card" aria-labelledby="assets-title">
+    <div class="card-head"><h2 id="assets-title"><span class="num">07</span>打印标定资产</h2><span class="hint">按100%实际大小打印，打印后用尺子核对</span></div>
+    <div id="assets" class="assets"></div>
+  </section>
+  <p id="notice" class="notice" hidden role="status"></p>
+</main>
+</body>
+</html>

@@ -113,6 +113,7 @@ GUIDES=[
 
 CAPABILITIES=[
  dict(id='fieldmap',title='空间观察与现场复核',group='vision',state='integrated',route='fieldmap',guide='navigation',summary='环视照片、相对方位示意与逐项复核；候选地面待确认，不自动行驶。',sources=['deployment/fieldmap/README_ZH.md','deployment/fieldmap/integration.py']),
+ dict(id='autonomy',title='自主学习与算力协同',group='learning',state='integrated',route='autonomy',guide='vision',summary='工作端算力节点、计算路由回退、双目标定与学习台账；页面不发电机指令。',sources=['docs/autonomy/REQUIREMENTS_DESIGN_ZH.md','docs/autonomy/LEARNING_PROTOCOLS_ZH.md','docs/autonomy/ROBOT_TEST_PLAN_ZH.md','deployment/autonomy/integration.py']),
  dict(id='teleop',title='Xbox整机遥操作',group='control',state='integrated',route='control',guide='xbox',summary='双臂、腕姿、夹爪、头部与双轮，沿用原版语义。',sources=['software/examples/5_xlerobot_teleop_xbox.py']),
  dict(id='diagnostic',title='关节与扭矩调试',group='control',state='integrated',route='devices',guide='limits',summary='实测编码器、设备范围和扭矩管理，受现有接管约束。',sources=['fabrication/assembly/debug_console/control_runtime.py']),
  dict(id='camera',title='三路相机监看',group='vision',state='integrated',route='devices',guide='vision',summary='按需开启头部和双腕视频，直接读取当前服务。',sources=['fabrication/assembly/debug_console/app.py']),
