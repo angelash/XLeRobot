@@ -44,6 +44,37 @@ def test_exploratory_move_uses_a_low_torque_ceiling_and_stops_at_the_first_obstr
     assert word(reg(runtime,'COM3',1),48)==runtime.limit_test.torque_backup['COM3:1'],'Torque ceiling restored'
 
 
+def test_a_blocked_move_is_held_and_recorded_as_a_suspected_contact(runtime,agent):
+    add_stops(runtime,{('COM3',1):(1800,2100)})
+    agent.start([{'op':'move','targets':{'left:1':2250},'torque':900,'tries':1,'speed_deg':8}],True,background=False)
+    res=agent.results[0];c=res['contact']
+    assert res['status']=='failed' and c['joint']=='COM3:1' and c['verdict']=='pending'
+    assert c['position']==2100 and c['target']==2250 and c['direction']==1 and c['from']==2050
+    assert c['requested_torque']==c['ceiling']==750,'An explicit torque stays under the overload threshold'
+    assert c['kind']=='pushing' and c['peak_load']==900 and isinstance(c['settle_ms'],int)
+    assert c['pose']['left:1']==2100 and set(c['pose'])>={'left:6','right:1','head:7','head:8'} and len(c['pose'])==14
+    assert c['to_limit']==word(reg(runtime,'COM3',1),11)-2100
+    lines=(agent.dir/'contacts.jsonl').read_text(encoding='utf-8').splitlines()
+    assert len(lines)==1 and json.loads(lines[0])['position']==2100
+    assert json.loads((agent.dir/'result.json').read_text(encoding='utf-8'))['results'][0]['contact']['joint']=='COM3:1'
+    assert word(reg(runtime,'COM3',1),42)==2100,'The joint stays where it stopped, not pushed and not backed off'
+    assert any('疑似碰阻' in e['message'] for e in runtime.limit_test.events)
+
+
+def test_a_low_load_stall_is_flagged_as_a_pose_contact(runtime,agent):
+    port=runtime.session.ports['COM3'];original=port.write
+    def write(packet):
+        result=original(packet)
+        if packet[2]==1 and packet[4]==3 and packet[5]==42:
+            wanted=word(port.regs[1],56);held=min(2080,wanted)
+            set_word(port.regs[1],56,held);set_word(port.regs[1],60,120 if held!=wanted else 0)
+        return result
+    port.write=write
+    agent.start([{'op':'move','targets':{'left:1':2250},'torque':450,'tries':1}],True,background=False)
+    c=agent.results[0]['contact']
+    assert c['kind']=='low_load' and c['peak_load']==120 and c['position']==2080 and '姿态相关接触' in c['hint']
+
+
 def test_wheels_and_unknown_ops_are_rejected_up_front(runtime,agent):
     with pytest.raises(ValueError,match='底盘'):agent.start([{'op':'move','targets':{'COM4:9':10}}],True,background=False)
     with pytest.raises(ValueError,match='未知'):agent.start([{'op':'drive'}],True,background=False)

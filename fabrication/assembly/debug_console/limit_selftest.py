@@ -72,8 +72,10 @@ class Aborted(Exception):pass
 
 
 class Blocked(RuntimeError):
-    def __init__(self,message,port,i):
-        super().__init__(message);self.port=port;self.id=i
+    """detail: where the joint stopped and how hard it pushed (position,
+    target, goal, lead, load, peak_load, ceiling), for the contact check."""
+    def __init__(self,message,port,i,detail=None):
+        super().__init__(message);self.port=port;self.id=i;self.detail=dict(detail or {})
 
 
 def deg(raw):return round(raw*360/4096,1)
@@ -313,7 +315,7 @@ class LimitSelfTest:
             ceiling=min(full,int(torque)) if torque else full
             self._torque_limit(port,i,ceiling)
             with self.runtime.io:write_register(self.runtime.session.ports[port],i,46,min(1000,max(60,int(speed))),2)
-            state[(port,i)]={'goal':float(word(reg,56)),'target':target,'history':deque(maxlen=WINDOW),'ceiling':ceiling}
+            state[(port,i)]={'goal':float(word(reg,56)),'target':target,'history':deque(maxlen=WINDOW),'ceiling':ceiling,'peak':0}
         deadline=time.monotonic()+max(abs(s['target']-s['goal']) for s in state.values())/speed*1.5+8
         last=time.monotonic()
         while True:
@@ -332,10 +334,13 @@ class LimitSelfTest:
                 arrived=abs(s['target']-pos)<=(STRICT_TOL if strict else 8) or (not strict and settled and lag<72)
                 if s['goal']!=s['target'] or not arrived:done=False
                 if strict and s['goal']==s['target'] and settled and not arrived:lag=max(lag,BLOCK_LAG)
-                pushing=(word(reg,60)&0x3ff)>=BLOCK_LOAD_SHARE*s['ceiling']
+                load=word(reg,60)&0x3ff;s['peak']=max(s['peak'],load)
+                pushing=load>=BLOCK_LOAD_SHARE*s['ceiling']
                 if settled and lag>=BLOCK_LAG and (strict or pushing or lag>=BLOCK_LAG_MAX):
                     with self.runtime.io:write_register(self.runtime.session.ports[port],i,42,pos,2)
-                    raise Blocked(f'{what}时{self._label(port,i)}在{pos}受阻',port,i)
+                    raise Blocked(f'{what}时{self._label(port,i)}在{pos}受阻',port,i,
+                                  {'position':pos,'target':s['target'],'goal':int(round(s['goal'])),'lead':int(round(s['goal']-pos)),
+                                   'load':load,'peak_load':s['peak'],'ceiling':s['ceiling']})
             if done:return
             if time.monotonic()>deadline:raise RuntimeError(what+'超时')
             self._sleep()
@@ -359,7 +364,7 @@ class LimitSelfTest:
             try:return self._move_to(targets,speed_deg,what,strict,torque)
             except Blocked as exc:
                 diag=self._diagnose(exc.port,exc.id)
-                if attempt==tries:raise Blocked(f'{exc}（{diag}）',exc.port,exc.id) from exc
+                if attempt==tries:raise Blocked(f'{exc}（{diag}）',exc.port,exc.id,exc.detail) from exc
                 self._log(f'{exc}（{diag}）；等待{self.recover_wait:g}秒后第{attempt}次重试',port=exc.port,id=exc.id)
                 self._wait(self.recover_wait)
 

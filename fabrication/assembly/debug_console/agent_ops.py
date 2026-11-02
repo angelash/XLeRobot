@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from .control_runtime import now
-from .limit_selftest import ARM_TESTS,HEAD_TESTS,BACKOFF_RAW,MOVE_TORQUE,RETURN_SPEED_DEG,Aborted
+from .limit_selftest import ARM_TESTS,HEAD_TESTS,BACKOFF_RAW,MOVE_TORQUE,RETURN_SPEED_DEG,Aborted,Blocked
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .whole_calibration import atomic_json
 
@@ -27,6 +27,14 @@ LAPTOP_CAMERA='HD Camera'
 # sweeps the folded arm inward, so the other arm must not be parked there: on
 # 2026-11-02 the right gripper hit the left observer's gripper at +45 deg.
 PAN_CENTRE={'left':2037,'right':2045};PAN_INWARD={'left':1,'right':-1};PAN_CLEAR_RAW=228
+# An explicit move torque is a trial or an escalation step (AGENT_CONTROL_ZH.md
+# section 10): at most 75 %, 5 points under the servo's 80 % overload
+# threshold - beyond it the overload protection cuts the output after ~2 s,
+# so more ceiling adds heat, not force. Omitting torque keeps full torque.
+EXPLICIT_TORQUE_MAX=750
+# A move that stalls with its load peak under 25 % is a pose-related contact
+# far more often than a hard stop (right shoulder lift, 2026-11-02).
+LOW_LOAD_PEAK=250
 
 
 class AgentRunner:
@@ -122,6 +130,7 @@ class AgentRunner:
                 except Aborted:raise
                 except Exception as exc:
                     result={'status':'failed','message':str(exc)}
+                    if getattr(exc,'contact',None):result['contact']=exc.contact
                     if shots:result['watch']=shots
                     lt._log(f'助手第{n+1}步（{step["op"]}）失败：{exc}')
                     self._record(n,step,result)
@@ -188,16 +197,52 @@ class AgentRunner:
         return out
 
     def _op_move(self,n,step):
-        targets={}
+        targets={};start={}
         for key,value in step['targets'].items():
             port,i=self.resolve(key);reg=self.lt._read(port,i);low,high=word(reg,9),word(reg,11);value=int(value)
             if not low<=value<=high:raise ValueError(f'{port}:{i}目标{value}超出当前限位{low}–{high}；越限只能用探测')
-            targets[(port,i)]=value
+            targets[(port,i)]=value;start[(port,i)]=word(reg,56)
         speed=max(3,min(30,float(step.get('speed_deg',12))))
-        torque=step.get('torque');torque=max(150,min(1000,int(torque))) if torque else None
-        self.lt._move_retry(targets,speed,step.get('label') or '助手移动',strict=bool(step.get('strict')),
-                            torque=torque,tries=int(step.get('tries',3)))
+        torque=step.get('torque');torque=max(150,min(EXPLICIT_TORQUE_MAX,int(torque))) if torque else None
+        try:
+            self.lt._move_retry(targets,speed,step.get('label') or '助手移动',strict=bool(step.get('strict')),
+                                torque=torque,tries=int(step.get('tries',3)))
+        except Blocked as exc:
+            exc.contact=self._contact(n,exc,start,speed,torque);raise
         return {'positions':self._positions(targets)}
+
+    def _pose(self):
+        """Both arms and the head, by logical name, for the contact record."""
+        out={}
+        joints=[(side,port,j) for side,port in self.runtime.arm_ports().items() for j in range(1,7)]+[('head','COM3',7),('head','COM3',8)]
+        for side,port,j in joints:
+            try:out[f'{side}:{j}']=word(self.lt._read(port,j),56)
+            except Exception:out[f'{side}:{j}']=None
+        return out
+
+    def _contact(self,n,exc,start,speed,torque):
+        """A blocked move is a suspected contact, not a verdict yet. The goal
+        already sits at the joint's position; let the load fade (no back-off,
+        no extra force) and record what the contact check needs: where and how
+        hard it stopped, the whole pose and the servo state. The run ends and
+        the joint stays there for observation (AGENT_CONTROL_ZH.md section 10)."""
+        port,i=exc.port,exc.id;d=dict(exc.detail);name=self.lt._label(port,i)
+        settle=self.lt._settle(port,i)
+        reg=self.lt._read(port,i);low,high=word(reg,9),word(reg,11)
+        pos=d.get('position',word(reg,56));origin=start.get((port,i),pos);target=d.get('target',pos)
+        direction=1 if target>=origin else -1
+        to_limit=((high if direction>0 else low)-pos)*direction
+        peak=d.get('peak_load',0);low_load=peak<LOW_LOAD_PEAK
+        contact={'step':n,'joint':f'{port}:{i}','name':name,'from':origin,'direction':direction,**d,'settle_ms':settle,
+                 'to_limit':to_limit,'to_limit_deg':round(to_limit*360/4096,1),'requested_torque':torque,'speed_deg':speed,
+                 'status':reg[65],'volt':reg[62]/10,'temp':reg[63],'load_after':word(reg,60)&0x3ff,
+                 'kind':'low_load' if low_load else 'pushing','pose':self._pose(),'verdict':'pending',
+                 'hint':('峰值负载低于25%就停住，多半是姿态相关接触' if low_load else '负载已到扭矩上限的60%以上，可能碰到物体、车体、另一臂或机械止挡')
+                        +'；关节保持原地，先按规范第10节观察确认，确认前不加力'}
+        with open(self.dir/'contacts.jsonl','a',encoding='utf-8') as f:f.write(json.dumps(contact,ensure_ascii=False)+'\n')
+        self.lt._log(f'疑似碰阻：{name}在{pos}停住（目标{target}，峰值负载{peak/10:.0f}%，回落{settle}ms，距限位{contact["to_limit_deg"]}°），保持原地待观察',
+                     port=port,id=i,position=pos,peak_load=peak)
+        return contact
 
     def _op_probe(self,n,step):
         item=step['item'];side,kind=item.split(':',1)
