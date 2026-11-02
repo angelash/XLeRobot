@@ -1,11 +1,10 @@
 """Survey review must survive restart, reject stale writes and keep motion closed."""
 import json
-import threading
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
-from http.server import ThreadingHTTPServer
 import pytest
-from deployment.fieldmap.server import Survey,handler_for,atomic_json,watch_parent
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from deployment.fieldmap.store import Survey,atomic_json
+from deployment.fieldmap.integration import install,data_directory,API
 
 
 @pytest.fixture
@@ -49,23 +48,47 @@ def test_controller_timeout_is_unknown_not_stopped(survey,monkeypatch):
 
 
 def test_foreign_origin_and_drive_routes_are_rejected(survey):
-    server=ThreadingHTTPServer(('127.0.0.1',0),handler_for(survey));thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
-    base=f'http://127.0.0.1:{server.server_port}'
-    try:
-        req=Request(base+'/api/review',data=json.dumps(review()).encode(),headers={'Origin':'http://other.example','Content-Type':'application/json'})
-        with pytest.raises(HTTPError) as exc:urlopen(req)
-        assert exc.value.code==403
-        req=Request(base+'/api/drive',data=b'{}',headers={'Content-Type':'application/json'})
-        with pytest.raises(HTTPError) as exc:urlopen(req)
-        assert exc.value.code==404
-        with urlopen(base+'/api/map') as response:assert json.load(response)['motion_enabled'] is False
-    finally:
-        server.shutdown();server.server_close();thread.join()
+    app=FastAPI();install(app,data_dir=survey.root,allowed_origins=('http://127.0.0.1:8770',))
+    with TestClient(app) as client:
+        assert client.post(API+'/review',json=review(),headers={'Origin':'http://other.example'}).status_code==403
+        assert client.post(API+'/drive',json={}).status_code==404
+        assert client.get(API+'/map').json()['motion_enabled'] is False
+        assert client.get('/api/map').status_code==404
+        assert client.get('/fieldmap/',follow_redirects=False).headers['location']=='/#fieldmap'
 
 
-def test_parent_exit_closes_the_web_listener_without_a_motion_request():
-    closed=threading.Event()
-    class Server:
-        def shutdown(self):closed.set()
-    watch_parent(Server(),123,probe=lambda pid:False)
-    assert closed.is_set()
+def test_local_data_config_reuses_existing_photos_and_reviews(tmp_path,monkeypatch):
+    monkeypatch.delenv('XLEROBOT_FIELDMAP_DATA',raising=False)
+    assert data_directory(tmp_path,tmp_path/'platform-data')==tmp_path/'platform-data/fieldmap'
+    (tmp_path/'.local-deploy').mkdir()
+    config=tmp_path/'.local-deploy/studio-network.json'
+    existing=tmp_path/'existing-data'
+    config.write_text(json.dumps({'fieldmap_data_dir':str(existing)}),encoding='utf-8')
+    assert data_directory(tmp_path,tmp_path/'platform-data')==existing
+    monkeypatch.setenv('XLEROBOT_FIELDMAP_DATA','relative/path')
+    with pytest.raises(ValueError):data_directory(tmp_path,tmp_path/'platform-data')
+
+
+def test_platform_module_keeps_review_storage_and_images(survey):
+    app=FastAPI();install(app,data_dir=survey.root,allowed_origins=('http://127.0.0.1:8770',))
+    with TestClient(app) as client:
+        assert client.get('/fieldmap/images/front.jpg').content==b'image'
+        assert client.get('/fieldmap/images/private.jpg').status_code==404
+        assert client.post(API+'/review',json=review(),headers={'Origin':'http://127.0.0.1:8770'}).status_code==200
+        assert client.post(API+'/review',json=review()).status_code==409
+        assert client.post(API+'/review',content='x',headers={'Content-Type':'text/plain'}).status_code==415
+        assert client.post(API+'/review',content=b'x'*32001,headers={'Content-Type':'application/json'}).status_code==413
+    assert Survey(survey.root).load()['review']['revision']==1
+
+
+def test_stop_attempts_both_existing_controller_actions_and_reports_failures(survey,monkeypatch):
+    app=FastAPI();instance=install(app,data_dir=survey.root);requests=[]
+    def controller(path,body=None):
+        requests.append(path)
+        if path=='/api/agent/stop':raise TimeoutError('agent stop timeout')
+        return {'ports':[]}
+    monkeypatch.setattr(instance,'controller',controller)
+    with TestClient(app) as client:
+        r=client.post(API+'/stop',json={})
+        assert r.status_code==503 and r.json()['requested'] and r.json()['errors']
+    assert requests==['/api/agent/stop','/api/controller/stop','/api/status']

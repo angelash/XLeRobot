@@ -2,13 +2,12 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>小九 · 空间观察台</title><link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <title>空间观察 · XLeRobot Studio</title><link rel="stylesheet" href="/fieldmap/assets/style.css">
+  <script src="/fieldmap/assets/app.js" defer></script>
 </head>
-<body>
-<header class="topbar"><a class="brand" href="/" aria-label="空间观察台首页"><span class="brand-mark">九</span><span>小九<span class="brand-sub">空间观察台</span></span></a><div class="top-right"><span id="liveBadge" class="connection">正在连接</span><button class="stop" id="stopButton">■ 停止动作</button></div></header>
+<body class="studio-embedded">
 <main>
-  <section class="intro"><div><p class="eyebrow">SURROUNDINGS / FIELD NOTES <span id="surveyNumber">01</span></p><h1>先看清，再出发<span class="accent">。</span></h1><p id="summary" class="summary">正在读取这次环境观察……</p></div><div class="mode-stamp"><span class="lock-icon">▣</span><div>停留观察<span>行驶等待现场复核</span></div></div></section>
+  <section class="intro"><div><p class="eyebrow">SURROUNDINGS / FIELD NOTES <span id="surveyNumber">01</span></p><h1>先看清，再出发<span class="accent">。</span></h1><p id="summary" class="summary">正在读取这次环境观察……</p></div><div class="intro-actions"><span id="liveBadge" class="connection">正在连接</span><div class="mode-stamp"><span class="lock-icon">▣</span><div>停留观察<span>行驶等待现场复核</span></div></div><button class="stop" id="stopButton">■ 停止动作</button></div></section>
   <section class="telemetry" aria-label="机器人实时状态"><div><span class="tiny-dot" id="motorDot"></span><span>电机</span><strong id="motors">— / 16</strong></div><div><span>轮组</span><strong id="wheels">状态待确认</strong></div><div><span>手柄</span><strong id="pad">—</strong></div><div><span>电源</span><strong id="voltage">—</strong></div><div><span>最高温度</span><strong id="temperature">—</strong></div><div class="telemetry-at" id="statusTime">等待遥测</div></section>
   <div id="notice" class="notice" role="status" hidden></div>
   <section class="workspace">
@@ -34,7 +33,7 @@
       <p id="saveMessage" class="save-message" role="status"></p>
     </aside>
   </section>
-  <section class="scan-record"><div><p class="eyebrow">OBSERVATION LOG</p><h2>这一轮看到了多少</h2></div><div id="scanDetails"></div><a class="export" href="/api/export" target="_blank" rel="noopener">查看地图与复核数据 ↗</a></section>
+  <section class="scan-record"><div><p class="eyebrow">OBSERVATION LOG</p><h2>这一轮看到了多少</h2></div><div id="scanDetails"></div><a class="export" href="/api/platform/fieldmap/export" target="_blank" rel="noopener">查看地图与复核数据 ↗</a></section>
   <footer><span>小九 · XLeRobot</span><span id="dataSource">实际相机证据 · 观察结果待复核</span><span>移动探索尚未开放</span></footer>
 </main>
 </body></html>

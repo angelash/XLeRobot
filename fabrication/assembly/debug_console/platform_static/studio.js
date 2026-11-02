@@ -1,6 +1,6 @@
 'use strict';
 const Studio = (() => {
-  const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['data','数据工作室','04'],['simulation','仿真实验室','05'],['vision','视觉实验室','06'],['learning','学习实验室','07'],['manual','图文手册','08'],['capabilities','能力全景','09']];
+  const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['fieldmap','空间观察','04'],['data','数据工作室','05'],['simulation','仿真实验室','06'],['vision','视觉实验室','07'],['learning','学习实验室','08'],['manual','图文手册','09'],['capabilities','能力全景','10']];
   const labels={integrated:'已接入',adaptation:'待适配',guide:'图文指南',reference:'社区参考'};
   const groups={control:'遥操作',hardware:'硬件与设备',data:'数据',simulation:'仿真',vision:'视觉',learning:'学习',application:'应用与架构'};
   const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -28,7 +28,7 @@ const Studio = (() => {
     const integrated=catalog.capabilities.filter(c=>c.state==='integrated').length;
     return `<section class="hero"><div class="hero-copy"><p class="eyebrow">BUILD. CONTROL. LEARN.</p><h1>你的机器人，<br>在这里<em>学会更多。</em></h1><p>连接双臂与双轮，留下每一次尝试。<br>从遥操作、仿真到视觉与学习，在同一个工作台推进。</p><div class="actions"><a class="button primary" href="#control">进入控制中心 ↗</a><a class="button" href="#manual/start">从这里开始</a></div></div><div class="hero-art"><img src="${catalog.media.robot}" alt="XLeRobot 双臂移动推车官方插画"><span class="hero-note">TWO ARMS. MANY POSSIBILITIES.</span></div></section>
     <section class="grid four"><div class="card stat"><div class="stat-label">控制服务 <span>↗</span></div><div class="value" id="stat-service">—</div><span class="caption" id="stat-session">读取会话…</span></div><div class="card stat"><div class="stat-label">实测电机 <span>◎</span></div><div class="value"><span id="stat-motors">—</span><small>/ 16</small></div><span class="caption">两块控制板 · 实时回读</span></div><div class="card stat"><div class="stat-label">平台工具 <span>⌘</span></div><div class="value">${integrated}<small>/ ${catalog.capabilities.length}项能力</small></div><span class="caption">其余能力附适配路线与来源</span></div><div class="card stat"><div class="stat-label">我的资产 <span>▤</span></div><div class="value" id="stat-assets">—</div><span class="caption">状态轨迹 · 姿态 · 实验配置</span></div></section>
-    <div class="section-heading"><h2>继续探索</h2><a href="#capabilities">查看全部 ${catalog.capabilities.length} 项能力 ↗</a></div><section class="grid three">${feature('control','双臂，协同在你手中','原版Xbox整机映射、逐键反馈、受限实机与独立预览。')}${feature('data','把操作，变成经验','记录状态、拖动时间轴回看、保存姿态并导出轨迹。')}${feature('simulation','先在模型里，试一试','使用独立运动学沙盒，回顾推车高度与机械臂布局研究。')}</section>
+    <div class="section-heading"><h2>继续探索</h2><a href="#capabilities">查看全部 ${catalog.capabilities.length} 项能力 ↗</a></div><section class="grid two">${feature('fieldmap','先看清，周围的空间','对照环视照片，复核物品、候选地面与遮挡盲区。')}${feature('control','双臂，协同在你手中','原版Xbox整机映射、逐键反馈、受限实机与独立预览。')}${feature('data','把操作，变成经验','记录状态、拖动时间轴回看、保存姿态并导出轨迹。')}${feature('simulation','先在模型里，试一试','使用独立运动学沙盒，回顾推车高度与机械臂布局研究。')}</section>
     <div class="section-heading"><h2>让下一步更清楚</h2><a href="#manual">打开图文手册 ↗</a></div><section class="grid two"><div class="card"><p class="eyebrow">A PRACTICAL PATH</p><h2>从一个小任务开始。</h2>${[['01','连上并看清','核对电机、相机与手柄状态。','devices'],['02','遥操作一遍','固定底盘和目标，感受控制与限位。','control'],['03','留下可学习的演示','先回看状态，再升级同步图像采集。','manual/record']].map(x=>`<div class="step-row"><span class="step-num">${x[0]}</span><div><h3>${x[1]}</h3><p>${x[2]}</p></div><a href="#${x[3]}">前往 ↗</a></div>`).join('')}</div><div class="card dark-card"><p class="eyebrow">YOUR ROBOT, YOUR WAY</p><h2>Windows上车，<br>远程管理工坊。</h2><p>按你的新方案，把Windows笔记本作为车载中控。通过SSH部署与查看状态，家中台式机可继续提供额外算力；迁移步骤与设备验收都放进同一份指南。</p><a class="button lime" href="#manual/mobile">查看迁移与远程指南 ↗</a><div class="sources">${guideButton('vr','探索PICO遥操作')}</div></div></section>`;
   }
   function devicePage(){return heading('DEVICES & TELEMETRY','每个设备，都有清楚的状态。','实时读取沿用现有串口所有者；不会重复打开设备。',guideButton('assembly','拼装与维护手册 ↗'))+
@@ -52,6 +52,8 @@ const Studio = (() => {
     $('current-page').textContent=pages.find(x=>x[0]===route)[1];document.title=`${$('current-page').textContent} · XLeRobot Studio`;
     $('navigation').querySelectorAll('a').forEach(a=>{const active=a.hash==='#'+route;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     $('sidebar').classList.remove('open');$('control-page').hidden=route!=='control';$('page').hidden=route==='control';window.scrollTo({top:0});
+    $('fieldmap-page').hidden=route!=='fieldmap';
+    if(route==='fieldmap'){$('page').hidden=true;mountFieldmap();return;}
     if(route==='control'){mountRuntime('original');return;}
     const renderers={home,devices:devicePage,data:dataPage,simulation:simulationPage,vision:visionPage,learning:learningPage,manual:()=>manualPage(parts[1]),capabilities:capabilitiesPage};
     $('page').innerHTML=renderers[route]();updateStatusUI();
@@ -59,6 +61,18 @@ const Studio = (() => {
       if(['data','learning'].includes(route)){library=await api('/api/platform/library');if(version!==routeVersion)return;renderLibrary();}
       if(route==='simulation'){sandbox=await api('/api/platform/sandbox');if(version!==routeVersion)return;renderSandbox();}
     }catch(e){toast(e.message,true);}
+  }
+  function mountFieldmap(){
+    const frame=$('fieldmap-frame');
+    if(!frame.getAttribute('src')){
+      frame.addEventListener('load',()=>{
+        const doc=frame.contentDocument;if(!doc?.body)return;
+        frame.studioResize=()=>{if(!$('fieldmap-page').hidden)frame.style.height=Math.ceil(doc.body.getBoundingClientRect().height+4)+'px';};
+        new ResizeObserver(frame.studioResize).observe(doc.body);frame.studioResize();
+      });
+      frame.src='/fieldmap/view';
+    }
+    frame.studioResize?.();
   }
   function mountRuntime(name){
     const id='runtime-'+name;let frame=$(id);

@@ -13,7 +13,7 @@ if ($listener) {
         $listener = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
         if ($listener) { throw '8765仍有监听但HTTP未响应；请检查占用进程，不会强制释放。' }
     }
-    if ($listener -and $status.version -notmatch '^[23]\.\d') {
+    if ($listener -and $status.version -notmatch '^[234]\.\d') {
         throw '8765 正运行旧版或其他服务。请先运行同目录 stop.ps1，再启动。'
     }
 }

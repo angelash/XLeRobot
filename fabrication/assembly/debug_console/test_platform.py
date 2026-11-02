@@ -26,6 +26,27 @@ def client(tmp_path,monkeypatch):
     with TestClient(mod.app) as c:yield c
 
 
+def test_fieldmap_runs_inside_studio_with_its_navigation_and_private_data(client,tmp_path,monkeypatch):
+    from deployment.fieldmap.store import atomic_json
+    root=tmp_path/'fieldmap';root.mkdir()
+    atomic_json(root/'map.json',{'id':'existing-survey','features':[{'id':'chair','kind':'blocked'}],
+                               'observations':[{'id':'photo','image':'frame.jpg'}]})
+    (root/'images').mkdir();(root/'images/frame.jpg').write_bytes(b'frame')
+    monkeypatch.setattr(mod.app.state.fieldmap,'root',root)
+    assert client.get('/api/platform/fieldmap/map').json()['id']=='existing-survey'
+    assert client.get('/fieldmap/images/frame.jpg').content==b'frame'
+    view=client.get('/fieldmap/view')
+    assert view.status_code==200 and '/fieldmap/assets/app.js' in view.text
+    assert "frame-ancestors 'self'" in view.headers['content-security-policy']
+    script=client.get('/fieldmap/assets/app.js').text
+    assert '/api/platform/fieldmap/' in script and '/fieldmap/images/' in script and '8782' not in script
+    assert 'id="fieldmap-page"' in client.get('/').text
+    assert "['fieldmap','空间观察'" in client.get('/assets/studio.js').text
+    assert any(c['id']=='fieldmap' and c['route']=='fieldmap' for c in client.get('/api/platform/catalog').json()['capabilities'])
+    assert client.post('/api/platform/fieldmap/review',json={},headers={'Origin':'http://foreign.example'}).status_code==403
+    assert client.post('/api/platform/fieldmap/drive',json={}).status_code==404
+
+
 def test_lan_origin_allows_tools_and_proxy_without_changing_takeover(client,tmp_path,monkeypatch):
     config=tmp_path/'studio-network.json'
     config.write_text(json.dumps({'allowed_origins':['http://192.0.2.20:8770']}),encoding='utf-8')
@@ -58,7 +79,7 @@ def test_invalid_lan_origin_never_expands_workbench_access(tmp_path,origin):
 
 def test_catalog_resolves_all_sources_and_media(client):
     c=client.get('/api/platform/catalog').json()
-    assert len(c['capabilities'])==20 and len(c['guides'])==14
+    assert len(c['capabilities'])==21 and len(c['guides'])==14
     assert all(p in c['source_ids'] for x in GUIDES+CAPABILITIES for p in x['sources'])
     for id in c['media']:assert client.get(c['media'][id]).status_code==200
     assert client.get('/api/platform/sources/'+c['sources'][0]['id']).json()['content']

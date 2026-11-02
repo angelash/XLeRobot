@@ -1,16 +1,24 @@
 # 原地环境观察与网页复核
 
-网页部署在车载笔记本，默认入口 `http://192.168.137.150:8782/`，本机也可用 `http://127.0.0.1:8782/`。全部静态资源随工程提供，不依赖 CDN 或工作电脑的网页服务。
+观察台已并入既有 **XLeRobot Studio 8770平台**。打开 `http://192.168.137.150:8770/`，点击左侧“空间观察”；直达地址为 `http://192.168.137.150:8770/#fieldmap`。页面保留平台主导航和状态区，接口、照片与静态资源均由同一个Studio进程承载，全部资源本地提供。
 
-在车载运行目录执行：
+随现有Studio启动，无需额外服务：
 
 ```powershell
-.\deployment\fieldmap\start-fieldmap.ps1
+.\fabrication\assembly\debug_console\start-platform.ps1
 ```
 
-`XLeRobot-FieldMap` 开机任务可调用同一脚本；首次发布时只放行现有工作端到8782，不对公网开放。更换接入网络后按实际局域网调整防火墙范围。
+后端`integration.py`注册 `/api/platform/fieldmap/*`、`/fieldmap/images/*`、`/fieldmap/assets/*`，`/fieldmap/view`仅作为平台内部视图；`/fieldmap/`返回主平台的空间观察页。地图加载、人工复核、导出和停止请求沿用平台来源检查。没有新增站点、监听端口或开机任务。
 
-管理员运行 `deployment/fieldmap/register-fieldmap.ps1` 注册开机任务及精确客户端防火墙规则。它保留现有Python入站阻断的其他端口，只为8782开一个受限入口；修改前在数据目录留备份。任务允许电池运行，进程失败一分钟后重启，不重放动作。
+已部署机器继续使用 `D:\Robot\FieldMap`，通过车载私有`.local-deploy/studio-network.json`的`fieldmap_data_dir`设置绝对路径；也支持`XLEROBOT_FIELDMAP_DATA`。未配置时默认使用平台数据目录下的`fieldmap/`。迁移时保留数据，停止并禁用旧`XLeRobot-FieldMap`任务、关闭8782规则与监听。原独立服务和注册脚本已从源码移除。
+
+旧版观察台只需迁移一次。先部署本模块及平台更新，再在笔记本运行：
+
+```powershell
+.\deployment\fieldmap\migrate-to-studio.ps1 -Repo D:\Robot\XLeRobot -DataDir D:\Robot\FieldMap
+```
+
+迁移脚本在无接管、动作或录制时只重启Studio，核对控制进程未变以及地图、照片、复核文件哈希，最后停用旧入口。配置和旧启动文件保存在运行目录的私有`.local-deploy/fieldmap-studio-<时间>/`，以供恢复。
 
 实际数据保存在 `D:\Robot\FieldMap`，不进入源码 Git。`map.json` 包含 observation 视角、照片路径、拍摄时刻、关节及轮组读数、feature 语义对象、示意平面轮廓和照片上的归一化多边形。照片放 `images/`，只开放地图明确引用的文件；`reviews.json` 按地图ID保存人工分类、备注和修改历史。运行日志、临时图、认证信息均不提交。
 
