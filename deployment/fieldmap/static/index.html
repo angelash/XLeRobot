@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>小九 · 空间观察台</title><link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="/" aria-label="空间观察台首页"><span class="brand-mark">九</span><span>小九<span class="brand-sub">空间观察台</span></span></a><div class="top-right"><span id="liveBadge" class="connection">正在连接</span><button class="stop" id="stopButton">■ 停止动作</button></div></header>
+<main>
+  <section class="intro"><div><p class="eyebrow">SURROUNDINGS / FIELD NOTES <span id="surveyNumber">01</span></p><h1>先看清，再出发<span class="accent">。</span></h1><p id="summary" class="summary">正在读取这次环境观察……</p></div><div class="mode-stamp"><span class="lock-icon">▣</span><div>停留观察<span>行驶等待现场复核</span></div></div></section>
+  <section class="telemetry" aria-label="机器人实时状态"><div><span class="tiny-dot" id="motorDot"></span><span>电机</span><strong id="motors">— / 16</strong></div><div><span>轮组</span><strong id="wheels">状态待确认</strong></div><div><span>手柄</span><strong id="pad">—</strong></div><div><span>电源</span><strong id="voltage">—</strong></div><div><span>最高温度</span><strong id="temperature">—</strong></div><div class="telemetry-at" id="statusTime">等待遥测</div></section>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <section class="workspace">
+    <div class="space-panel">
+      <div class="panel-title"><div><span class="section-no">01</span><h2>周围空间</h2><span class="subtle">相对方位示意</span></div><div class="view-switch" role="group" aria-label="地图显示方式"><button id="flatView" aria-pressed="true">平面</button><button id="depthView" aria-pressed="false">立体</button><button id="resetView" title="重置缩放">复位</button></div></div>
+      <div class="map-wrap"><svg id="map" viewBox="0 0 720 590" aria-label="机器人周围的观察与障碍地图" role="img"></svg><div class="map-caption"><span>↑ 初始车头方向</span><span>距离与比例未标定</span></div><div class="zoom-tools"><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomOut" aria-label="缩小地图">−</button></div><div id="mapEmpty" class="empty" hidden>尚未取得可定位的环境观察<br><small>未知区域保持封闭</small></div></div>
+      <div class="legend" aria-label="地图分类"><button data-filter="candidate" aria-pressed="true"><i class="swatch candidate"></i>候选可走 <b id="candidateCount">0</b></button><button data-filter="blocked" aria-pressed="true"><i class="swatch blocked"></i>不可走 <b id="blockedCount">0</b></button><button data-filter="unknown" aria-pressed="true"><i class="swatch unknown"></i>未知 / 遮挡 <b id="unknownCount">0</b></button></div>
+      <p class="map-limit" id="mapLimit">绿色仅表示画面里可见的地面；尚未验证车宽、低处障碍和地面高差。</p>
+    </div>
+    <div class="evidence-panel">
+      <div class="panel-title"><div><span class="section-no">02</span><h2>照片依据</h2></div><button class="text-button" id="overlayToggle" aria-pressed="true">隐藏标注</button></div>
+      <div class="photo-meta"><span id="photoName">等待照片</span><span id="photoBearing">—</span></div>
+      <div class="photo-wrap"><svg id="photo" role="img" aria-label="实际相机照片和识别标注" viewBox="0 0 640 480"></svg><div id="photoEmpty" class="empty">本次还没有照片</div></div>
+      <div class="photo-footer"><span id="photoTime">—</span><a id="photoLink" target="_blank" rel="noopener" hidden>查看原图 ↗</a></div>
+      <div id="observationStrip" class="observation-strip" aria-label="观察视角"></div>
+      <div class="evidence-note" id="photoNote">点击地图中的区域或物品，查看识别依据。</div>
+    </div>
+  </section>
+  <section class="review-workspace">
+    <div class="inventory"><div class="panel-title"><div><span class="section-no">03</span><h2>识别与判断</h2><span id="featureTotal" class="subtle"></span></div><span id="reviewCount" class="review-count">待复核</span></div><div id="featureList" class="feature-list"></div></div>
+    <aside class="review-panel"><p class="eyebrow">INSPECT / CORRECT</p><h2 id="detailTitle">选择一个区域</h2><p id="detailDescription" class="detail-description">把地图、照片和实际环境对照，检查是否识别正确。</p><div id="detailFacts" class="detail-facts"></div>
+      <form id="reviewForm" hidden><label for="reviewKind">你的判断</label><select id="reviewKind"><option value="blocked">不可走 / 有障碍</option><option value="candidate">候选可走 / 仍需测量</option><option value="unknown">未知 / 无法判断</option></select><label for="reviewNote">补充或纠正</label><textarea id="reviewNote" maxlength="1000" rows="3" placeholder="例如：这是桌脚；椅子可以挪开；这里有线缆……"></textarea><label class="checkbox"><input id="reviewConfirmed" type="checkbox">我已对照现场核对这个标记</label><button class="save" id="saveReview" type="submit">保存这条复核</button><p class="form-hint">复核只保存你的意见。继续移动需在对话中另行确认。</p></form>
+      <p id="saveMessage" class="save-message" role="status"></p>
+    </aside>
+  </section>
+  <section class="scan-record"><div><p class="eyebrow">OBSERVATION LOG</p><h2>这一轮看到了多少</h2></div><div id="scanDetails"></div><a class="export" href="/api/export" target="_blank" rel="noopener">查看地图与复核数据 ↗</a></section>
+  <footer><span>小九 · XLeRobot</span><span id="dataSource">实际相机证据 · 观察结果待复核</span><span>移动探索尚未开放</span></footer>
+</main>
+</body></html>

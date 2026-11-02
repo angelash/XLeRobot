@@ -17,7 +17,7 @@ from .limit_selftest import ARM_TESTS,HEAD_TESTS,BACKOFF_RAW,MOVE_TORQUE,RETURN_
 from .torque_control import EXPECTED,read_registers,word,write_register
 from .whole_calibration import atomic_json
 
-MOTION_OPS={'move','probe','backoff_trial'}
+MOTION_OPS={'move','probe','backoff_trial','rotate'}
 OPS=MOTION_OPS|{'snapshot','sample','wait'}
 ARM_KINDS={1:'pan',2:'lift',3:'elbow',4:'pitch',5:'roll',6:'grip'}
 HEAD_KINDS={7:'pan',8:'tilt'}
@@ -81,6 +81,17 @@ class AgentRunner:
             if op=='move':
                 if not step.get('targets'):raise ValueError(f'第{n+1}步缺少目标')
                 for key in step['targets']:self.resolve(key)
+            if op=='rotate':
+                # Survey rotation is a separate, bounded primitive. Joint move
+                # still refuses wheel targets; translation is never accepted.
+                if set(step)-{'op','direction','duration','max_raw','label','continue_on_fail'}:
+                    raise ValueError('原地扫描不接受平移或其他参数')
+                direction=step.get('direction',1);duration=step.get('duration',.18);raw=step.get('max_raw',160)
+                import math
+                if type(direction) is not int or direction not in (-1,1) or type(raw) is not int or not 60<=raw<=160:
+                    raise ValueError('原地扫描转向/轮速无效')
+                if isinstance(duration,bool) or not isinstance(duration,(int,float)) or not math.isfinite(duration) or not .04<=duration<=.65:
+                    raise ValueError('原地扫描脉冲只能40–650ms')
             if op=='probe':self.lt._ordered([step.get('item')])
             if op in ('sample','backoff_trial'):
                 for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
@@ -131,11 +142,12 @@ class AgentRunner:
                 except Exception as exc:
                     result={'status':'failed','message':str(exc)}
                     if getattr(exc,'contact',None):result['contact']=exc.contact
+                    if getattr(exc,'rotation',None):result['rotation']=exc.rotation
                     if shots:result['watch']=shots
                     lt._log(f'助手第{n+1}步（{step["op"]}）失败：{exc}')
                     self._record(n,step,result)
                     if isinstance(exc,OSError):raise
-                    if not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
+                    if step['op']=='rotate' or not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
                         self.error=f'第{n+1}步失败，运行停止：{exc}';break
                     continue
                 if shots:result['watch']=shots
@@ -154,6 +166,11 @@ class AgentRunner:
             lt._log('助手运行结束'+('：'+self.error if self.error else ''))
 
     # ---- steps -----------------------------------------------------------
+    def _op_rotate(self,n,step):
+        from .rotation_scan import bounded_rotate
+        return bounded_rotate(self.runtime,self.lt._check_abort,step.get('direction',1),
+                              step.get('duration',.18),step.get('max_raw',160))
+
     def _watch_joints(self,step):
         try:
             if step['op']=='move':return [self.resolve(k) for k in step['targets']]
