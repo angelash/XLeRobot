@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import re
 import threading
@@ -111,9 +112,9 @@ class Mailbox:
                     self.active = None
                     self.queue.task_done()
 
-    def cancel(self):
+    def cancel(self, reason="Cancelled by operator; no request will replay automatically"):
         with self.guard:
-            self.fault = "Cancelled by operator; no request will replay automatically"
+            self.fault = reason
         self.brain.cancel()
         return self.health()
 
@@ -171,6 +172,35 @@ def handler_for(mailbox):
     return Handler
 
 
+def parent_alive(pid):
+    if os.name == "nt":
+        import ctypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel.OpenProcess(0x00100000, False, pid)
+        if not handle:
+            return False
+        try:
+            return kernel.WaitForSingleObject(handle, 0) == 258
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def monitor_parent(server, mailbox, pid, probe=parent_alive):
+    while probe(pid):
+        time.sleep(.2)
+    mailbox.cancel("Service parent exited; owned engine and listener are stopping")
+    server.shutdown()
+
+
 def sync_loop(mailbox, config):
     while True:
         try:
@@ -186,6 +216,7 @@ def sync_loop(mailbox, config):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--parent-pid", type=int, default=0)
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding="utf-8-sig"))
     brain = Brain(config["executable"], config["code_home"], config["workspace"],
@@ -196,6 +227,8 @@ def main():
     threading.Thread(target=mailbox.work, daemon=True).start()
     if config.get("git"):
         threading.Thread(target=sync_loop, args=(mailbox, config), daemon=True).start()
+    if args.parent_pid > 0:
+        threading.Thread(target=monitor_parent, args=(server, mailbox, args.parent_pid), daemon=True).start()
     try:
         server.serve_forever(poll_interval=0.2)
     finally:

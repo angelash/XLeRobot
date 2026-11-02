@@ -55,6 +55,7 @@ POST需要`application/json`；拒绝外部Origin。请求ID只能包含字母�
 - 一轮失败锁定后续队列，排队消息取消；需检查后显式reset。
 - 服务重启把queued/running消息记为interrupted，锁定新请求，不自动重放。
 - 端口先绑定成功才启动工作线程，防止两个服务实例执行同一队列。
+- 开机脚本将父进程PID交给服务；父进程退出时，服务结束自己拥有的引擎并关闭监听，避免Windows停止任务后留下孤儿Python进程占端口。
 - 此桥当前不持有任何动作，因此上述异常不会留下它发出的运动指令。底盘和控制服务崩溃后的停车仍是导航实施阶段的强制门槛，不能用会话取消测试代替电机停车实测。
 
 ## 持续源码同步
@@ -106,4 +107,4 @@ Start-ScheduledTask -TaskName XLeRobot-Onboard
 .\.venv-debug\Scripts\python.exe -m pytest deployment/onboard/test_onboard.py -q
 ```
 
-覆盖消息去重、崩溃后不重放、失败锁定队列、模型超时结束进程、部分回答拒绝、HTTP通信、取消启动竞态及源码更新保护。实际车载部署、跨进程会话连续性、完整文件校验和开机任务运行结果见`PROJECT_STATE.md`最新记录。
+覆盖消息去重、崩溃后不重放、失败锁定队列、模型超时结束进程、部分回答拒绝、HTTP通信、取消启动竞态、父进程退出清理及源码更新保护。车载运行环境的pytest由原部署测试工具目录提供，远程回归时先设置`PYTHONPATH=D:\Robot\XLeRobot\.local-deploy\test-tools`，并将便携Git加入该次命令的PATH；不要求把测试依赖安装进控制环境。实际车载部署、跨进程会话连续性、完整文件校验和开机任务运行结果见`PROJECT_STATE.md`最新记录。

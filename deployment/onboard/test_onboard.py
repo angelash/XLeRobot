@@ -11,7 +11,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from deployment.onboard.brain import Brain, TurnFailure, write_json
-from deployment.onboard.service import Mailbox, handler_for
+from deployment.onboard.service import Mailbox, handler_for, monitor_parent
 from deployment.onboard.sync_source import sync_once
 
 
@@ -162,3 +162,16 @@ def test_cancel_before_launch_never_spawns_engine(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: pytest.fail("Cancelled turn started an engine"))
     with pytest.raises(TurnFailure, match="before it started"):
         brain.ask("hello", "cancelled")
+
+
+def test_parent_exit_cancels_engine_and_closes_listener(tmp_path):
+    brain = FakeBrain()
+    mailbox = Mailbox(brain, tmp_path)
+    stopped = threading.Event()
+    class Server:
+        def shutdown(self):
+            stopped.set()
+    monitor_parent(Server(), mailbox, 12345, probe=lambda _pid: False)
+    assert stopped.is_set()
+    assert brain.cancelled.is_set()
+    assert "parent exited" in mailbox.health()["fault"]
