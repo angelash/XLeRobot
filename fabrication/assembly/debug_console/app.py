@@ -317,6 +317,25 @@ def set_camera(camera,state,frames=None):
         runtime.camera_health[camera]['state']=state
         if frames is not None:runtime.camera_health[camera]['frames']=frames
 
+from .camera_snapshot import CameraSnapshots
+camera_snapshots = CameraSnapshots()
+
+
+@app.get('/api/camera/{camera}/snapshot')
+def camera_snapshot(camera: int):
+    from fastapi.responses import Response
+    if camera not in (0, 1, 2):
+        raise HTTPException(404, '相机编号无效')
+    try:
+        frame = camera_snapshots.latest(camera)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return Response(frame.jpeg, media_type='image/jpeg', headers={
+        'Cache-Control': 'no-store', 'X-Captured-At': str(frame.captured_at),
+        'X-Frame-Sequence': str(frame.sequence),
+    })
+
+
 def mjpeg(camera: int):
     cmd = [
         "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
@@ -325,7 +344,11 @@ def mjpeg(camera: int):
         "-i", "video=USB2.0_CAM1", "-an", "-c:v", "mjpeg", "-q:v", "5",
         "-f", "image2pipe", "pipe:1",
     ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+    except Exception:
+        camera_snapshots.release(camera)
+        raise
     buffer = bytearray()
     frames = 0
     set_camera(camera, "连接中")
@@ -345,6 +368,7 @@ def mjpeg(camera: int):
                 jpeg = bytes(buffer[start:end + 2])
                 del buffer[:end + 2]
                 frames += 1
+                camera_snapshots.publish(camera, jpeg, frames)
                 set_camera(camera, "在线", frames)
                 yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n"
     finally:
@@ -354,12 +378,15 @@ def mjpeg(camera: int):
         except subprocess.TimeoutExpired:
             proc.kill()
         set_camera(camera, "离线", frames)
+        camera_snapshots.release(camera)
 
 
 @app.get("/camera/{camera}.mjpg")
 def camera(camera: int):
     if camera not in (0, 1, 2):
         return {"error": "camera must be 0, 1 or 2"}
+    if not camera_snapshots.claim(camera):
+        raise HTTPException(409, '该相机已有采集者；观察请使用共享快照接口')
     return StreamingResponse(mjpeg(camera), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
