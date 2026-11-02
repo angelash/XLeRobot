@@ -35,6 +35,8 @@
 
 判读原则：数值以编码器为准，图像是定性证据，推断要写明依据。例如“负载降到 0–3%，推断前后倾斜在 7° 以内”。看不清或拿不准时，先换视角或小步重复，再不行就停下来交给用户。
 
+各手段已验证的具体用法、行不通的方案、观察和操作极限，以及交叉观察方案，见 [AGENT_OBSERVATION_ZH.md](AGENT_OBSERVATION_ZH.md)。
+
 ## 4 动作规则
 
 - **已知范围内移动**（回位、预置、收起、摆到竖直）：全扭矩，10–20°/s，只在当前舵机限位内。受阻时先等再试，不硬顶。
@@ -93,6 +95,6 @@
 2026-11-02 起（版本 `4.0-agent-runs`）新增助手运行接口 `agent_ops.py`，只在笔记本本机经 SSH 调用，Studio 不转发：
 
 - `POST /api/agent/run`，请求体 `{"steps":[...],"confirmed":true,"label":"…"}`，后台按顺序执行，与限位自检互斥，手柄任意输入或停止接口即中止，结束时恢复扭矩上限和临时限位。
-- 步骤：`move`（`targets` 写成 `"left:2":2211`、`"head:7":1990` 或 `"COM4:2"`，只能在当前限位内，越限直接拒绝）、`probe`（自检项，如 `"left:elbow"`）、`snapshot`（相机 0/1/2 和 `"laptop"`；网页正在推流的相机会跳过并说明）、`sample`（按 1–50 Hz 记录寄存器）、`wait`、`backoff_trial`（退离实验 A/B/C/D）。`move` 和 `backoff_trial` 失败默认停止整次运行，其余失败继续；可用 `continue_on_fail` 改。底盘轮不接受。
+- 步骤：`move`（`targets` 写成 `"left:2":2211`、`"head:7":1990` 或 `"COM4:2"`，只能在当前限位内，越限直接拒绝；可加 `"torque":450,"tries":1` 做低扭矩、受阻即停的试探移动）、`probe`（自检项，如 `"left:elbow"`）、`snapshot`（相机 0/1/2 和 `"laptop"`；网页正在推流的相机会跳过并说明）、`sample`（按 1–50 Hz 记录寄存器）、`wait`、`backoff_trial`（退离实验 A/B/C/D）。`move` 和 `backoff_trial` 失败默认停止整次运行，其余失败继续；可用 `continue_on_fail` 改。底盘轮不接受。
 - `POST /api/agent/stop`、`GET /api/agent/status`；每次运行写入 `evidence/<日期>/agent-runs/<run-id>/`（plan.json、steps.jsonl、result.json、图片和采样）。
 
