@@ -281,6 +281,8 @@ function fillSettings(value) {
   draft = structuredClone(value); avatarDraft = structuredClone(value.avatar);
   for (const key of ['name','subtitle','greeting','persona','accent']) $('setting-' + key).value = value[key];
   $('setting-avatar').value = value.avatar.kind; $('setting-credit').value = value.avatar.credit;
+  $('setting-detail').value = value.avatar.detail || 'detailed';
+  $('detail-setting').hidden = value.avatar.kind !== 'procedural-moss';
   $('setting-split').value = Math.round(value.layout.split * 100); $('split-value').textContent = $('setting-split').value + '%';
   $('setting-animate').checked = value.layout.animate;
   $('avatar-file-note').textContent = value.avatar.asset_id ? '已保存资源：' + value.avatar.asset_id.slice(0,8) : '自包含 GLB ≤20MiB · 图片 ≤10MiB';
@@ -293,7 +295,7 @@ function readSettings() {
   value.name = value.name.trim();
   const kind = $('setting-avatar').value;
   if (kind !== 'procedural-moss' && (!avatarDraft.asset_id || avatarDraft.kind !== kind)) throw new Error('请先导入与所选类型匹配的形象文件');
-  value.avatar = {kind, asset_id: kind === 'procedural-moss' ? null : avatarDraft.asset_id, credit: $('setting-credit').value};
+  value.avatar = {kind, detail: $('setting-detail').value, asset_id: kind === 'procedural-moss' ? null : avatarDraft.asset_id, credit: $('setting-credit').value};
   value.layout.split = Number($('setting-split').value) / 100;
   value.layout.animate = $('setting-animate').checked;
   value.layout.log_open = profile.layout.log_open;
@@ -320,6 +322,7 @@ $('settings-form').addEventListener('submit', async event => {
   } catch (error) {settingsError(error);} finally {$('save-settings').disabled = false;}
 });
 $('avatar-upload').addEventListener('click', () => $('avatar-file').click());
+$('setting-avatar').addEventListener('change', () => {$('detail-setting').hidden = $('setting-avatar').value !== 'procedural-moss';});
 $('avatar-file').addEventListener('change', async event => {
   const file = event.target.files[0]; if (!file) return;
   $('save-settings').disabled = true;
@@ -327,6 +330,7 @@ $('avatar-file').addEventListener('change', async event => {
     const asset = await upload('/avatar', file, file.name.toLowerCase().endsWith('.glb') ? 20*1024**2 : 10*1024**2);
     avatarDraft = {kind:asset.kind, asset_id:asset.id, credit:$('setting-credit').value};
     $('setting-avatar').value = asset.kind; $('avatar-file-note').textContent = `${file.name} · 已导入，保存后生效`;
+    $('detail-setting').hidden = true;
   } catch (error) {settingsError(error);} finally {$('save-settings').disabled = false; event.target.value = '';}
 });
 $('export-config').addEventListener('click', () => {

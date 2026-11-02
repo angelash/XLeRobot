@@ -13,6 +13,7 @@ FILES = {
     'build/three.module.min.js': 'three.module.min.js',
     'build/three.core.min.js': 'three.core.min.js',
     'examples/jsm/loaders/GLTFLoader.js': 'addons/loaders/GLTFLoader.js',
+    'examples/jsm/exporters/GLTFExporter.js': 'addons/exporters/GLTFExporter.js',
     'examples/jsm/utils/BufferGeometryUtils.js': 'addons/utils/BufferGeometryUtils.js',
     'LICENSE': 'LICENSE',
 }

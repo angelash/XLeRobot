@@ -59,6 +59,24 @@ def test_corrupt_configuration_is_preserved_and_reported(tmp_path):
     assert path.read_text(encoding='utf-8') == 'broken original'
 
 
+def test_legacy_profile_reads_detailed_default_and_preserves_file_until_user_saves(tmp_path):
+    from presentation.state import Profile
+    legacy=Profile().model_dump()
+    legacy['avatar'].pop('detail')
+    path=tmp_path/'profile.json'
+    original=json.dumps(legacy)
+    path.write_text(original,encoding='utf-8')
+    with TestClient(create_app(tmp_path)) as client:
+        profile=client.get('/api/presence/config').json()
+        assert profile['avatar']['detail']=='detailed'
+        assert path.read_text(encoding='utf-8')==original
+        profile['avatar']['detail']='simple'
+        assert client.put('/api/presence/config',json=profile).status_code==200
+        assert Store(tmp_path).profile().avatar.detail=='simple'
+        profile['avatar']['detail']='arbitrary-code'
+        assert client.put('/api/presence/config',json=profile).status_code==422
+
+
 def test_events_require_local_explicit_publisher_and_are_idempotent(client):
     assert client.post('/api/presence/events', json={'kind':'tool','title':'test'}).status_code == 403
     first = post_event(client).json()

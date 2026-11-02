@@ -34,6 +34,7 @@ class Contract(BaseModel):
 
 class Avatar(Contract):
     kind: Literal['procedural-moss', 'glb', 'image'] = 'procedural-moss'
+    detail: Literal['detailed', 'simple'] = 'detailed'
     asset_id: str | None = Field(None, pattern=r'^[a-f0-9]{32}\.(png|glb)$')
     credit: str = Field('', max_length=500)
 

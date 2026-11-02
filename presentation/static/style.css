@@ -232,6 +232,7 @@ button{transition:background .15s,color .15s}
 }
 
 .identity h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inspector-link{display:inline-block;margin-top:12px;padding-left:0}
 
 .media-dialog{width:min(1100px,96vw);padding:16px 22px;border:1px solid #43525b;border-radius:6px;background:var(--panel);color:var(--ink)}
 .media-dialog::backdrop{background:#000b}

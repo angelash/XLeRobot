@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.min.js';
 import {GLTFLoader} from './vendor/addons/loaders/GLTFLoader.js';
+import {makeDetailedMoss} from './moss-detailed.js';
 
 function disposeObject(object) {
   object?.traverse(node => {
@@ -30,7 +31,7 @@ function roundedBox(w, h, depth, radius = .08) {
   return geometry;
 }
 
-function makeMoss(accent) {
+export function makeSimpleMoss(accent) {
   const group = new THREE.Group();
   const white = new THREE.MeshStandardMaterial({color: '#c4c9c7', roughness: .48, metalness: .38});
   const edge = new THREE.MeshStandardMaterial({color: '#a2acae', roughness: .45, metalness: .55});
@@ -146,7 +147,7 @@ export class AvatarView {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.3;
+      renderer.toneMappingExposure = profile.avatar.kind === 'procedural-moss' && profile.avatar.detail !== 'simple' ? 1.0 : 1.3;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       this.renderer = renderer;
@@ -178,11 +179,13 @@ export class AvatarView {
         // Position must use the same scale as the geometry.
         object.position.multiplyScalar(2.7 / max);
         object.traverse(node => {if (node.isMesh) {node.castShadow = true; node.receiveShadow = true;}});
-      } else object = makeMoss(profile.accent);
+      } else object = profile.avatar.detail === 'simple' ? makeSimpleMoss(profile.accent) : makeDetailedMoss(profile.accent);
       pivot.add(object); this.object = object;
       pivot.rotation.set(.035, -.24, -.045);
       this.fallback.hidden = true;
-      this.report(profile.avatar.credit || (profile.avatar.kind === 'glb' ? '自定义三维形象' : 'MOSS 风格 · 本地程序生成'), profile.avatar.kind === 'glb' ? 'CUSTOM GLB' : 'PROCEDURAL 3D');
+      const detailed = profile.avatar.kind === 'procedural-moss' && profile.avatar.detail !== 'simple';
+      this.report(profile.avatar.credit || (profile.avatar.kind === 'glb' ? '自定义三维形象' : detailed ? 'MOSS · 550W 详细版' : 'MOSS · 简版'),
+        profile.avatar.kind === 'glb' ? 'CUSTOM GLB' : detailed ? 'DETAILED 3D' : 'PROCEDURAL 3D');
       this.resize();
     } catch (error) {
       if (generation !== this.generation) return;
@@ -218,6 +221,11 @@ export class AvatarView {
         this.pivot.rotation.x += (pitch - this.pivot.rotation.x) * .06;
         this.pivot.position.y = moving ? Math.sin(time / 2400) * .012 : 0;
         if (this.object?.userData.glow) this.object.userData.glow.emissiveIntensity = this.state === 'working' && moving ? 1.6 + Math.sin(time / 600) * .35 : 1.7;
+        const joint = this.object?.userData.pitchJoint;
+        if (joint) {
+          const pitchTarget = moving ? (this.state === 'working' ? .06 : 0) + this.target.y * .4 : 0;
+          joint.rotation.x += (pitchTarget - joint.rotation.x) * .06;
+        }
       }
       this.renderer.render(this.scene, this.camera);
     }

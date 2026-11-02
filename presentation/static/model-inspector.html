@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111719"><title>MOSS 550W · 形象检视</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/presence/assets/model-inspector.css"><script type="module" src="/presence/assets/model-inspector.js"></script></head>
+<body>
+  <header><a class="brand" href="/presence/">XLeRobot <span>PRESENCE / MODEL STUDY</span></a><a href="/presence/">返回展示 ↗</a></header>
+  <main>
+    <section class="model-stage" aria-label="MOSS 多视角三维检视"><div class="view-caption"><span id="view-name">前侧视角</span><span id="model-label">550W / DETAILED</span></div><div id="inspection-canvas" role="img" aria-label="MOSS 550W 详细三维形象"></div><div class="stage-foot">拖动旋转 · 滚轮缩放<span>本地生成三维模型</span></div></section>
+    <aside>
+      <p class="eyebrow">550W / REFERENCE BUILT</p><h1>让 MOSS<br>更接近 MOSS。</h1><p class="intro">不对称机身、分层光学镜头，<br>以及完整的悬挂关节。</p>
+      <label class="field">内置版本<select id="inspector-variant"><option value="detailed">550W 详细版</option><option value="simple">首版简化形象 · 对照</option></select></label>
+      <div class="views" role="group" aria-label="观察方向"><button type="button" data-view="front">正面</button><button type="button" data-view="quarter" aria-pressed="true">前侧</button><button type="button" data-view="side">侧面</button><button type="button" data-view="rear">背面</button></div>
+      <label class="field">水平角度 <output id="yaw-value">−25°</output><input type="range" id="yaw" min="-180" max="180" value="-25"></label>
+      <label class="field">俯仰角度 <output id="pitch-value">4°</output><input type="range" id="pitch" min="-40" max="40" value="4"></label>
+      <button type="button" id="export-model" class="primary">导出此形象 GLB <span>↓</span></button><p id="export-status" role="status"></p>
+      <details><summary>模型与来源</summary><p>详细版依据官方多视角设定独立重建。MakerWorld 924464 的原始打印文件尚未导入。</p><p>可导出的几何与图内标记均由本项目代码生成，未包含下载的电影图片或纹理。</p><dl><div><dt>几何分件</dt><dd id="part-count">—</dd></div><div><dt>渲染网格</dt><dd id="mesh-count">—</dd></div><div><dt>三角面</dt><dd id="triangle-count">—</dd></div></dl></details>
+    </aside>
+  </main>
+</body></html>

@@ -9,6 +9,7 @@ import argparse
 from io import BytesIO
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import struct
@@ -86,7 +87,7 @@ def main():
             expect(page.locator('#avatar-host canvas')).to_be_visible()
             expect(page.locator('#avatar-fallback')).to_be_hidden()
             page.wait_for_timeout(1100)
-            assert page.locator('#model-type').inner_text()=='PROCEDURAL 3D'
+            assert page.locator('#model-type').inner_text()=='DETAILED 3D'
             print('Default 3D renderer loaded',flush=True)
             page.screenshot(path=str(output/'01-default-1366.png'))
             page.locator('#process-toggle').click()
@@ -144,7 +145,7 @@ def main():
             print('Custom GLB and image avatar imports verified',flush=True)
             page.locator('#settings-open').click(); page.locator('#setting-avatar').select_option('procedural-moss')
             page.locator('#setting-name').fill('MOSS'); page.locator('#save-settings').click()
-            expect(page.locator('#model-type')).to_have_text('PROCEDURAL 3D')
+            expect(page.locator('#model-type')).to_have_text('DETAILED 3D')
             # Exercise real SSE delivery, including text that must never become HTML.
             event={'event_id':'ui-xss-test','kind':'tool','phase':'completed','title':'公开工具输出','text':'<img src=x onerror=alert(1)>'}
             with urlopen(Request(url+'/api/presence/events',data=json.dumps(event).encode(),headers={'Content-Type':'application/json','X-Presence-Producer':'1'})) as response:
@@ -154,13 +155,55 @@ def main():
             # Verify the actual reconnect path instead of only the journal reducer.
             page.context.set_offline(True); page.wait_for_timeout(1800); page.context.set_offline(False)
             expect(page.locator('#stream-label')).to_have_text('LIVE',timeout=12000)
+
+            inspector=browser.new_page(viewport={'width':1600,'height':1100},device_scale_factor=1)
+            inspector.on('pageerror',lambda error:errors.append(str(error)))
+            inspector.on('request',lambda request:external.append(request.url) if request.url.startswith(('http:','https:')) and not request.url.startswith(url) else None)
+            inspector.goto(url+'/presence/assets/model-inspector.html',wait_until='domcontentloaded')
+            expect(inspector.locator('#inspection-canvas canvas')).to_be_visible()
+            expect(inspector.locator('#model-label')).to_have_text('550W / DETAILED')
+            expect(inspector.locator('#triangle-count')).to_have_text(re.compile(r'[\d,]+'))
+            triangles=int(inspector.locator('#triangle-count').text_content().replace(',',''))
+            meshes=int(inspector.locator('#mesh-count').text_content())
+            assert 0<triangles<200000 and 0<meshes<=40,(triangles,meshes)
+            for direction in ['front','quarter','side','rear']:
+                inspector.locator('[data-view="'+direction+'"]').click()
+                inspector.wait_for_timeout(180)
+                inspector.locator('#inspection-canvas').screenshot(path=str(output/f'moss-{direction}.png'))
+            inspector.locator('#yaw').focus();inspector.keyboard.press('End')
+            expect(inspector.locator('#yaw-value')).to_have_text('180°')
+            inspector.locator('[data-view="quarter"]').click()
+            with inspector.expect_download(timeout=20000) as download_info:
+                inspector.locator('#export-model').click()
+            exported=output/'moss-550w-detailed-v2.glb';download_info.value.save_as(str(exported))
+            sys.path.insert(0,str(REPO))
+            from presentation.state import validate_glb
+            document=validate_glb(exported.read_bytes())
+            assert len(document.get('meshes',[]))>=20 and exported.stat().st_size<20*1024**2
+            page.locator('#settings-open').click();page.locator('#avatar-file').set_input_files(str(exported))
+            expect(page.locator('#setting-avatar')).to_have_value('glb')
+            page.locator('#save-settings').click();expect(page.locator('#model-type')).to_have_text('CUSTOM GLB')
+            page.locator('#settings-open').click();page.locator('#setting-avatar').select_option('procedural-moss')
+            page.locator('#setting-detail').select_option('simple');page.locator('#save-settings').click()
+            expect(page.locator('#model-type')).to_have_text('PROCEDURAL 3D')
+            page.locator('#settings-open').click();page.locator('#setting-detail').select_option('detailed')
+            page.locator('#save-settings').click();expect(page.locator('#model-type')).to_have_text('DETAILED 3D')
+            inspector.locator('#inspector-variant').select_option('simple')
+            expect(inspector.locator('#model-label')).to_have_text('550W / SIMPLE')
+            inspector.locator('#inspection-canvas').screenshot(path=str(output/'moss-simple-inspector.png'))
+            inspector.locator('#inspector-variant').select_option('detailed')
+            expect(inspector.locator('#model-label')).to_have_text('550W / DETAILED')
+            inspector.screenshot(path=str(output/'moss-inspector.png'))
+            print(f'Detailed MOSS views, GLB roundtrip, legacy selection PASS: {triangles} triangles / {meshes} meshes',flush=True)
             assert not errors,errors
             assert not external,external
             browser.close()
         (output/'verification.json').write_text(json.dumps({'passed':True,'viewport_sizes':[[1366,768],[1920,1080],[2560,1600],[390,844]],
             'checks':['WebGL3D','centered-collapse','keyboard-toggle','profile-persistence','demo-frame-overlays','filter',
                       'responsive-no-horizontal-overflow','frame-zoom','real-generated-image-analysis','GLB-import','image-avatar',
-                      'SSE-public-text-no-HTML','network-reconnect','offline-local-assets','reduced-motion-resize-renders'],
+                      'SSE-public-text-no-HTML','network-reconnect','offline-local-assets','reduced-motion-resize-renders',
+                      'four-detailed-model-views','detailed-GLB-export-import','legacy-detail-selector'],
+            'model':{'triangles':triangles,'meshes':meshes,'glb_bytes':exported.stat().st_size},
             'page_errors':errors,'external_requests':external},ensure_ascii=False,indent=2),encoding='utf-8')
         print('Presence browser verification PASS; evidence: '+str(output))
     finally:
