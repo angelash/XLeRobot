@@ -143,7 +143,9 @@ class AgentRunner:
             if not low<=value<=high:raise ValueError(f'{port}:{i}目标{value}超出当前限位{low}–{high}；越限只能用探测')
             targets[(port,i)]=value
         speed=max(3,min(30,float(step.get('speed_deg',12))))
-        self.lt._move_retry(targets,speed,step.get('label') or '助手移动',strict=bool(step.get('strict')))
+        torque=step.get('torque');torque=max(150,min(1000,int(torque))) if torque else None
+        self.lt._move_retry(targets,speed,step.get('label') or '助手移动',strict=bool(step.get('strict')),
+                            torque=torque,tries=int(step.get('tries',3)))
         return {'positions':self._positions(targets)}
 
     def _op_probe(self,n,step):

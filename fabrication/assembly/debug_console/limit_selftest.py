@@ -293,17 +293,19 @@ class LimitSelfTest:
         return self.runtime.motors().get((port,i),{}).get('label',f'{port}:{i}')
 
     # ---- motion primitives -----------------------------------------------
-    def _move_to(self,targets,speed_deg=12,what='回位',strict=False):
+    def _move_to(self,targets,speed_deg=12,what='回位',strict=False,torque=None):
         """Step several joints together toward targets; stop on obstruction.
         strict: the joint must really arrive (backing off a stop); resting
-        short is an obstruction, not gravity sag."""
+        short is an obstruction, not gravity sag. torque: a lower ceiling for
+        exploratory moves near unknown obstacles (default: full torque)."""
         if not targets:return
         speed=speed_deg*4096/360
         state={}
         for (port,i),target in targets.items():
             reg=self._read(port,i);low,high=word(reg,9),word(reg,11)
             target=max(low,min(high,int(round(target))))
-            self._torque_limit(port,i,min(MOVE_TORQUE,self.torque_backup.get(f'{port}:{i}',1000)))
+            full=min(MOVE_TORQUE,self.torque_backup.get(f'{port}:{i}',1000))
+            self._torque_limit(port,i,min(full,int(torque)) if torque else full)
             with self.runtime.io:write_register(self.runtime.session.ports[port],i,46,min(1000,max(60,int(speed))),2)
             state[(port,i)]={'goal':float(word(reg,56)),'target':target,'history':deque(maxlen=WINDOW)}
         deadline=time.monotonic()+max(abs(s['target']-s['goal']) for s in state.values())/speed*1.5+8
@@ -342,14 +344,15 @@ class LimitSelfTest:
         while time.monotonic()<end:
             self._check_abort();time.sleep(min(.1,max(0,end-time.monotonic())))
 
-    def _move_retry(self,targets,speed_deg,what,strict=False):
+    def _move_retry(self,targets,speed_deg,what,strict=False,torque=None,tries=RECOVER_TRIES):
         """A joint that just pressed a stop may sit in overload protection for a
         moment: hold it, wait, and try again before calling it blocked."""
-        for attempt in range(1,RECOVER_TRIES+1):
-            try:return self._move_to(targets,speed_deg,what,strict)
+        tries=max(1,int(tries))
+        for attempt in range(1,tries+1):
+            try:return self._move_to(targets,speed_deg,what,strict,torque)
             except Blocked as exc:
                 diag=self._diagnose(exc.port,exc.id)
-                if attempt==RECOVER_TRIES:raise Blocked(f'{exc}（{diag}）',exc.port,exc.id) from exc
+                if attempt==tries:raise Blocked(f'{exc}（{diag}）',exc.port,exc.id) from exc
                 self._log(f'{exc}（{diag}）；等待{self.recover_wait:g}秒后第{attempt}次重试',port=exc.port,id=exc.id)
                 self._wait(self.recover_wait)
 

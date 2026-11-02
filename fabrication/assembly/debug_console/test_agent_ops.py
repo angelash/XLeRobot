@@ -30,6 +30,20 @@ def test_targets_outside_limits_are_refused_and_stop_the_run(runtime,agent):
     assert word(reg(runtime,'COM3',3),56)==2050,'Nothing after a failed move runs'
 
 
+def test_exploratory_move_uses_a_low_torque_ceiling_and_stops_at_the_first_obstruction(runtime,agent):
+    port=runtime.session.ports['COM3'];written=[];original=port.write
+    def spy(packet):
+        if packet[2]==1 and packet[4]==3 and packet[5]==48:written.append(packet[6]+256*packet[7])
+        return original(packet)
+    port.write=spy
+    add_stops(runtime,{('COM3',1):(1800,2100)})
+    agent.start([{'op':'move','targets':{'left:1':2250},'torque':400,'tries':1,'speed_deg':8}],True,background=False)
+    res=agent.results[0]
+    assert res['status']=='failed' and '受阻' in res['message'] and 400 in written
+    assert not any('重试' in e['message'] for e in runtime.limit_test.events),'No retry pushes into an unknown obstacle'
+    assert word(reg(runtime,'COM3',1),48)==runtime.limit_test.torque_backup['COM3:1'],'Torque ceiling restored'
+
+
 def test_wheels_and_unknown_ops_are_rejected_up_front(runtime,agent):
     with pytest.raises(ValueError,match='底盘'):agent.start([{'op':'move','targets':{'COM4:9':10}}],True,background=False)
     with pytest.raises(ValueError,match='未知'):agent.start([{'op':'drive'}],True,background=False)
