@@ -4,6 +4,8 @@
 
 设计与资源调查先于实现提交，见 [设计基线](../docs/presence/DESIGN_ZH.md)、[MOSS 资源核查](../docs/presence/MOSS_RESOURCES_ZH.md) 和 [事件协议](../docs/presence/EVENT_PROTOCOL_ZH.md)。
 
+后续麦克风输入、按人设名唤醒与常驻对话方案见[待审设计](../docs/presence/VOICE_INPUT_DESIGN_ZH.md)及[耗时排查](../docs/presence/DIALOGUE_LATENCY_AUDIT_ZH.md)；当前只完成设计与诊断，尚未启用采音或改造生产对话链路。
+
 ## 启动
 
 日常入口统一为既有 **Studio 8770 → 机器人形象与过程**，或 `/presence/`；检视页为同一服务的 `/presence/assets/model-inspector.html`。本模块不新增日常站点、端口或启动任务。

@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "measured_on": "2026-11-02",
+  "timezone": "Asia/Singapore",
+  "status": "design review only; this task changes documentation and sanitized evidence only",
+  "reference_repository": {
+    "path": "F:/workspace/voice-assistant-bridge",
+    "commit": "23bd95458706b2b13042554eb12fc5af2b083f54",
+    "read_only": true
+  },
+  "project_baseline": "daececf388d150e5c448f85171fc5a8dc8acaa04",
+  "machine": {
+    "cpu": "Intel Core i5-8265U",
+    "ram_gib": 7.85,
+    "gpu": "NVIDIA GeForce MX250 2 GiB",
+    "studio_and_bridge_session": 0,
+    "capture_endpoint_observation": [
+      "Realtek microphone array active",
+      "Realtek stereo mix active",
+      "Pico virtual microphone active"
+    ],
+    "microphone_opened": false,
+    "default_input_not_verified": true
+  },
+  "engine": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "not explicitly configured; default not inferred",
+    "timeout_s": 120
+  },
+  "historical_receipts": {
+    "count": 11,
+    "queue_wait_ms": {
+      "min": 12.53,
+      "max": 32.79
+    },
+    "backend_total_ms": {
+      "min": 8567.92,
+      "max": 34917.47
+    },
+    "latest_display_turns": [
+      {
+        "queue_wait_ms": 26.29,
+        "backend_total_ms": 16931.07
+      },
+      {
+        "queue_wait_ms": 18.91,
+        "backend_total_ms": 9240.01
+      },
+      {
+        "queue_wait_ms": 21.82,
+        "backend_total_ms": 8567.92
+      }
+    ]
+  },
+  "cli_version_process_ms": [
+    74.0,
+    76.12,
+    89.28,
+    75.68,
+    73.2,
+    71.99
+  ],
+  "cli_samples": [
+    {
+      "batch": "initial",
+      "case": "cli-new-project",
+      "spawn_return_ms": 21.07,
+      "turn_started_ms": 557.85,
+      "public_message_complete_ms": 3856.5,
+      "turn_complete_ms": 3953.61,
+      "caller_return_ms": 12634.96,
+      "after_turn_wait_ms": 8681.35,
+      "new_thread_input_tokens": 23296
+    },
+    {
+      "batch": "initial",
+      "case": "cli-resume-project-1",
+      "spawn_return_ms": 24.86,
+      "turn_started_ms": 566.3,
+      "public_message_complete_ms": 4670.64,
+      "turn_complete_ms": 4822.27,
+      "caller_return_ms": 7880.73,
+      "after_turn_wait_ms": 3058.46
+    },
+    {
+      "batch": "initial",
+      "case": "cli-resume-project-2",
+      "spawn_return_ms": 12.89,
+      "turn_started_ms": 520.74,
+      "public_message_complete_ms": 4870.35,
+      "turn_complete_ms": 5041.54,
+      "caller_return_ms": 7844.16,
+      "after_turn_wait_ms": 2802.62
+    },
+    {
+      "batch": "initial",
+      "case": "cli-new-lean-workspace",
+      "spawn_return_ms": 13.74,
+      "turn_started_ms": 505.31,
+      "public_message_complete_ms": 6494.39,
+      "turn_complete_ms": 6620.95,
+      "caller_return_ms": 12215.47,
+      "after_turn_wait_ms": 5594.52,
+      "new_thread_input_tokens": 22714
+    },
+    {
+      "batch": "exit-verification",
+      "case": "cli-new-project",
+      "spawn_return_ms": 17.16,
+      "turn_started_ms": 469.24,
+      "public_message_complete_ms": 9863.62,
+      "turn_complete_ms": 9951.3,
+      "caller_return_ms": 18300.49,
+      "after_turn_wait_ms": 8349.19,
+      "stdout_eof_ms": 18258.31,
+      "stderr_eof_ms": 18258.57,
+      "process_exit_ms": 18300.68,
+      "new_thread_input_tokens": 23297
+    },
+    {
+      "batch": "exit-verification",
+      "case": "cli-resume-project-1",
+      "spawn_return_ms": 26.08,
+      "turn_started_ms": 546.91,
+      "public_message_complete_ms": 7576.68,
+      "turn_complete_ms": 7702.04,
+      "caller_return_ms": 10278.49,
+      "after_turn_wait_ms": 2576.45,
+      "stdout_eof_ms": 10227.77,
+      "stderr_eof_ms": 10227.48,
+      "process_exit_ms": 10278.67
+    }
+  ],
+  "app_server": {
+    "transport": "private stdio",
+    "initialize_response_ms": 277.5,
+    "thread_ready_ms": 429.28,
+    "turns": [
+      {
+        "sample": 1,
+        "request_ack_ms": 46.53,
+        "first_public_delta_ms": 4576.77,
+        "turn_complete_ms": 4611.09,
+        "input_tokens_last": 23296,
+        "cached_input_tokens_last": 4096,
+        "output_tokens_last": 10
+      },
+      {
+        "sample": 2,
+        "request_ack_ms": 31.25,
+        "first_public_delta_ms": 4496.34,
+        "turn_complete_ms": 4514.02,
+        "input_tokens_last": 23575,
+        "cached_input_tokens_last": 23168,
+        "output_tokens_last": 10
+      },
+      {
+        "sample": 3,
+        "request_ack_ms": 28.6,
+        "first_public_delta_ms": 2896.85,
+        "turn_complete_ms": 2932.91,
+        "input_tokens_last": 23854,
+        "cached_input_tokens_last": 23424,
+        "output_tokens_last": 10
+      }
+    ]
+  },
+  "source_findings": {
+    "brain_waits_for_process_and_pipe_eof": true,
+    "completed_public_replies_only": true,
+    "ui_poll_interval_ms": 1500,
+    "sse_checks_local_journal_every_ms": 300,
+    "adapter_poll_throttle_ms": 800,
+    "tts_buffers_complete_pcm_segment_before_return": true
+  },
+  "limitations": [
+    "Sequential small sample; no statistical p95 or controlled provider-side comparison.",
+    "CLI startup markers do not isolate provider queue, network and model prefill.",
+    "CLI usage for resumed sessions is cumulative; app-server tokenUsage.last is per turn.",
+    "No microphone capture, wake accuracy, ASR speed or acoustic echo test was performed.",
+    "Two repeated item/error records were configuration warnings, not two failed model turns.",
+    "Controller PID changed between read-only snapshots while concurrent robot work was present; this task issued no restart or movement command and makes no whole-robot unchanged-PID claim."
+  ],
+  "production_invariants": {
+    "robot_motion_performed": false,
+    "production_conversation_used_for_probes": false,
+    "models_or_packages_installed": false,
+    "account_configuration_changed": false,
+    "initial_controller_pid": 8708,
+    "final_controller_pid": 13500,
+    "studio_pid_before_and_after": 18732,
+    "onboard_pid_before_and_after": 18872,
+    "controller_pid_changed_during_audit": true,
+    "services_restarted_by_this_task": false
+  }
+}
