@@ -189,3 +189,34 @@ def test_parent_exit_cancels_engine_and_closes_listener(tmp_path):
     assert stopped.is_set()
     assert brain.cancelled.is_set()
     assert "parent exited" in mailbox.health()["fault"]
+
+
+def test_concurrent_receipt_readers_never_race_windows_file_replacement(tmp_path):
+    mailbox = Mailbox(FakeBrain(), tmp_path)
+    threading.Thread(target=mailbox.work, daemon=True).start()
+    current = []
+    errors = []
+    stop = threading.Event()
+
+    def read_receipts():
+        while not stop.is_set():
+            if current:
+                try:
+                    value = mailbox.read(current[-1])
+                    assert value['status'] in ('queued', 'running', 'completed')
+                except Exception as exc:
+                    errors.append(exc)
+            time.sleep(.001)
+
+    readers = [threading.Thread(target=read_receipts) for _ in range(4)]
+    for reader in readers: reader.start()
+    try:
+        for index in range(24):
+            identifier = 'concurrent-' + str(index)
+            mailbox.submit(identifier, 'generated fixture')
+            current.append(identifier)
+            assert wait_done(mailbox, identifier)['status'] == 'completed'
+    finally:
+        stop.set()
+        for reader in readers: reader.join(timeout=2)
+    assert not errors

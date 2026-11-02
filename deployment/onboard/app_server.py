@@ -12,7 +12,7 @@ import subprocess
 import threading
 import time
 
-from .brain import Brain, POLICY, TurnFailure, write_json
+from .brain import Brain, POLICY, TurnFailure
 from .persona import character_instructions, character_prompt, validate_presentation
 
 
@@ -188,7 +188,7 @@ class AppServerBrain(Brain):
             thread_id = result['thread']['id']
             self.loaded.add(thread_id)
             state.update(thread_id=thread_id, updated_at=time.time(), transport='app-server')
-            write_json(self.presentation_session_file if presentation is not None else self.session_file, state)
+            self.save_session(state, presentation=presentation is not None)
         if self.cancelled.is_set():
             raise TurnFailure('Turn was cancelled during startup')
         prompt = character_prompt(message, presentation) if presentation is not None else POLICY + message

@@ -39,15 +39,21 @@ class Brain:
         self.timeout = timeout
         self.process = None
         self.lock = threading.Lock()
+        self.session_lock = threading.RLock()
         self.cancelled = threading.Event()
         self.session_file = self.state_dir / "session.json"
         self.presentation_session_file = self.state_dir / 'presentation-session.json'
 
     def session(self, *, presentation=False):
         path = self.presentation_session_file if presentation else self.session_file
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-        return {}
+        with self.session_lock:
+            if path.exists():
+                return json.loads(path.read_text(encoding="utf-8"))
+            return {}
+
+    def save_session(self, state, *, presentation=False):
+        with self.session_lock:
+            write_json(self.presentation_session_file if presentation else self.session_file, state)
 
     def cancel(self):
         self.cancelled.set()
@@ -125,7 +131,7 @@ class Brain:
             if event.get("type") == "thread.started":
                 state["thread_id"] = event["thread_id"]
                 state["updated_at"] = time.time()
-                write_json(self.presentation_session_file if is_presentation else self.session_file, state)
+                self.save_session(state, presentation=is_presentation)
         messages = [event["item"]["text"] for event in events
                     if event.get("type") == "item.completed"
                     and event.get("item", {}).get("type") == "agent_message"]

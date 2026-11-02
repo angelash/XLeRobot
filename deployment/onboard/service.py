@@ -53,7 +53,10 @@ class Mailbox:
         return self.directory / (request_id + ".json")
 
     def read(self, request_id):
-        return json.loads(self.path(request_id).read_text(encoding="utf-8"))
+        # Windows file opens need to finish before an atomic replace; serialize
+        # HTTP receipts with the worker's writes instead of racing their handles.
+        with self.guard:
+            return json.loads(self.path(request_id).read_text(encoding="utf-8"))
 
     def submit(self, request_id, message, sender="workstation", presentation=None):
         path = self.path(request_id)
