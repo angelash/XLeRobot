@@ -60,6 +60,11 @@ RECOVER_WAIT_S=2.5;RECOVER_TRIES=3;RETURN_SPEED_DEG=20;STRICT_TOL=16
 # that time are ignored (measured 2026-11-02 on the left wrist pitch). Hold the
 # goal at the stop until the load fades below this, at most SETTLE_MAX_S.
 SETTLE_LOAD=100;SETTLE_MAX_S=2.0
+# A still joint whose goal leads by BLOCK_LAG is blocked only if it is really
+# pushing (load >= BLOCK_LOAD_SHARE of its torque ceiling) or the lead reaches
+# BLOCK_LAG_MAX: lifting an arm against gravity builds torque slowly, and on
+# 2026-11-02 the right shoulder lift was twice called blocked at 26 % load.
+BLOCK_LAG=72;BLOCK_LAG_MAX=160;BLOCK_LOAD_SHARE=.6
 STATUS_BITS={1:'电压',2:'编码器',4:'温度',8:'电流',32:'过载'}
 
 
@@ -305,9 +310,10 @@ class LimitSelfTest:
             reg=self._read(port,i);low,high=word(reg,9),word(reg,11)
             target=max(low,min(high,int(round(target))))
             full=min(MOVE_TORQUE,self.torque_backup.get(f'{port}:{i}',1000))
-            self._torque_limit(port,i,min(full,int(torque)) if torque else full)
+            ceiling=min(full,int(torque)) if torque else full
+            self._torque_limit(port,i,ceiling)
             with self.runtime.io:write_register(self.runtime.session.ports[port],i,46,min(1000,max(60,int(speed))),2)
-            state[(port,i)]={'goal':float(word(reg,56)),'target':target,'history':deque(maxlen=WINDOW)}
+            state[(port,i)]={'goal':float(word(reg,56)),'target':target,'history':deque(maxlen=WINDOW),'ceiling':ceiling}
         deadline=time.monotonic()+max(abs(s['target']-s['goal']) for s in state.values())/speed*1.5+8
         last=time.monotonic()
         while True:
@@ -325,8 +331,9 @@ class LimitSelfTest:
                 # few counts short; a still joint inside the obstruction lag is there.
                 arrived=abs(s['target']-pos)<=(STRICT_TOL if strict else 8) or (not strict and settled and lag<72)
                 if s['goal']!=s['target'] or not arrived:done=False
-                if strict and s['goal']==s['target'] and settled and not arrived:lag=max(lag,72)
-                if lag>=72 and len(s['history'])==WINDOW and max(s['history'])-min(s['history'])<=3:
+                if strict and s['goal']==s['target'] and settled and not arrived:lag=max(lag,BLOCK_LAG)
+                pushing=(word(reg,60)&0x3ff)>=BLOCK_LOAD_SHARE*s['ceiling']
+                if settled and lag>=BLOCK_LAG and (strict or pushing or lag>=BLOCK_LAG_MAX):
                     with self.runtime.io:write_register(self.runtime.session.ports[port],i,42,pos,2)
                     raise Blocked(f'{what}时{self._label(port,i)}在{pos}受阻',port,i)
             if done:return

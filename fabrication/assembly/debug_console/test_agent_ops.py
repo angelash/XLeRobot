@@ -72,6 +72,15 @@ def test_sample_logs_telemetry_rows(runtime,agent):
     assert len(rows)>=4 and {r['joint'] for r in rows}=={'COM3:7','COM4:4'} and 'status' in rows[0]
 
 
+def test_watch_captures_frames_while_a_motion_step_runs(runtime,agent,monkeypatch):
+    monkeypatch.setattr(agent,'_capture',lambda camera,path:path.write_bytes(b'\xff\xd8jpg\xff\xd9'))
+    agent.start([{'op':'move','targets':{'left:2':2250},'speed_deg':3,'watch':{'cameras':[2,'laptop'],'every':1}}],True,background=False)
+    shots=agent.results[0]['watch']
+    assert agent.results[0]['status']=='done' and len(shots)>=2
+    assert all((agent.dir/s['file']).is_file() for s in shots) and 'COM3:2' in shots[0]['positions']
+    with pytest.raises(ValueError,match='边动边拍'):agent.start([{'op':'wait','watch':{'cameras':[0]}}],True,background=False)
+
+
 def test_backoff_trial_measures_latency_and_returns_to_start(runtime,agent):
     add_stops(runtime,{('COM3',8):(1600,2600)})
     agent.start([{'op':'backoff_trial','joint':'head:8','direction':-1,'variant':'B','delay':0}],True,background=False)

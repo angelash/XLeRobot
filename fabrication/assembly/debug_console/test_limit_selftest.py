@@ -9,7 +9,8 @@ from fabrication.assembly.debug_console.torque_control import word
 
 
 def add_stops(r,stops,after=None):
-    """Clamp positions at mechanical stops after each goal write."""
+    """Clamp positions at mechanical stops after each goal write; a joint
+    pressed against a stop reports a high load, as the real servo does."""
     count=[0]
     for name,port in r.session.ports.items():
         original=port.write
@@ -19,7 +20,8 @@ def add_stops(r,stops,after=None):
             if packet[4]==3 and packet[5]==42:
                 count[0]+=1
                 if (name,i) in stops:
-                    lo,hi=stops[(name,i)];set_word(p.regs[i],56,max(lo,min(hi,word(p.regs[i],56))))
+                    lo,hi=stops[(name,i)];wanted=word(p.regs[i],56);held=max(lo,min(hi,wanted))
+                    set_word(p.regs[i],56,held);set_word(p.regs[i],60,900 if held!=wanted else 0)
                 if after and count[0]==after[0]:after[1]()
             return result
         port.write=write
@@ -260,3 +262,23 @@ def test_back_off_waits_for_the_servo_load_to_fade(runtime,st):
     assert st.results['head:tilt']['status']=='done'
     assert state['pressed']>=6 and not any('重试' in e['message'] for e in st.events),'No retry once the load has faded'
     assert any('回落用时' in e['message'] for e in st.events)
+
+
+def test_slow_start_against_gravity_is_not_called_blocked(runtime,st):
+    # The right shoulder lift stays put until its goal leads by 100 counts, at low load.
+    port=runtime.session.ports['COM3'];original=port.write;start=word(reg(runtime,'COM3',2),56)
+    def write(packet):
+        result=original(packet)
+        if packet[2]==2 and packet[4]==3 and packet[5]==42:
+            goal=packet[6]+256*packet[7];r=port.regs[2]
+            set_word(r,56,start if abs(goal-start)<100 else goal);set_word(r,60,300)
+        return result
+    port.write=write
+    st._move_retry({('COM3',2):1850},12,'抬回竖直')
+    assert word(reg(runtime,'COM3',2),56)==1850 and not any('受阻' in e['message'] for e in st.events)
+
+
+def test_a_joint_pushing_hard_is_still_blocked_quickly(runtime,st):
+    add_stops(runtime,{('COM3',2):(2000,2300)})
+    with pytest.raises(lt.Blocked):st._move_to({('COM3',2):1850},12,'下压')
+    assert word(reg(runtime,'COM3',2),56)==2000

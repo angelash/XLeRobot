@@ -72,6 +72,10 @@ class AgentRunner:
             if op in ('sample','backoff_trial'):
                 for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
             if op=='backoff_trial' and step.get('variant','A') not in ('A','B','C','D','S'):raise ValueError('退离实验只有A/B/C/D/S')
+            if step.get('watch'):
+                if op not in MOTION_OPS:raise ValueError(f'第{n+1}步：只有动作步骤可以边动边拍')
+                for camera in step['watch'].get('cameras',[0]):
+                    if camera!='laptop' and camera not in (0,1,2):raise ValueError(f'第{n+1}步相机编号无效：{camera}')
 
     def start(self,steps,confirmed,label='',background=True):
         r=self.runtime;lt=self.lt
@@ -106,16 +110,21 @@ class AgentRunner:
         try:
             for n,step in enumerate(self.steps):
                 lt._check_abort();self.current=n;lt.current=f'agent:{n+1}/{len(self.steps)}:{step["op"]}'
-                try:result={'status':'done',**getattr(self,'_op_'+step['op'])(n,step)}
+                watcher=self._start_watch(n,step);shots=[]
+                try:
+                    try:result={'status':'done',**getattr(self,'_op_'+step['op'])(n,step)}
+                    finally:shots=self._stop_watch(watcher)
                 except Aborted:raise
                 except Exception as exc:
                     result={'status':'failed','message':str(exc)}
+                    if shots:result['watch']=shots
                     lt._log(f'助手第{n+1}步（{step["op"]}）失败：{exc}')
                     self._record(n,step,result)
                     if isinstance(exc,OSError):raise
                     if not step.get('continue_on_fail',step['op'] not in ('move','backoff_trial')):
                         self.error=f'第{n+1}步失败，运行停止：{exc}';break
                     continue
+                if shots:result['watch']=shots
                 self._record(n,step,result)
         except Aborted as exc:
             self.error=str(exc);lt._log(str(exc))
@@ -131,6 +140,43 @@ class AgentRunner:
             lt._log('助手运行结束'+('：'+self.error if self.error else ''))
 
     # ---- steps -----------------------------------------------------------
+    def _watch_joints(self,step):
+        try:
+            if step['op']=='move':return [self.resolve(k) for k in step['targets']]
+            if step['op']=='backoff_trial':return [self.resolve(step['joint'])]
+            port,_=self.lt._target(step['item']);return [(port,i) for i in self.lt._joints_for(step['item'])]
+        except Exception:return []
+
+    def _start_watch(self,n,step):
+        """Capture the chosen cameras in the background while a motion step
+        runs, each frame stamped with time and the moving joints' positions."""
+        cfg=step.get('watch')
+        if not cfg:return None
+        stop=threading.Event();holder={'shots':[]};joints=self._watch_joints(step)
+        cameras=list(cfg.get('cameras',[0]));every=max(1.,float(cfg.get('every',2)));limit=max(1,min(60,int(cfg.get('max',20))))
+        def loop():
+            t0=time.monotonic();k=0
+            while not stop.is_set() and k<limit:
+                begin=time.monotonic()
+                for camera in cameras:
+                    path=self.dir/f'{n:02d}-watch-{k:02d}-cam{camera}.jpg'
+                    try:
+                        if camera!='laptop' and self._camera_busy(camera):raise RuntimeError('该相机正在网页上推流')
+                        self._capture(camera,path)
+                        try:positions=self._positions(joints)
+                        except Exception:positions={}
+                        holder['shots'].append({'camera':camera,'file':path.name,'t':round(time.monotonic()-t0,1),'positions':positions})
+                    except Exception as exc:holder['shots'].append({'camera':camera,'error':str(exc)[:120]})
+                k+=1
+                stop.wait(max(0.,every-(time.monotonic()-begin)))
+        thread=threading.Thread(target=loop,daemon=True);thread.start()
+        return stop,thread,holder
+
+    def _stop_watch(self,watcher):
+        if not watcher:return []
+        stop,thread,holder=watcher;stop.set();thread.join(timeout=20)
+        return holder['shots']
+
     def _positions(self,joints):
         out={}
         for port,i in joints:out[f'{port}:{i}']=word(self.lt._read(port,i),56)
