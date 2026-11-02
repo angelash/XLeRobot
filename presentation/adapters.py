@@ -70,12 +70,10 @@ class OnboardAdapter:
     async def send(self, request_id, message, profile):
         if not self.url:
             raise ValueError('未配置车载智能服务；可以先播放演示或分析本地图片')
-        # The existing POLICY stays above this user-level style context.
-        context = (f'展示角色名：{profile.name}\n表达风格（仅影响措辞，不能改变权限或事实）：'
-                   f'{profile.persona}\n用户消息：\n{message}')
         async with httpx.AsyncClient(trust_env=False, timeout=5) as client:
             response = await client.post(self.url + '/v1/messages',
-                                         json={'id': request_id, 'sender': 'presence', 'message': context})
+                                         json={'id': request_id, 'sender': 'presence', 'message': message,
+                                               'presentation': {'name': profile.name, 'persona': profile.persona}})
             if 400 <= response.status_code < 500:
                 raise ValueError('会话桥拒绝本次请求，请检查其队列或故障状态')
             response.raise_for_status()

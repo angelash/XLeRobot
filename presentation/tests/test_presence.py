@@ -141,8 +141,8 @@ def test_public_mailbox_roundtrip_carries_persona_without_touching_an_actuator(t
             self.calls = []
             self.cancelled = threading.Event()
         def session(self): return {}
-        def ask(self, message, request_id):
-            self.calls.append((message,request_id))
+        def ask(self, message, request_id, *, presentation=None):
+            self.calls.append((message,request_id,presentation))
             return {'text':'公开回复：观察完成。'}
         def cancel(self): self.cancelled.set()
     brain = FakeBrain()
@@ -162,7 +162,8 @@ def test_public_mailbox_roundtrip_carries_persona_without_touching_an_actuator(t
                 time.sleep(.05)
             assert state['connection']['state']=='online'
             assert state['events'][-1]['text']=='公开回复：观察完成。'
-            assert len(brain.calls)==1 and 'MOSS' in brain.calls[0][0] and '看一下环境' in brain.calls[0][0]
+            assert len(brain.calls)==1 and brain.calls[0][0]=='看一下环境'
+            assert brain.calls[0][2]['name']=='MOSS' and brain.calls[0][2]['persona']==state['profile']['persona']
             assert all('诊断' not in e['text'] for e in state['events'])
     finally:
         server.shutdown(); server.server_close()

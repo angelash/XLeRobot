@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .brain import Brain, TurnFailure, write_json
+from .persona import validate_presentation
 from .sync_source import sync_once
 
 
@@ -48,14 +49,18 @@ class Mailbox:
     def read(self, request_id):
         return json.loads(self.path(request_id).read_text(encoding="utf-8"))
 
-    def submit(self, request_id, message, sender="workstation"):
+    def submit(self, request_id, message, sender="workstation", presentation=None):
         path = self.path(request_id)
+        presentation = validate_presentation(presentation)
+        if presentation is not None and sender != 'presence':
+            raise ValueError('Presentation context requires the presence sender')
         if not isinstance(message, str) or not message.strip() or len(message) > 24000:
             raise ValueError("Message must contain 1-24000 characters")
         with self.guard:
             if path.exists():
                 existing = self.read(request_id)
-                if existing["message"] != message or existing["sender"] != sender:
+                if (existing["message"] != message or existing["sender"] != sender
+                        or existing.get('presentation') != presentation):
                     raise ValueError("Request id already belongs to a different message")
                 return existing
             if self.fault:
@@ -63,6 +68,8 @@ class Mailbox:
             if self.queue.full():
                 raise TurnFailure("Mailbox is full; retry later with the same request id")
             value = {"id": request_id, "sender": sender, "message": message, "status": "queued", "created_at": time.time()}
+            if presentation is not None:
+                value['presentation'] = presentation
             write_json(path, value)
             self.queue.put_nowait(request_id)
             return value
@@ -70,6 +77,7 @@ class Mailbox:
     def health(self):
         with self.guard:
             return {"service": "xlerobot-onboard", "version": 1, "motion_enabled": False,
+                    "presentation_context_version": 1,
                     "active": self.active, "fault": self.fault, "queue": self.queue.qsize(),
                     "thread_id": self.brain.session().get("thread_id"), "source_sync": self.sync,
                     "started_at": self.started_at}
@@ -111,7 +119,8 @@ class Mailbox:
                 value.update(status="running", started_at=time.time())
                 write_json(self.path(request_id), value)
             try:
-                result = self.brain.ask(value["message"], request_id)
+                result = (self.brain.ask(value['message'], request_id, presentation=value['presentation'])
+                          if value.get('presentation') is not None else self.brain.ask(value['message'], request_id))
                 with self.guard:
                     if self.fault:
                         raise TurnFailure("Turn was cancelled; late answer was discarded")
@@ -175,7 +184,8 @@ def handler_for(mailbox):
                 if not isinstance(payload, dict):
                     raise ValueError("JSON object required")
                 if self.path == "/v1/messages":
-                    return self.reply(202, mailbox.submit(payload["id"], payload["message"], payload.get("sender", "workstation")))
+                    return self.reply(202, mailbox.submit(payload["id"], payload["message"], payload.get("sender", "workstation"),
+                                                         payload.get('presentation')))
                 if self.path == "/v1/cancel":
                     return self.reply(200, mailbox.cancel())
                 if self.path == "/v1/reset":
