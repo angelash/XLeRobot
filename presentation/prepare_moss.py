@@ -24,6 +24,7 @@ import numpy as np
 from PIL import Image
 
 from .optimize_glb import repack
+from .rig_moss import rig
 from .state import validate_glb
 
 
@@ -150,11 +151,13 @@ def main():
     print('PBR maps prepared; converting FBX locally',flush=True)
     intermediate,statistics=convert(work,args.chromium)
     data,receipt=repack(intermediate.read_bytes())
+    data,rig_receipt=rig(data)
     document=validate_glb(data)
-    if statistics['triangles']!=32982 or len(document['meshes'])!=4:
+    if statistics['triangles']!=32982 or len(document['meshes'])!=7:
         raise ValueError('Unexpected model content; inspect before adoption')
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_bytes(data)
-    receipt.update(statistics=statistics,source_sha256=sha256(args.archive.read_bytes()).hexdigest(),
+    receipt.update(bytes=len(data),sha256=sha256(data).hexdigest(),rig=rig_receipt,
+                   statistics=statistics,source_sha256=sha256(args.archive.read_bytes()).hexdigest(),
                    source_bytes=args.archive.stat().st_size,three_version=dependency['version'])
     (work/'conversion-receipt.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps({'output':str(args.output),'bytes':len(data),'sha256':receipt['sha256'],'triangles':statistics['triangles']}),flush=True)

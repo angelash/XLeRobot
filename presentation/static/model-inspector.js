@@ -3,6 +3,7 @@ import {GLTFExporter} from './vendor/addons/exporters/GLTFExporter.js';
 import {GLTFLoader} from './vendor/addons/loaders/GLTFLoader.js';
 import {makeDetailedMoss} from './moss-detailed.js';
 import {makeSimpleMoss} from './avatar.js';
+import {MossRig} from './moss-rig.js';
 
 const $=id=>document.getElementById(id),host=$('inspection-canvas');
 const scene=new THREE.Scene();
@@ -16,7 +17,7 @@ for(const [color,power,position] of [['#edece1',3.5,[-3,4,5]],['#a6c5db',2.5,[4,
   const light=new THREE.DirectionalLight(color,power);light.position.set(...position);scene.add(light);
 }
 const pivot=new THREE.Group();scene.add(pivot);
-let model,variant='licensed',yaw=-25,pitch=4,distance=7,drag,lastX,lastY,exporting=false,generation=0;
+let model,rig,variant='licensed',yaw=-25,pitch=4,distance=7,drag,lastX,lastY,exporting=false,generation=0;
 const licensedUrl='/presence/assets/models/moss-550w-jom.glb';
 
 function dispose(object){
@@ -52,6 +53,10 @@ async function replace(){
   }
   if(model){pivot.remove(model);dispose(model);}
   model=next;
+  rig=selection==='licensed'?new MossRig(model):null;
+  $('joint-controls').hidden=!rig?.ready;
+  $('joint-yaw').value=0;$('joint-pitch').value=0;
+  $('joint-yaw-value').textContent='0°';$('joint-pitch-value').textContent='0°';
   pivot.add(model);
   $('model-label').textContent=selection==='licensed'?'550W / JOM':selection==='detailed'?'550W / DETAILED':'550W / SIMPLE';
   $('stage-source').textContent=selection==='licensed'?'Jom / CC BY 4.0':'本地生成三维模型';
@@ -70,6 +75,11 @@ function selectView(name){
 document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>selectView(button.dataset.view)));
 $('inspector-variant').addEventListener('change',event=>{if(exporting)return;variant=event.target.value;replace();});
 for(const id of ['yaw','pitch'])$(id).addEventListener('input',()=>{yaw=Number($('yaw').value);pitch=Number($('pitch').value);$('view-name').textContent='自定义视角';render();});
+for(const id of ['joint-yaw','joint-pitch'])$(id).addEventListener('input',()=>{
+  const yaw=Number($('joint-yaw').value),pitch=Number($('joint-pitch').value);
+  rig?.lookAt(yaw*Math.PI/180,pitch*Math.PI/180);
+  $('joint-yaw-value').textContent=`${yaw}°`;$('joint-pitch-value').textContent=`${pitch}°`;render();
+});
 renderer.domElement.addEventListener('pointerdown',event=>{drag=true;lastX=event.clientX;lastY=event.clientY;renderer.domElement.setPointerCapture(event.pointerId);});
 renderer.domElement.addEventListener('pointermove',event=>{
   if(!drag)return;yaw=Math.max(-180,Math.min(180,yaw+(event.clientX-lastX)*.45));pitch=Math.max(-40,Math.min(40,pitch+(event.clientY-lastY)*.30));

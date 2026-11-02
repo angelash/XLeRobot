@@ -1,4 +1,5 @@
 import {AvatarView} from './avatar.js';
+import {createRequestId} from './request-id.js';
 import {Demo} from './demo.js';
 import {mergeEvents, filterEvents, visualFrame, viewState} from './model.js';
 
@@ -401,7 +402,9 @@ $('message-form').addEventListener('submit', async event => {
   }
   const message = $('message-input').value.trim();
   if (!message || pending || demo) return;
-  pending = {id:'presence-' + crypto.randomUUID(), message, uncertain:false}; renderConnection();
+  try {pending = {id:createRequestId(), message, uncertain:false};}
+  catch (error) {notify(error.message, true); return;}
+  renderConnection();
   try {await api('/messages', {id:pending.id, message}); $('message-input').value = ''; await refreshNow();}
   catch (error) {
     if (pending && (!error.status || error.status >= 500)) {

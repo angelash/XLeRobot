@@ -169,7 +169,7 @@ def main():
             expect(inspector.locator('#inspection-canvas canvas')).to_be_visible()
             expect(inspector.locator('#model-label')).to_have_text('550W / JOM',timeout=30000)
             expect(inspector.locator('#triangle-count')).to_have_text('32,982')
-            assert inspector.locator('#mesh-count').text_content()=='4'
+            assert inspector.locator('#mesh-count').text_content()=='7'
             for direction in ['front','quarter','side','rear']:
                 inspector.locator('[data-view="'+direction+'"]').click()
                 inspector.wait_for_timeout(180)
@@ -227,7 +227,7 @@ def main():
                       'SSE-public-text-no-HTML','network-reconnect','offline-local-assets','reduced-motion-resize-renders',
                       'four-detailed-model-views','detailed-GLB-export-import','legacy-detail-selector',
                       'licensed-four-views','licensed-exact-GLB-export','licensed-selection-persistence','visible-author-credit'],
-            'licensed_model':{'triangles':32982,'meshes':4,'glb_bytes':licensed_export.stat().st_size},
+            'licensed_model':{'triangles':32982,'meshes':7,'glb_bytes':licensed_export.stat().st_size},
             'model':{'triangles':triangles,'meshes':meshes,'glb_bytes':exported.stat().st_size},
             'page_errors':errors,'external_requests':external},ensure_ascii=False,indent=2),encoding='utf-8')
         print('Presence browser verification PASS; evidence: '+str(output))

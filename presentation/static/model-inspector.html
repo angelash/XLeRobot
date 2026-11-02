@@ -9,8 +9,9 @@
       <p class="eyebrow">550W / MATERIAL STUDY</p><h1>让 MOSS<br>更接近 MOSS。</h1><p class="intro">材质、磨损、铭牌与机械细节。<br>比较三种形象，选择喜欢的版本。</p>
       <label class="field">内置版本<select id="inspector-variant"><option value="licensed">Jom 材质版 · 当前采用</option><option value="detailed">程序生成详细版 · 对照</option><option value="simple">首版简化形象 · 对照</option></select></label>
       <div class="views" role="group" aria-label="观察方向"><button type="button" data-view="front">正面</button><button type="button" data-view="quarter" aria-pressed="true">前侧</button><button type="button" data-view="side">侧面</button><button type="button" data-view="rear">背面</button></div>
-      <label class="field">水平角度 <output id="yaw-value">−25°</output><input type="range" id="yaw" min="-180" max="180" value="-25"></label>
-      <label class="field">俯仰角度 <output id="pitch-value">4°</output><input type="range" id="pitch" min="-40" max="40" value="4"></label>
+      <label class="field">观察方位 <output id="yaw-value">−25°</output><input type="range" id="yaw" min="-180" max="180" value="-25"></label>
+      <label class="field">观察俯仰 <output id="pitch-value">4°</output><input type="range" id="pitch" min="-40" max="40" value="4"></label>
+      <div id="joint-controls" hidden><label class="field">机身转向 · 顶部固定 <output id="joint-yaw-value">0°</output><input type="range" id="joint-yaw" min="-30" max="30" value="0"></label><label class="field">机身俯仰 <output id="joint-pitch-value">0°</output><input type="range" id="joint-pitch" min="-10" max="10" value="0"></label></div>
       <button type="button" id="export-model" class="primary">导出此形象 GLB <span>↓</span></button><p id="export-status" role="status"></p>
       <details><summary>模型与来源</summary><p>材质版：The Wandering Earth - Moss 550W，作者 <a href="https://sketchfab.com/jom239300891" target="_blank" rel="noopener">Jom</a>，<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>。由用户提供的 FBX/贴图转换，保留全部三角面，重建 PBR 材质并优化贴图。</p><p><a href="/presence/assets/models/ATTRIBUTION.md" target="_blank" rel="noopener">完整署名与修改记录 ↗</a></p><p>程序版依据官方设定独立重建，使用本地生成几何与纹理。MakerWorld 924464 原始打印文件尚未导入。</p><dl><div><dt>几何分件</dt><dd id="part-count">—</dd></div><div><dt>渲染网格</dt><dd id="mesh-count">—</dd></div><div><dt>三角面</dt><dd id="triangle-count">—</dd></div></dl></details>
     </aside>

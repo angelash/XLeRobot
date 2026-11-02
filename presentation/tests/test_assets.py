@@ -28,10 +28,21 @@ def test_packaged_default_model_is_complete_attributed_and_within_import_budget(
     assert len(data)==manifest['bytes']<MAX_AVATAR
     assert sha256(data).hexdigest()==manifest['sha256']
     document=validate_glb(data)
-    assert len(document['meshes'])==4 and len(document['images'])==13
+    assert len(document['meshes'])==7 and len(document['images'])==13
+    assert {node['name'] for node in document['nodes']} >= {'MOSS Ceiling Swivel','MOSS Elbow Swivel','MOSS Wrist Swivel','MOSS Body Pitch','MOSS Fixed Link'}
     triangles=sum(document['accessors'][p.get('indices',p['attributes']['POSITION'])]['count']//3
                   for mesh in document['meshes'] for p in mesh['primitives'])
     assert triangles==32982
+    arm_meshes=[mesh for mesh in document['meshes'] if mesh['name'].endswith(' Link')]
+    assert len(arm_meshes)==4
+    arm_indices=[]
+    _,arm_binary=parse(data)
+    for mesh in arm_meshes:
+        accessor=document['accessors'][mesh['primitives'][0]['indices']]
+        view=document['bufferViews'][accessor['bufferView']]
+        arm_indices.extend(np.frombuffer(arm_binary,dtype='<u2',count=accessor['count'],offset=view['byteOffset']).tolist())
+    # Each original non-indexed arm vertex belongs to exactly one rigid part.
+    assert sorted(arm_indices)==list(range(52644))
     assert all('bufferView' in image and 'uri' not in image for image in document['images'])
     _,binary=parse(data)
     glass=next(material for material in document['materials'] if material['name']=='Moss_Glass')

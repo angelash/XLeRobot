@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import {GLTFLoader} from './vendor/addons/loaders/GLTFLoader.js';
 import {makeDetailedMoss} from './moss-detailed.js';
+import {MossRig} from './moss-rig.js';
 
 function disposeObject(object) {
   const materials = new Set(), textures = new Set(), images = new Set();
@@ -116,8 +117,8 @@ export class AvatarView {
     this.resizeObserver.observe(host);
     this.move = event => {
       const rect = host.getBoundingClientRect();
-      this.target.x = ((event.clientX - rect.left) / rect.width - .5) * .23;
-      this.target.y = ((event.clientY - rect.top) / rect.height - .5) * .1;
+      this.target.x = ((event.clientX - rect.left) / rect.width - .5) * .85;
+      this.target.y = ((event.clientY - rect.top) / rect.height - .5) * .28;
       this.requestFrame();
     };
     this.leave = () => {this.target = {x: 0, y: 0}; this.requestFrame();};
@@ -168,8 +169,15 @@ export class AvatarView {
       const rim = new THREE.DirectionalLight('#a4bdce', 3);
       rim.position.set(3, 1, -2); scene.add(rim);
       const red = new THREE.PointLight(profile.accent, .35, 4); red.position.set(0, .4, 2); scene.add(red);
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.ShadowMaterial({opacity: .24}));
-      floor.rotation.x = -Math.PI / 2; floor.position.y = -1.78; floor.receiveShadow = true; scene.add(floor);
+      const suspended = profile.avatar.kind === 'licensed-moss';
+      if (suspended) {
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(1.3, .045, 1.08),
+          new THREE.MeshStandardMaterial({color:'#343e40',roughness:.8,metalness:.25}));
+        roof.name = 'Fixed ceiling'; roof.position.set(-.32789, 1.5975, .01375); scene.add(roof);
+      } else {
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.ShadowMaterial({opacity: .24}));
+        floor.rotation.x = -Math.PI / 2; floor.position.y = -1.78; floor.receiveShadow = true; scene.add(floor);
+      }
       const pivot = new THREE.Group(); this.pivot = pivot; scene.add(pivot);
       let object;
       if (profile.avatar.kind === 'glb' || profile.avatar.kind === 'licensed-moss') {
@@ -191,7 +199,11 @@ export class AvatarView {
         }});
       } else object = profile.avatar.detail === 'simple' ? makeSimpleMoss(profile.accent) : makeDetailedMoss(profile.accent);
       pivot.add(object); this.object = object;
-      pivot.rotation.set(.035, -.24, -.045);
+      this.rig = suspended ? new MossRig(object) : null;
+      if (suspended && !this.rig.ready) throw new Error('MOSS 关节模型不完整');
+      this.suspended = suspended;
+      this.host.dataset.suspended = String(suspended);
+      pivot.rotation.set(suspended ? 0 : .035, -.24, suspended ? 0 : -.045);
       this.fallback.hidden = true;
       const detailed = profile.avatar.kind === 'procedural-moss' && profile.avatar.detail !== 'simple';
       const licensed = profile.avatar.kind === 'licensed-moss';
@@ -213,6 +225,13 @@ export class AvatarView {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.position.z = this.camera.aspect < 1 ? 7.8 / this.camera.aspect : 7.6;
+    if (this.suspended) {
+      // Project the mount's top plane onto the viewport's top edge. The same
+      // anchor survives panel collapse and responsive viewport changes.
+      const visibleHeight = 2 * this.camera.position.z * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      this.camera.position.y = 1.575 - visibleHeight / 2 + visibleHeight * .005;
+      this.camera.lookAt(0, this.camera.position.y, 0);
+    } else {this.camera.position.y = .15; this.camera.lookAt(0, -.1, 0);}
     this.camera.updateProjectionMatrix(); this.requestFrame();
   }
   requestFrame() {
@@ -226,11 +245,18 @@ export class AvatarView {
     if (!moving || !this.lastDraw || time - this.lastDraw >= 1000 / 30) {
       this.lastDraw = time;
       if (this.pivot) {
-        const yaw = -.24 + (moving ? this.target.x + Math.sin(time / 4100) * .035 : 0);
-        const pitch = .035 + (moving ? this.target.y + (this.state === 'working' ? .07 : 0) : 0);
-        this.pivot.rotation.y += (yaw - this.pivot.rotation.y) * .06;
-        this.pivot.rotation.x += (pitch - this.pivot.rotation.x) * .06;
-        this.pivot.position.y = moving ? Math.sin(time / 2400) * .012 : 0;
+        if (this.rig?.ready) {
+          const yaw = moving ? this.target.x + Math.sin(time / 4100) * .035 : 0;
+          const pitch = moving ? this.target.y + (this.state === 'working' ? .065 : 0) : 0;
+          this.rig.lookAt(moving ? this.rig.yaw + (yaw-this.rig.yaw)*.09 : 0,
+            moving ? this.rig.pitch + (pitch-this.rig.pitch)*.09 : 0);
+        } else {
+          const yaw = -.24 + (moving ? this.target.x * .3 + Math.sin(time / 4100) * .035 : 0);
+          const pitch = .035 + (moving ? this.target.y * .4 + (this.state === 'working' ? .07 : 0) : 0);
+          this.pivot.rotation.y += (yaw - this.pivot.rotation.y) * .06;
+          this.pivot.rotation.x += (pitch - this.pivot.rotation.x) * .06;
+          this.pivot.position.y = moving ? Math.sin(time / 2400) * .012 : 0;
+        }
         if (this.object?.userData.glow) this.object.userData.glow.emissiveIntensity = this.state === 'working' && moving ? 1.6 + Math.sin(time / 600) * .35 : 1.7;
         for (const [material, intensity] of this.pulseMaterials) material.emissiveIntensity = intensity * (this.state === 'working' && moving ? 1 + Math.sin(time / 600) * .12 : 1);
         const joint = this.object?.userData.pitchJoint;
@@ -245,7 +271,8 @@ export class AvatarView {
   }
   clearScene() {
     cancelAnimationFrame(this.frame);
-    disposeObject(this.scene); this.scene = null; this.pivot = null; this.object = null; this.pulseMaterials = [];
+    disposeObject(this.scene); this.scene = null; this.pivot = null; this.object = null; this.pulseMaterials = []; this.rig = null; this.suspended = false;
+    delete this.host.dataset.suspended;
     this.renderer?.dispose(); this.renderer?.domElement.remove(); this.renderer = null;
     this.image?.remove(); this.image = null; this.lastDraw = 0;
   }

@@ -22,6 +22,10 @@ was checked on that date and identifies Jom and CC Attribution 4.0.
 - Compressed opaque base-color and ORM images as JPEG quality 94 without chroma
   subsampling; kept normals, emissive and transparency images as lossless PNG.
 - Adjusted emissive material intensity for the local display lighting.
+- Split the static arm by intact connected components into fixed mount, upper
+  link, shaft and lower link; authored independent swivel and body pitch nodes
+  for ceiling-mounted display animation. All triangles, UVs, normals and images
+  retained. The visual pivots are inferred, not mechanical calibration.
 
 No endorsement by the model author or film rights holders is implied.
 The source archive is preserved locally and is not included here.
