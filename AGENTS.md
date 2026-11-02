@@ -13,6 +13,8 @@ Scope: entire repository clone.
 - Preserve unrelated upstream files. Keep local inventory and build decisions additive and reviewable.
 - Commit and push requested project changes to `origin` (`angelash/XLeRobot`) after focused validation; keep the original repository as `upstream`.
 - Do not publish private-key material, credentials, generated virtual environments, server logs, runtime state, or temporary camera captures.
+- Before assistant-driven robot control, read `fabrication/assembly/debug_console/AGENT_CONTROL_ZH.md` (reviewed rules), `AGENT_OBSERVATION_ZH.md` (verified observation methods and limits) and `AGENT_LEARNING_ZH.md` (self-learned lessons pending review) in the same folder, and apply all three. The reviewed rules win on conflict; pending lessons may add caution or methods but never relax hard limits.
+- Append every new lesson learned during robot work to `AGENT_LEARNING_ZH.md` as a dated pending entry with evidence. Only the user merges entries into `AGENT_CONTROL_ZH.md`; change the rules there only on explicit user instruction.
 
 ## Current project snapshot
 
