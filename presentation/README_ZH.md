@@ -32,6 +32,7 @@
 
 ## 使用
 
+- 顶部“语音关闭”控制自动播报，**默认关闭，文字始终输出**。“声线试听”列出当前MiniMax账号全部声线（本轮332项），支持筛选、搜索、逐个试听和保存；试听不自动启用播报。可直接打开同服务的`/presence/?voices=1`。声线来源、live-avatar复用、私有配置方式和验收见[语音说明](../docs/presence/SPEECH_ZH.md)。
 - “收起过程”或 `I` 切换居中模式；“全屏”或 `F` 进入全屏；在输入框中不会触发这些快捷键。
 - “设置”可以修改身份、问候、人设、形象与布局。GLB 必须为自包含 glTF 2.0 Binary，不依赖外部纹理或压缩解码插件，最多 20MiB。图片支持 PNG/JPEG/WebP，最多 10MiB、1200 万像素；会去除原始元数据并重编码。
 - “设置 → 形象类型”选择 Jom 材质版或程序生成；程序生成下可切换详细版/简版。“多视角检视形象”进入同服务的 `/presence/assets/model-inspector.html`，支持四方向、拖动、缩放与 GLB 导出。材质版导出保留 Jom / CC BY 4.0 署名；导出是静态形象，不含展示页的交互微动逻辑。已有配置不会被自动覆盖，需要在设置中选择新版本。
@@ -77,9 +78,10 @@
 ## 验证
 
 ```powershell
-.\.venv-debug\Scripts\python.exe -m pytest presentation/tests/test_presence.py presentation/tests/test_assets.py deployment/onboard/test_onboard.py fabrication/assembly/debug_console/test_platform.py -q
-node --test presentation/tests/test_model.mjs
+.\.venv-debug\Scripts\python.exe -m pytest presentation/tests/test_presence.py presentation/tests/test_assets.py presentation/tests/test_speech.py presentation/tests/test_profile_compatibility.py deployment/onboard/test_onboard.py fabrication/assembly/debug_console/test_platform.py -q
+node --test presentation/tests/test_model.mjs presentation/tests/test_speech_player.mjs
 .\.venv-debug\Scripts\python.exe presentation/tests/verify_browser.py
+.\.venv-debug\Scripts\python.exe presentation/tests/verify_speech_browser.py
 ```
 
 浏览器测试是可选开发工具，需要 Python Playwright 和已安装的 Chromium；生产运行不需要。它启动隔离本机服务，检查两种详细模型四方向、材质版导出字节一致、署名与切换保存、程序版导出再导入，以及既有布局/图片分析/SSE 等交互；同时检查贴图/WebGL/CSP控制台错误。使用 `--out .local-deploy/presence-qa-v3` 保存本轮截图、测试配置和回执，不提交。结果与实机待办见[验收记录](../docs/presence/ACCEPTANCE_ZH.md)。

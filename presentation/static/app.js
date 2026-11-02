@@ -1,6 +1,8 @@
 import {AvatarView} from './avatar.js';
 import {createRequestId} from './request-id.js';
 import {Demo} from './demo.js';
+import {SpeechPlayer} from './speech-player.js';
+import {VoicePicker} from './voice-picker.js';
 import {mergeEvents, filterEvents, visualFrame, viewState} from './model.js';
 
 const $ = id => document.getElementById(id);
@@ -41,6 +43,18 @@ async function upload(path, file, limit) {
 const avatar = new AvatarView($('avatar-host'), (message, type) => {
   $('renderer-note').textContent = message; $('model-type').textContent = type;
 });
+const speech = new SpeechPlayer({audio:$('voice-audio'),status:message=>$('speech-status').textContent=message,
+  error:message=>notify(message,true),blocked:()=>renderSpeechButton()});
+function renderSpeechButton() {
+  $('voice-toggle').setAttribute('aria-pressed',String(Boolean(profile?.speech?.enabled)));
+  $('voice-toggle').textContent=!profile?.speech?.enabled?'语音关闭':speech.armed?'语音开启':'启用声音';
+}
+const voices = new VoicePicker({player:speech,api,selected:()=>profile.speech,notify,
+  choose:async()=>{
+    await layoutWrite;const next=structuredClone(profile);
+    Object.assign(next.speech,voices.settings());
+    applyProfile(await api('/config',next,'PUT'));
+  }});
 
 function applyProfile(value) {
   profile = structuredClone(value);
@@ -53,6 +67,8 @@ function applyProfile(value) {
   $('avatar-host').setAttribute('aria-label', `${profile.name} 机器人形象`);
   if (!current().events.length) $('robot-response').textContent = profile.greeting;
   setProcess(profile.layout.log_open, false);
+  profile.speech ||= {enabled:false,voice_id:'Chinese (Mandarin)_Reliable_Executive',speed:1,pitch:0,volume:.8,emotion:'auto'};
+  speech.configure(profile.speech);renderSpeechButton();
   avatar.setProfile(profile);
 }
 
@@ -162,6 +178,7 @@ function ingest(batch, isDemo = false) {
   if (isDemo) sample = next; else live = next;
   if (Boolean(demo) !== isDemo) return;
   const additions = (batch.events || []).filter(event => !known.has(event.event_id));
+  speech.observe(additions,{epoch:batch.epoch,baseline:reset||!previous.epoch||document.hidden,demo:isDemo||$('voices-dialog').open});
   if (before === next.events.at(-1)?.event_id && !batch.reset) return;
   if (reset) {resetFrame(); $('robot-response').textContent = profile.greeting;}
   for (const event of additions) {
@@ -236,7 +253,7 @@ function stopDemo() {
 
 function startDemo() {
   if (demo) {stopDemo(); return;}
-  stopCamera(); visionDismissed = false; setVision(true);
+  speech.stop();stopCamera(); visionDismissed = false; setVision(true);
   sample = {epoch:'demo', seq:0, events:[]};
   demo = new Demo($('demo-video'), event => ingest({epoch:'demo', seq:event.seq, events:[event]}, true));
   $('demo-toggle').textContent = '退出演示'; $('live-view').hidden = false; $('demo-video').hidden = false;
@@ -286,6 +303,8 @@ function fillSettings(value) {
   $('detail-setting').hidden = value.avatar.kind !== 'procedural-moss';
   $('setting-split').value = Math.round(value.layout.split * 100); $('split-value').textContent = $('setting-split').value + '%';
   $('setting-animate').checked = value.layout.animate;
+  $('setting-speech').checked = value.speech?.enabled||false;
+  $('setting-volume').value = value.speech?.volume??.8;
   $('avatar-file-note').textContent = value.avatar.asset_id ? '已保存资源：' + value.avatar.asset_id.slice(0,8) : '自包含 GLB ≤20MiB · 图片 ≤10MiB';
   $('settings-status').textContent = ''; $('settings-status').classList.remove('error');
 }
@@ -301,6 +320,7 @@ function readSettings() {
   value.layout.split = Number($('setting-split').value) / 100;
   value.layout.animate = $('setting-animate').checked;
   value.layout.log_open = profile.layout.log_open;
+  value.speech={...profile.speech,enabled:$('setting-speech').checked,volume:Number($('setting-volume').value)};
   return value;
 }
 
@@ -319,9 +339,22 @@ $('setting-split').addEventListener('input', () => $('split-value').textContent 
 $('settings-form').addEventListener('submit', async event => {
   event.preventDefault(); $('save-settings').disabled = true;
   try {
+    const enabling=$('setting-speech').checked&&!profile.speech.enabled;
+    if(enabling)await speech.arm();
     await layoutWrite; const value = readSettings();
     applyProfile(await api('/config', value, 'PUT')); $('settings').close(); notify('角色设置已保存');
   } catch (error) {settingsError(error);} finally {$('save-settings').disabled = false;}
+});
+$('voices-open').addEventListener('click',()=>{if(profile)void voices.open();});
+$('voice-toggle').addEventListener('click',async()=>{
+  if(!profile)return;
+  if(profile.speech.enabled&&!speech.armed){await speech.arm();renderSpeechButton();return;}
+  const enabled=!profile.speech.enabled;
+  if(enabled)await speech.arm();else speech.stop();
+  try {
+    await layoutWrite;const next=structuredClone(profile);next.speech.enabled=enabled;
+    applyProfile(await api('/config',next,'PUT'));
+  }catch(error){notify(error.message,true);}
 });
 $('avatar-upload').addEventListener('click', () => $('avatar-file').click());
 $('setting-avatar').addEventListener('change', () => {$('detail-setting').hidden = $('setting-avatar').value !== 'procedural-moss';});
@@ -420,10 +453,11 @@ document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'i') {event.preventDefault(); $('process-toggle').click();}
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {stream?.close(); stopCamera(); stopDemo();}
+  if (document.hidden) {speech.stop();stream?.close(); stopCamera(); stopDemo();}
   else {connectStream(); clearTimeout(pollTimer); poll();}
 });
-window.addEventListener('pagehide', () => {disposed = true; clearTimeout(pollTimer); stream?.close(); stopCamera(); demo?.stop(); avatar.dispose();});
+window.addEventListener('pagehide', () => {speech.stop();disposed = true; clearTimeout(pollTimer); stream?.close(); stopCamera(); demo?.stop(); avatar.dispose();});
 window.addEventListener('pageshow', event => {if (event.persisted) location.reload();});
 
 await poll(); connectStream();
+if(new URLSearchParams(location.search).get('voices')==='1')await voices.open();

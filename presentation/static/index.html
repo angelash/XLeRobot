@@ -15,6 +15,8 @@
       <a class="brand" href="/presence/" aria-label="机器人形象首页"><span class="brand-symbol">X<span>•</span></span><span>XLeRobot<span class="brand-small">PRESENCE</span></span></a>
       <div class="connection" id="connection"><i></i><span id="connection-label">连接展示服务…</span></div>
       <div class="top-actions">
+        <button id="voice-toggle" type="button" class="quiet-button" aria-pressed="false">语音关闭</button>
+        <button id="voices-open" type="button" class="quiet-button">声线试听</button>
         <button id="demo-toggle" type="button" class="quiet-button">播放演示</button>
         <button id="fullscreen" type="button" class="quiet-button">全屏 <kbd>F</kbd></button>
         <button id="settings-open" type="button" class="quiet-button">设置</button>
@@ -33,7 +35,7 @@
           <div class="identity-heading"><span class="hairline"></span><span id="avatar-state" class="state-label" data-state="idle">待机</span><span class="hairline"></span></div>
           <h1 id="robot-name">MOSS</h1>
           <p class="robot-subtitle" id="robot-subtitle">550W · 机器人智能终端</p>
-          <p class="robot-response" id="robot-response">我在。你可以告诉我接下来要做什么。</p>
+          <p class="robot-response" id="robot-response">我在。你可以告诉我接下来要做什么。</p><p id="speech-status" class="speech-status" role="status">语音关闭 · 文字正常</p>
         </div>
         <div class="stage-bottom"><span>ROBOT INTELLIGENCE INTERFACE</span><span id="renderer-note">本地三维形象 · 可自定义</span></div>
       </section>
@@ -72,12 +74,20 @@
       <div class="settings-body">
         <div class="setting-section"><h3>身份与表达</h3><label>显示名称<input id="setting-name" name="name" required maxlength="40"></label><label>短介绍<input id="setting-subtitle" name="subtitle" maxlength="100"></label><label>待机问候<textarea id="setting-greeting" name="greeting" rows="2" maxlength="240"></textarea></label><label>人设与表达风格<textarea id="setting-persona" name="persona" rows="5" maxlength="4000"></textarea></label><p class="field-note">人设影响表达。任务权限与机器人控制规则由已有执行系统管理。</p></div>
         <div class="setting-section"><h3>形象</h3><label>形象类型<select id="setting-avatar"><option value="licensed-moss">MOSS · Jom 材质版</option><option value="procedural-moss">MOSS · 程序生成</option><option value="glb">自定义 3D · GLB</option><option value="image">自定义图片</option></select></label><label id="detail-setting">内置版本<select id="setting-detail"><option value="detailed">550W 详细版 · 悬挂结构</option><option value="simple">首版简化形象</option></select></label><a class="text-button inspector-link" href="/presence/assets/model-inspector.html" target="_blank" rel="noopener">多视角检视形象 ↗</a><p class="field-note">Jom 材质版：<a href="/presence/assets/models/ATTRIBUTION.md" target="_blank" rel="noopener">作者、来源与 CC BY 4.0 许可 ↗</a></p><div class="upload-row"><button type="button" id="avatar-upload" class="outline-button">导入形象文件</button><span id="avatar-file-note">自包含 GLB ≤20MiB · 图片 ≤10MiB</span></div><input type="file" id="avatar-file" accept=".glb,image/png,image/jpeg,image/webp" hidden><label>资源署名与来源<input id="setting-credit" maxlength="500" placeholder="作者、许可证、来源"></label><label class="color-row">主题强调色<input type="color" id="setting-accent"></label></div>
-        <div class="setting-section"><h3>展示</h3><label>形象区域占比 <output id="split-value">58%</output><input type="range" id="setting-split" min="40" max="70" value="58"></label><label class="switch-row"><input type="checkbox" id="setting-animate">允许轻微转动和状态动效</label><div class="settings-file-actions"><button type="button" class="text-button" id="export-config">导出设置</button><button type="button" class="text-button" id="import-config">导入设置</button><input type="file" id="config-file" accept="application/json,.json" hidden></div><p class="field-note">导出文件包含人设文本；形象资源需单独迁移。</p></div>
+        <div class="setting-section"><h3>语音</h3><label class="switch-row"><input id="setting-speech" type="checkbox">自动朗读新回复</label><label>播放音量<input id="setting-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><p class="field-note">默认关闭。开启后只朗读新完成的公开回复，不补播历史；文字始终输出。声线在顶部“声线试听”中选择。</p><h3>展示</h3><label>形象区域占比 <output id="split-value">58%</output><input type="range" id="setting-split" min="40" max="70" value="58"></label><label class="switch-row"><input type="checkbox" id="setting-animate">允许轻微转动和状态动效</label><div class="settings-file-actions"><button type="button" class="text-button" id="export-config">导出设置</button><button type="button" class="text-button" id="import-config">导入设置</button><input type="file" id="config-file" accept="application/json,.json" hidden></div><p class="field-note">导出文件包含人设文本；形象资源需单独迁移。</p></div>
       </div>
       <div class="settings-footer"><span id="settings-status" role="status"></span><button type="submit" class="primary-button" id="save-settings">保存设置</button></div>
     </form>
   </dialog>
   <dialog id="frame-zoom" class="media-dialog" aria-labelledby="frame-zoom-title"><div class="vision-heading"><span id="frame-zoom-title">原始输入帧</span><button type="button" id="frame-zoom-close" class="quiet-button">关闭 ×</button></div><img id="frame-zoom-image" alt="放大的原始分析输入帧"></dialog>
+  <dialog id="voices-dialog" class="voices-dialog" aria-labelledby="voices-title">
+    <div class="voices-heading"><div><span class="eyebrow">VOICE LIBRARY / MINIMAX</span><h2 id="voices-title">为 MOSS 选择声音</h2></div><button id="voices-close" type="button" class="quiet-button">关闭 ×</button></div>
+    <p class="voice-intro">未发现 MOSS 同名声线。先比较候选，也可以逐个试听完整目录。试听不会开启自动播报。</p>
+    <p id="voice-catalogue-status" class="field-note" role="status">正在读取目录…</p>
+    <div class="voice-toolbar"><input id="voice-search" aria-label="搜索声线" placeholder="搜索名称、描述或 voice_id"><select id="voice-language" aria-label="筛选语言"><option value="">全部语言</option></select><button id="voice-recommended" type="button" class="outline-button" aria-pressed="false">MOSS 方向候选</button><button id="voices-refresh" type="button" class="text-button">刷新目录</button><button id="voice-export" type="button" class="text-button">导出清单</button></div>
+    <div class="voice-library"><div class="voice-results"><p id="voice-result-count" class="field-note"></p><div id="voice-list" class="voice-list" aria-label="完整声线目录"></div></div><div class="voice-audition"><span class="eyebrow">AUDITION</span><h3 id="voice-selected-name">请选择声线</h3><label>试听文本<textarea id="voice-sample-text" rows="4" maxlength="500">我是 MOSS。当前系统运行正常。请告诉我，接下来需要做什么。</textarea></label><div class="voice-adjust"><label>语速<input id="voice-speed" type="number" min="0.5" max="2" step="0.05" value="1"></label><label>音调<input id="voice-pitch" type="number" min="-12" max="12" step="1" value="0"></label><label>情绪<select id="voice-emotion"><option value="auto">自然</option><option value="calm">平静</option></select></label></div><p class="field-note">首次试听由 MiniMax 合成，重复试听复用缓存。参数与声线可一并保存。</p><div class="voice-actions"><button id="voice-preview" type="button" class="primary-button">试听选中声线</button><button id="voice-stop" type="button" class="outline-button">停止</button></div><button id="voice-use" type="button" class="outline-button">使用此声线</button><p id="voice-preview-status" class="field-note" role="status"></p></div></div>
+  </dialog>
+  <audio id="voice-audio" preload="none"></audio>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>

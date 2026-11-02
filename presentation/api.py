@@ -225,6 +225,8 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
         return StreamingResponse(frames(), media_type=upstream.headers.get('content-type', 'multipart/x-mixed-replace; boundary=frame'),
                                  background=BackgroundTask(close))
 
+    from .speech_api import install_speech
+    install_speech(router,store,guard)
     app.include_router(router)
     app.mount('/presence/assets', StaticFiles(directory=ROOT / 'static'), name='presence-assets')
 
@@ -233,7 +235,7 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
         return FileResponse(ROOT / 'static/index.html', headers={
             'X-Content-Type-Options': 'nosniff',
             # GLTFLoader's ImageBitmapLoader fetches embedded images as blob URLs.
-            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'"})
+            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob: data:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'"})
 
     @app.get('/presence', include_in_schema=False)
     async def page_redirect():
