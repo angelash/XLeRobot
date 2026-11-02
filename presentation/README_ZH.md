@@ -1,10 +1,14 @@
 # XLeRobot Presence：机器人形象与过程展示
 
-笔记本全屏展示：左侧可轻微转动的 MOSS 三维形象，右侧过程时间轴与视觉工作区；收起过程后形象居中。名字、图片/GLB 形象、人设、强调色、布局比例与动效都可修改并保存。默认是依据公开官方设定独立重建的 550W 详细版，也可选择首版简化形象。
+笔记本全屏展示：左侧可轻微转动的 MOSS 三维形象，右侧过程时间轴与视觉工作区；收起过程后形象居中。名字、图片/GLB 形象、人设、强调色、布局比例与动效都可修改并保存。新配置默认采用用户提供并经优化的 Jom / CC BY 4.0 材质模型；程序详细版和首版简版仍可选。
 
 设计与资源调查先于实现提交，见 [设计基线](../docs/presence/DESIGN_ZH.md)、[MOSS 资源核查](../docs/presence/MOSS_RESOURCES_ZH.md) 和 [事件协议](../docs/presence/EVENT_PROTOCOL_ZH.md)。
 
 ## 启动
+
+日常入口统一为既有 **Studio 8770 → 机器人形象与过程**，或 `/presence/`；检视页为同一服务的 `/presence/assets/model-inspector.html`。本模块不新增日常站点、端口或启动任务。
+
+以下独立入口仅用于本机开发调试，车载部署沿用 Studio：
 
 在仓库根目录，复用现有 `.venv-debug`：
 
@@ -30,7 +34,7 @@
 
 - “收起过程”或 `I` 切换居中模式；“全屏”或 `F` 进入全屏；在输入框中不会触发这些快捷键。
 - “设置”可以修改身份、问候、人设、形象与布局。GLB 必须为自包含 glTF 2.0 Binary，不依赖外部纹理或压缩解码插件，最多 20MiB。图片支持 PNG/JPEG/WebP，最多 10MiB、1200 万像素；会去除原始元数据并重编码。
-- “设置 → 内置版本”切换详细版/简版；“多视角检视形象”进入 [形象检视页](http://127.0.0.1:8780/presence/assets/model-inspector.html)，支持正面、前侧、侧面、背面、拖动旋转、缩放和自包含 GLB 导出。此导出是静态形象，不含展示页的交互微动逻辑。
+- “设置 → 形象类型”选择 Jom 材质版或程序生成；程序生成下可切换详细版/简版。“多视角检视形象”进入同服务的 `/presence/assets/model-inspector.html`，支持四方向、拖动、缩放与 GLB 导出。材质版导出保留 Jom / CC BY 4.0 署名；导出是静态形象，不含展示页的交互微动逻辑。已有配置不会被自动覆盖，需要在设置中选择新版本。
 - “导出设置”包含人设文本与资源 ID，不打包模型或照片；跨机器导入后，要重新导入缺失的媒体文件。署名字段可保存作者、许可证和来源。
 - 过程支持全部/摘要/工具/视觉筛选、展开较长输出、查看事件对应图片和“回到最新”。上滚、键盘或触摸滚动时停止自动跟随。
 - “分析图片”做真实像素统计：亮度、暗部、高亮与 Laplacian 清晰度方差。它不做语义识别或目标检测。“放大原图”可查看实际输入图片。
@@ -64,17 +68,18 @@
 - `api.py`：HTTP/SSE、媒体、配置、固定来源代理；`adapters.py`：车载公开回执和消息接入。
 - `static/avatar.js`：三维形象生命周期与 GLB/图片替换；`model.js`：有界客户端事件状态；`app.js`：界面交互；`demo.js`：独立合成数据源。
 - `static/moss-detailed.js`：按材质合批的详细机身、光学镜头与悬挂几何；`static/model-inspector.*`：多视角检视、简版对照和 GLB 导出。
+- `static/models/`：优化后的 Jom 材质模型、CC BY 4.0 署名和哈希清单；`prepare_moss.py`、`tools/moss-converter.html`、`optimize_glb.py`：开发期转换与图像打包工具。
 - `client.py`：显式发布 CLI；`server.py`：独立本机入口。
 - `static/vendor/`：固定 Three.js 0.180.0，MIT 许可证与 SHA-256 清单；可用 `python -m presentation.vendor_three` 从核验过完整性的 npm 包重建。
 
-内置模型由本项目代码生成。用户提供的 MakerWorld 924464 原文件因页面验证未取得，当前详细版依据公开官方多视图独立重建；未复制 `moss-pet` 的受限模型或贴图，也未导入 Sketchfab 的 87MB 候选包。来源、结构比对与实测体积见 [详细版还原记录](../docs/presence/MOSS_FIDELITY_ZH.md)。
+程序形象由本项目代码生成。新的材质版使用用户提供的 Jom FBX/4K 贴图源包，转换为约14MiB自包含GLB；[采用与转换记录](../docs/presence/MOSS_JOM_ADOPTION_ZH.md)和[完整署名](static/models/ATTRIBUTION.md)随工程保留。MakerWorld 924464 原文件仍未取得；此前的程序版记录保留在[详细版还原记录](../docs/presence/MOSS_FIDELITY_ZH.md)。
 
 ## 验证
 
 ```powershell
-.\.venv-debug\Scripts\python.exe -m pytest presentation/tests/test_presence.py deployment/onboard/test_onboard.py fabrication/assembly/debug_console/test_platform.py -q
+.\.venv-debug\Scripts\python.exe -m pytest presentation/tests/test_presence.py presentation/tests/test_assets.py deployment/onboard/test_onboard.py fabrication/assembly/debug_console/test_platform.py -q
 node --test presentation/tests/test_model.mjs
 .\.venv-debug\Scripts\python.exe presentation/tests/verify_browser.py
 ```
 
-浏览器测试是可选开发工具，需要 Python Playwright 和已安装的 Chromium；生产运行不需要。它启动隔离的本机测试服务，使用生成的图片和三角形 GLB，检查三维渲染、布局、配置持久化、演示、图片分析、形象替换、SSE 与断线重连，并检查详细版四方向、GLB 导出再导入、简版切换。截图、测试配置和回执留在 `.local-deploy/presence-qa/`，不提交；可用 `--out .local-deploy/presence-qa-v2` 指定本轮证据目录。结果与实机待办见 [验收记录](../docs/presence/ACCEPTANCE_ZH.md)。
+浏览器测试是可选开发工具，需要 Python Playwright 和已安装的 Chromium；生产运行不需要。它启动隔离本机服务，检查两种详细模型四方向、材质版导出字节一致、署名与切换保存、程序版导出再导入，以及既有布局/图片分析/SSE 等交互；同时检查贴图/WebGL/CSP控制台错误。使用 `--out .local-deploy/presence-qa-v3` 保存本轮截图、测试配置和回执，不提交。结果与实机待办见[验收记录](../docs/presence/ACCEPTANCE_ZH.md)。

@@ -294,8 +294,9 @@ function readSettings() {
   for (const key of ['name','subtitle','greeting','persona','accent']) value[key] = $('setting-' + key).value;
   value.name = value.name.trim();
   const kind = $('setting-avatar').value;
-  if (kind !== 'procedural-moss' && (!avatarDraft.asset_id || avatarDraft.kind !== kind)) throw new Error('请先导入与所选类型匹配的形象文件');
-  value.avatar = {kind, detail: $('setting-detail').value, asset_id: kind === 'procedural-moss' ? null : avatarDraft.asset_id, credit: $('setting-credit').value};
+  const imported = kind === 'glb' || kind === 'image';
+  if (imported && (!avatarDraft.asset_id || avatarDraft.kind !== kind)) throw new Error('请先导入与所选类型匹配的形象文件');
+  value.avatar = {kind, detail: $('setting-detail').value, asset_id: imported ? avatarDraft.asset_id : null, credit: $('setting-credit').value};
   value.layout.split = Number($('setting-split').value) / 100;
   value.layout.animate = $('setting-animate').checked;
   value.layout.log_open = profile.layout.log_open;

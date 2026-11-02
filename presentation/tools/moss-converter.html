@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><script type="importmap">{"imports":{"three":"./tooling/three/build/three.module.js"}}</script><style>html,body{margin:0;background:#142025}canvas{display:block}</style></head><body><script type="module">
+import * as THREE from 'three';
+import {FBXLoader} from './tooling/three/examples/jsm/loaders/FBXLoader.js';
+import {GLTFExporter} from './tooling/three/examples/jsm/exporters/GLTFExporter.js';
+try {
+const manager=new THREE.LoadingManager();
+manager.setURLModifier(()=> 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==');
+const input=await (await fetch('./original/source/moss.fbx')).arrayBuffer();
+const model=new FBXLoader(manager).parse(input,'./original/');
+const config=await (await fetch('./prepared/textures.json')).json();
+const loader=new THREE.TextureLoader();
+async function texture(file,color=false){
+ const t=await loader.loadAsync('./prepared/'+file);t.colorSpace=color?THREE.SRGBColorSpace:THREE.NoColorSpace;t.anisotropy=4;return t;
+}
+const materials={};
+for(const [name,maps] of Object.entries(config)){
+ const material=new THREE.MeshStandardMaterial({name,color:'#ffffff',roughness:1,metalness:1});
+ material.map=await texture(maps.base,true);
+ const orm=await texture(maps.orm);material.aoMap=orm;material.roughnessMap=orm;material.metalnessMap=orm;
+ if(maps.normal)material.normalMap=await texture(maps.normal);
+ if(maps.emissive){material.emissiveMap=await texture(maps.emissive,true);material.emissive.set('#ffffff');material.emissiveIntensity=name==='Moss_Main'?4.0:2.0;}
+ if(maps.transparent){material.transparent=true;material.depthWrite=false;}
+ materials[name]=material;
+}
+model.updateMatrixWorld(true);
+const flat=new THREE.Group();flat.name='The Wandering Earth - Moss 550W / Jom';
+const stats={triangles:0,meshes:0,materials:[]};
+model.traverse(n=>{if(n.isMesh){
+ const geometry=n.geometry.clone();geometry.applyMatrix4(n.matrixWorld);
+ const material=materials[n.material.name];if(!material)throw new Error('Unknown material '+n.material.name);
+ const mesh=new THREE.Mesh(geometry,material);mesh.name=n.name;mesh.castShadow=!material.transparent;mesh.receiveShadow=true;
+ flat.add(mesh);stats.triangles+=(geometry.index?.count||geometry.attributes.position.count)/3;stats.meshes++;
+}});
+const bounds=new THREE.Box3().setFromObject(flat),center=bounds.getCenter(new THREE.Vector3()),size=bounds.getSize(new THREE.Vector3());
+flat.traverse(n=>{if(n.isMesh)n.geometry.translate(-center.x,-center.y,-center.z).scale(3.15/size.y,3.15/size.y,3.15/size.y);});
+flat.userData={title:'The Wandering Earth - Moss 550W',author:'Jom',source:'https://sketchfab.com/3d-models/the-wandering-earth-moss-550w-1f5fa5ff14514bfe89c6e2cf931d5dca',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/',modifications:'FBX converted to GLB; PBR materials rebuilt from supplied textures; maps resized, ORM packed, normals renormalized; geometry transforms baked and bounds centered. No mesh simplification.'};
+const scene=new THREE.Scene();
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});renderer.setSize(1260,964);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;
+document.body.append(renderer.domElement);
+const camera=new THREE.PerspectiveCamera(31,1260/964,.1,50);camera.position.set(0,0,7);camera.lookAt(0,0,0);
+scene.add(new THREE.HemisphereLight('#e2edf0','#354342',2.2));
+for(const [color,power,position] of [['#edece1',3.5,[-3,4,5]],['#a6c5db',2.5,[4,1,-3]]]){const l=new THREE.DirectionalLight(color,power);l.position.set(...position);scene.add(l);}
+const pivot=new THREE.Group();pivot.rotation.set(4*Math.PI/180,-25*Math.PI/180,0);pivot.add(flat);scene.add(pivot);
+window.setView=(yaw,pitch=0)=>{pivot.rotation.set(pitch*Math.PI/180,yaw*Math.PI/180,0);renderer.render(scene,camera);};
+window.setView(-25,4);
+window.exportModel=async()=>{
+ const data=await new GLTFExporter().parseAsync(flat,{binary:true,maxTextureSize:2048});
+ const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([data],{type:'model/gltf-binary'}));link.download='moss-550w-jom.glb';link.click();
+};
+stats.bounds=size.toArray();stats.materials=Object.keys(materials);stats.ready=true;window.report=stats;
+}catch(e){window.report={error:e.stack};}
+</script></body></html>

@@ -62,12 +62,14 @@ def test_corrupt_configuration_is_preserved_and_reported(tmp_path):
 def test_legacy_profile_reads_detailed_default_and_preserves_file_until_user_saves(tmp_path):
     from presentation.state import Profile
     legacy=Profile().model_dump()
+    legacy['avatar']['kind']='procedural-moss'
     legacy['avatar'].pop('detail')
     path=tmp_path/'profile.json'
     original=json.dumps(legacy)
     path.write_text(original,encoding='utf-8')
     with TestClient(create_app(tmp_path)) as client:
         profile=client.get('/api/presence/config').json()
+        assert profile['avatar']['kind']=='procedural-moss'
         assert profile['avatar']['detail']=='detailed'
         assert path.read_text(encoding='utf-8')==original
         profile['avatar']['detail']='simple'

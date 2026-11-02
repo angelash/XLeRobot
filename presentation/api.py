@@ -232,7 +232,8 @@ def install(app, *, data_dir=DEFAULT_DATA, onboard_url=None, controller_url=None
     async def page():
         return FileResponse(ROOT / 'static/index.html', headers={
             'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'"})
+            # GLTFLoader's ImageBitmapLoader fetches embedded images as blob URLs.
+            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'"})
 
     @app.get('/presence', include_in_schema=False)
     async def page_redirect():

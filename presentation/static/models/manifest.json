@@ -1,0 +1,21 @@
+{
+  "file": "moss-550w-jom.glb",
+  "title": "The Wandering Earth - Moss 550W",
+  "author": "Jom",
+  "source": "https://sketchfab.com/3d-models/the-wandering-earth-moss-550w-1f5fa5ff14514bfe89c6e2cf931d5dca",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "source_archive": "the-wandering-earth-moss-550w.zip",
+  "source_bytes": 140540355,
+  "source_sha256": "e57012024b29621e26268d5b0afb52a873af05f3ee17181687c09d03b8eda804",
+  "source_files": 23,
+  "bytes": 14645948,
+  "sha256": "a101d33e48898c2dddcf1a1b08c049c38c583794be9bfe6e3179d9e4cea6de06",
+  "triangles": 32982,
+  "meshes": 4,
+  "textures": 13,
+  "texture_max_edge": 2048,
+  "mesh_simplification": false,
+  "recipe": "python -m presentation.prepare_moss --archive PATH --work-dir .local-deploy/moss-user-asset --output presentation/static/models/moss-550w-jom.glb",
+  "attribution": "ATTRIBUTION.md"
+}

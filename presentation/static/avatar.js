@@ -3,14 +3,18 @@ import {GLTFLoader} from './vendor/addons/loaders/GLTFLoader.js';
 import {makeDetailedMoss} from './moss-detailed.js';
 
 function disposeObject(object) {
+  const materials = new Set(), textures = new Set(), images = new Set();
   object?.traverse(node => {
     node.geometry?.dispose();
     for (const material of (Array.isArray(node.material) ? node.material : [node.material])) {
       if (!material) continue;
-      for (const value of Object.values(material)) if (value?.isTexture) value.dispose();
-      material.dispose();
+      materials.add(material);
+      for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
     }
   });
+  for (const texture of textures) {if (texture.image?.close) images.add(texture.image); texture.dispose();}
+  for (const image of images) image.close();
+  for (const material of materials) material.dispose();
 }
 
 function roundedBox(w, h, depth, radius = .08) {
@@ -147,7 +151,8 @@ export class AvatarView {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = profile.avatar.kind === 'procedural-moss' && profile.avatar.detail !== 'simple' ? 1.0 : 1.3;
+      renderer.toneMappingExposure = profile.avatar.kind === 'licensed-moss' ||
+        (profile.avatar.kind === 'procedural-moss' && profile.avatar.detail !== 'simple') ? 1.0 : 1.3;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       this.renderer = renderer;
@@ -167,25 +172,31 @@ export class AvatarView {
       floor.rotation.x = -Math.PI / 2; floor.position.y = -1.78; floor.receiveShadow = true; scene.add(floor);
       const pivot = new THREE.Group(); this.pivot = pivot; scene.add(pivot);
       let object;
-      if (profile.avatar.kind === 'glb') {
-        object = (await new GLTFLoader().loadAsync(`/api/presence/media/${profile.avatar.asset_id}`)).scene;
+      if (profile.avatar.kind === 'glb' || profile.avatar.kind === 'licensed-moss') {
+        const licensed = profile.avatar.kind === 'licensed-moss';
+        object = (await new GLTFLoader().loadAsync(licensed ? '/presence/assets/models/moss-550w-jom.glb' : `/api/presence/media/${profile.avatar.asset_id}`)).scene;
         if (generation !== this.generation) {disposeObject(object); return;}
         const box = new THREE.Box3().setFromObject(object);
         const size = box.getSize(new THREE.Vector3());
         const max = Math.max(size.x, size.y, size.z);
         if (!Number.isFinite(max) || max <= 0) throw new Error('模型没有可显示的几何体');
         const center = box.getCenter(new THREE.Vector3());
-        object.position.sub(center); object.scale.multiplyScalar(2.7 / max);
+        const scale = (licensed ? 3.15 : 2.7) / max;
+        object.position.sub(center); object.scale.multiplyScalar(scale);
         // Position must use the same scale as the geometry.
-        object.position.multiplyScalar(2.7 / max);
-        object.traverse(node => {if (node.isMesh) {node.castShadow = true; node.receiveShadow = true;}});
+        object.position.multiplyScalar(scale);
+        object.traverse(node => {if (node.isMesh) {
+          node.castShadow = !node.material?.transparent; node.receiveShadow = true;
+          if (licensed && node.material?.emissiveMap) this.pulseMaterials.push([node.material, node.material.emissiveIntensity]);
+        }});
       } else object = profile.avatar.detail === 'simple' ? makeSimpleMoss(profile.accent) : makeDetailedMoss(profile.accent);
       pivot.add(object); this.object = object;
       pivot.rotation.set(.035, -.24, -.045);
       this.fallback.hidden = true;
       const detailed = profile.avatar.kind === 'procedural-moss' && profile.avatar.detail !== 'simple';
-      this.report(profile.avatar.credit || (profile.avatar.kind === 'glb' ? '自定义三维形象' : detailed ? 'MOSS · 550W 详细版' : 'MOSS · 简版'),
-        profile.avatar.kind === 'glb' ? 'CUSTOM GLB' : detailed ? 'DETAILED 3D' : 'PROCEDURAL 3D');
+      const licensed = profile.avatar.kind === 'licensed-moss';
+      this.report(licensed ? `MOSS · Jom / CC BY 4.0${profile.avatar.credit ? ' · '+profile.avatar.credit : ''}` : profile.avatar.credit || (profile.avatar.kind === 'glb' ? '自定义三维形象' : detailed ? 'MOSS · 550W 详细版' : 'MOSS · 简版'),
+        licensed ? 'MOSS 3D' : profile.avatar.kind === 'glb' ? 'CUSTOM GLB' : detailed ? 'DETAILED 3D' : 'PROCEDURAL 3D');
       this.resize();
     } catch (error) {
       if (generation !== this.generation) return;
@@ -221,6 +232,7 @@ export class AvatarView {
         this.pivot.rotation.x += (pitch - this.pivot.rotation.x) * .06;
         this.pivot.position.y = moving ? Math.sin(time / 2400) * .012 : 0;
         if (this.object?.userData.glow) this.object.userData.glow.emissiveIntensity = this.state === 'working' && moving ? 1.6 + Math.sin(time / 600) * .35 : 1.7;
+        for (const [material, intensity] of this.pulseMaterials) material.emissiveIntensity = intensity * (this.state === 'working' && moving ? 1 + Math.sin(time / 600) * .12 : 1);
         const joint = this.object?.userData.pitchJoint;
         if (joint) {
           const pitchTarget = moving ? (this.state === 'working' ? .06 : 0) + this.target.y * .4 : 0;
@@ -233,7 +245,7 @@ export class AvatarView {
   }
   clearScene() {
     cancelAnimationFrame(this.frame);
-    disposeObject(this.scene); this.scene = null; this.pivot = null; this.object = null;
+    disposeObject(this.scene); this.scene = null; this.pivot = null; this.object = null; this.pulseMaterials = [];
     this.renderer?.dispose(); this.renderer?.domElement.remove(); this.renderer = null;
     this.image?.remove(); this.image = null; this.lastDraw = 0;
   }

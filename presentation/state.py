@@ -33,14 +33,14 @@ class Contract(BaseModel):
 
 
 class Avatar(Contract):
-    kind: Literal['procedural-moss', 'glb', 'image'] = 'procedural-moss'
+    kind: Literal['licensed-moss', 'procedural-moss', 'glb', 'image'] = 'licensed-moss'
     detail: Literal['detailed', 'simple'] = 'detailed'
     asset_id: str | None = Field(None, pattern=r'^[a-f0-9]{32}\.(png|glb)$')
     credit: str = Field('', max_length=500)
 
     @model_validator(mode='after')
     def check_asset(self):
-        if self.kind != 'procedural-moss':
+        if self.kind in ('glb', 'image'):
             suffix = '.glb' if self.kind == 'glb' else '.png'
             if not self.asset_id or not self.asset_id.endswith(suffix):
                 raise ValueError('形象类型与资源格式不一致')
@@ -184,7 +184,7 @@ class Store:
 
     def save(self, profile):
         with self.lock:
-            if profile.avatar.kind != 'procedural-moss':
+            if profile.avatar.kind in ('glb', 'image'):
                 self.asset(profile.avatar.asset_id)
             self.root.mkdir(parents=True, exist_ok=True)
             path = self.root / 'profile.json'

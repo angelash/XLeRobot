@@ -63,7 +63,7 @@ def main():
         with urlopen(url+'/api/presence/config') as response:
             profile=json.load(response)
         profile.update(name='MOSS',subtitle='550W · 机器人智能终端')
-        profile['avatar']={'kind':'procedural-moss','asset_id':None,'credit':''}
+        profile['avatar']={'kind':'licensed-moss','asset_id':None,'credit':''}
         profile['layout']={'log_open':True,'split':.58,'animate':True}
         with urlopen(Request(url+'/api/presence/config', data=json.dumps(profile).encode(),method='PUT',headers={'Content-Type':'application/json'})) as response:
             assert response.status==200
@@ -82,12 +82,17 @@ def main():
             page=browser.new_page(viewport={'width':1366,'height':768},device_scale_factor=1)
             page.emulate_media(reduced_motion='reduce')
             errors=[]; page.on('pageerror',lambda error:errors.append(str(error)))
+            def rendering_console(message):
+                if message.type=='error' and any(fragment in message.text for fragment in ['GLTFLoader','Content Security Policy','WebGL']):
+                    errors.append(message.text)
+            page.on('console',rendering_console)
             external=[]; page.on('request',lambda request:external.append(request.url) if request.url.startswith(('http:','https:')) and not request.url.startswith(url) else None)
             page.goto(url+'/presence/',wait_until='domcontentloaded')
             expect(page.locator('#avatar-host canvas')).to_be_visible()
             expect(page.locator('#avatar-fallback')).to_be_hidden()
             page.wait_for_timeout(1100)
-            assert page.locator('#model-type').inner_text()=='DETAILED 3D'
+            expect(page.locator('#model-type')).to_have_text('MOSS 3D',timeout=30000)
+            expect(page.locator('#renderer-note')).to_contain_text('Jom / CC BY 4.0')
             print('Default 3D renderer loaded',flush=True)
             page.screenshot(path=str(output/'01-default-1366.png'))
             page.locator('#process-toggle').click()
@@ -158,9 +163,24 @@ def main():
 
             inspector=browser.new_page(viewport={'width':1600,'height':1100},device_scale_factor=1)
             inspector.on('pageerror',lambda error:errors.append(str(error)))
+            inspector.on('console',rendering_console)
             inspector.on('request',lambda request:external.append(request.url) if request.url.startswith(('http:','https:')) and not request.url.startswith(url) else None)
             inspector.goto(url+'/presence/assets/model-inspector.html',wait_until='domcontentloaded')
             expect(inspector.locator('#inspection-canvas canvas')).to_be_visible()
+            expect(inspector.locator('#model-label')).to_have_text('550W / JOM',timeout=30000)
+            expect(inspector.locator('#triangle-count')).to_have_text('32,982')
+            assert inspector.locator('#mesh-count').text_content()=='4'
+            for direction in ['front','quarter','side','rear']:
+                inspector.locator('[data-view="'+direction+'"]').click()
+                inspector.wait_for_timeout(180)
+                inspector.locator('#inspection-canvas').screenshot(path=str(output/f'jom-{direction}.png'))
+            inspector.locator('[data-view="quarter"]').click()
+            with inspector.expect_download(timeout=30000) as download_info:
+                inspector.locator('#export-model').click()
+            licensed_export=output/'moss-550w-jom.glb';download_info.value.save_as(str(licensed_export))
+            assert licensed_export.read_bytes()==(REPO/'presentation/static/models/moss-550w-jom.glb').read_bytes()
+            inspector.screenshot(path=str(output/'jom-inspector.png'))
+            inspector.locator('#inspector-variant').select_option('detailed')
             expect(inspector.locator('#model-label')).to_have_text('550W / DETAILED')
             expect(inspector.locator('#triangle-count')).to_have_text(re.compile(r'[\d,]+'))
             triangles=int(inspector.locator('#triangle-count').text_content().replace(',',''))
@@ -194,6 +214,9 @@ def main():
             inspector.locator('#inspector-variant').select_option('detailed')
             expect(inspector.locator('#model-label')).to_have_text('550W / DETAILED')
             inspector.screenshot(path=str(output/'moss-inspector.png'))
+            page.locator('#settings-open').click();page.locator('#setting-avatar').select_option('licensed-moss')
+            page.locator('#save-settings').click();expect(page.locator('#model-type')).to_have_text('MOSS 3D',timeout=30000)
+            page.reload(wait_until='domcontentloaded');expect(page.locator('#model-type')).to_have_text('MOSS 3D',timeout=30000)
             print(f'Detailed MOSS views, GLB roundtrip, legacy selection PASS: {triangles} triangles / {meshes} meshes',flush=True)
             assert not errors,errors
             assert not external,external
@@ -202,7 +225,9 @@ def main():
             'checks':['WebGL3D','centered-collapse','keyboard-toggle','profile-persistence','demo-frame-overlays','filter',
                       'responsive-no-horizontal-overflow','frame-zoom','real-generated-image-analysis','GLB-import','image-avatar',
                       'SSE-public-text-no-HTML','network-reconnect','offline-local-assets','reduced-motion-resize-renders',
-                      'four-detailed-model-views','detailed-GLB-export-import','legacy-detail-selector'],
+                      'four-detailed-model-views','detailed-GLB-export-import','legacy-detail-selector',
+                      'licensed-four-views','licensed-exact-GLB-export','licensed-selection-persistence','visible-author-credit'],
+            'licensed_model':{'triangles':32982,'meshes':4,'glb_bytes':licensed_export.stat().st_size},
             'model':{'triangles':triangles,'meshes':meshes,'glb_bytes':exported.stat().st_size},
             'page_errors':errors,'external_requests':external},ensure_ascii=False,indent=2),encoding='utf-8')
         print('Presence browser verification PASS; evidence: '+str(output))
