@@ -878,3 +878,4 @@ status: active
 - **发布与保留**：车载运行目录更新39个展示文件并逐文件SHA核对；沿用8770 Studio，不新增日常端口或启动任务。名称、人设、布局、地图和复核数据保留。备份在车载`.local-deploy/moss-presence-20261102-134714`，工作端回执在`.local-deploy/moss-studio-20261102/`；转换和对比证据在`.local-deploy/moss-user-asset/`、`.local-deploy/presence-qa-v3/`。完整归档`docs/presence/MOSS_JOM_ADOPTION_ZH.md`。
 - **失败与恢复**：首次车载测试因运行目录缺`deployment.onboard`失败，保留回执并恢复原文件，随后复用完整源码目录的测试路径通过。直接由SSH启动Studio未在SSH结束后存活，通过现有`XLeRobot-Boot`任务恢复，SSH退出后的HTTP与浏览器再次验证通过。前后8765所有者PID8708保持，未重启电机控制进程、变更驱动权限或发送运动指令。新经验只追加待审核L-024，未改已审核控制规范。
 - **验收边界**：浏览器在工作端运行，不能代表车载MX250帧率/温升；模型无骨骼动画，当前微动为整体展示动画。真实语义视频分析、语音及统一人设待办沿用首版记录。运行服务已发布与完整源码Git同步分别验收，后者在提交推送后核对。
+- **提交/源码同步补充（系统核验）**：资产与代码提交`5b3e7338d2ff62e781815614bc00d0d8c16db204`已推送，工作端HEAD、origin/main与远端查询SHA一致。笔记本完整源码`D:\Robot\Workspace\XLeRobot`同步到该提交，24个变更文件经Git规范化内容逐个核对，工作区干净，模型SHA与运行服务一致；源码同步与运行服务发布分别验证，私有回执`moss-studio-20261102/source-sync.stdout.txt`。
