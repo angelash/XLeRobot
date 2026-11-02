@@ -24,7 +24,7 @@ def floor_px(x, y):
     return p[:2]/p[2]
 
 
-def scene(obstacle=(0.8, 0.0), seed=1, gripper=True):
+def scene(obstacle=(0.8, 0.0), seed=1, gripper=True, color=(40, 50, 70), side=None):
     rng = np.random.default_rng(seed)
     bird = np.zeros((600, 600, 3), np.uint8)
     for r in range(0, 600, 50):
@@ -37,7 +37,11 @@ def scene(obstacle=(0.8, 0.0), seed=1, gripper=True):
         x, y = obstacle
         a, b = floor_px(x, y-0.12), floor_px(x, y+0.12)
         box = np.array([a, b, b-[0, 110], a-[0, 110]], np.int32)
-        cv2.fillPoly(image, [box], (40, 50, 70))
+        cv2.fillPoly(image, [box], color)
+    if side:
+        # A white cabinet beside the corridor, low in the view.
+        quad = np.array([floor_px(0.12, side), floor_px(0.35, side), floor_px(0.35, side+0.3), floor_px(0.12, side+0.3)], np.int32)
+        cv2.fillPoly(image, [quad], (225, 225, 225))
     if gripper:
         cv2.fillPoly(image, [np.array([[0, 340], [150, 340], [190, 480], [0, 480]], np.int32)], (245, 245, 245))
     return image
@@ -68,6 +72,17 @@ def test_side_obstacle_and_self_mask_do_not_block_corridor():
     unmasked = {**DEFAULT_CONFIG, 'self_mask': []}
     blocked, _ = analyse(scene(obstacle=None), model, unmasked, calib)
     assert blocked['clear_m'] is None or blocked['clear_m'] < 0.3, 'an unmasked gripper must look like an obstacle'
+
+
+def test_floor_is_learned_only_ahead_so_side_furniture_stays_an_obstacle():
+    mask = polygon_mask(DEFAULT_CONFIG['self_mask'])
+    learn = cv2.cvtColor(cv2.resize(scene(obstacle=None, side=0.32), WORK, interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2HSV)
+    model = FloorModel()
+    model.learn(learn, near_region(DEFAULT_CONFIG, mask))
+    model.learn(learn, near_region(DEFAULT_CONFIG, mask, Calibration(I2F)))
+    white_ahead = scene(obstacle=(0.8, 0.0), color=(225, 225, 225))
+    result, _ = analyse(white_ahead, model, DEFAULT_CONFIG, Calibration(I2F))
+    assert result['valid'] and result['clear_m'] == pytest.approx(0.8, abs=0.06)
 
 
 def test_uncalibrated_or_unlearned_floor_is_never_metric():

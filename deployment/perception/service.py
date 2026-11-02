@@ -279,7 +279,7 @@ class PerceptionService:
             raise ValueError('需要正在运行且1秒内的头部画面')
         bgr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_REDUCED_COLOR_2)
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-        self.model.learn(hsv, near_region(self.config, self.self_mask))
+        self.model.learn(hsv, near_region(self.config, self.self_mask, self._calibration()))
         self._write('floor-model.json', {**self.model.to_json(), 'updated_at': time.strftime('%Y-%m-%dT%H:%M:%S%z')})
         return {'samples': self.model.samples, 'ready': self.model.ready}
 

@@ -25,6 +25,10 @@ DEFAULT_CONFIG = {
     # Normalised polygons of the robot's own grippers/arms in the head view.
     'self_mask': [[[0.0, 0.70], [0.27, 0.70], [0.31, 1.0], [0.0, 1.0]], [[0.79, 0.68], [1.0, 0.68], [1.0, 1.0], [0.76, 1.0]]],
     'near_region_top': 0.58,
+    # Floor is learned only straight ahead of the robot: full-width bands pick up
+    # desks and cabinets at the sides (seen on real office frames, 2026-11-03).
+    'learn_region': [[0.34, 0.6], [0.66, 0.6], [0.72, 1.0], [0.28, 1.0]],
+    'learn_distance_m': 0.6,
     'roi_top': 0.38,
     'column_px': 4,
     'min_run_px': 5,
@@ -111,9 +115,17 @@ class FloorModel:
         return cls(np.array(data['hist'], np.float32), data.get('samples', 0))
 
 
-def near_region(config, self_mask):
-    region = np.zeros((WORK[1], WORK[0]), np.uint8)
-    region[int(config['near_region_top']*WORK[1]):, :] = 255
+def near_region(config, self_mask, calibration=None):
+    """Pixels used to learn floor appearance: the corridor straight ahead."""
+    if calibration is not None:
+        hw = config['corridor_half_width_m']
+        corners = [[0.08, hw], [config['learn_distance_m'], hw], [config['learn_distance_m'], -hw], [0.08, -hw]]
+        pts = calibration.to_image(corners)*(WORK[0]/CALIB[0])
+        region = np.zeros((WORK[1], WORK[0]), np.uint8)
+        if np.isfinite(pts).all():
+            cv2.fillPoly(region, [pts.astype(np.int32)], 255)
+    else:
+        region = polygon_mask([config['learn_region']])
     region[self_mask > 0] = 0
     return region
 
