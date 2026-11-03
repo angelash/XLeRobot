@@ -22,6 +22,8 @@ WORKER_ONLY = {
                  'note': '需要工作端运行OpenAI兼容服务（如Ollama、llama.cpp）'},
     'vision.hand_eye': {'title': '手眼标定（Tsai）', 'tier': 'worker',
                         'note': '车载OpenCV 5.0缺少calibrateHandEye'},
+    'vision.find_by_example': {'title': '以图找物（OWL-ViT，抓取知识库模板）', 'tier': 'worker',
+                               'note': '工作端CPU约1–2秒/帧；模型须在本地目录，未下载不注册'},
 }
 TIERS = {'laptop': '笔记本可做', 'either': '优先工作端，可回退笔记本', 'worker': '仅工作端'}
 

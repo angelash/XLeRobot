@@ -387,7 +387,7 @@ def test_service_learns_after_a_large_model_box_and_then_selects_locally(service
     out = service._learn('pick-place', {'ok': True, 'steps': 30}, 42.0)
     assert out['learned']['templates'] == 1 and out['llm_calls'] == 1
     found = service.locate('plug')
-    assert found['located']['ok'] and service.selection['source'] == 'local:plug'
+    assert found['located']['ok'] and service.selection['source'] == 'local:template:plug'
     assert service.status()['knowledge']['objects']['plug']['by_source']['llm']['successes'] == 1
 
 
@@ -409,4 +409,46 @@ def test_http_executor_speaks_the_controller_contract_for_arm_and_chassis():
     with pytest.raises(Exception, match='只接受后退'):
         ex.base(0.05, AUTH)
     assert seen[1] == ('/api/servo/base', {'session_id': 'abc', 'distance_m': -0.05, 'authorization': AUTH, 'label': '后退'})
+
+
+def test_local_find_prefers_the_workstation_model_and_falls_back(service):
+    service.start_cameras()
+    box = [round(v) for v in service.world.bbox()]
+    service.select(box)
+    service.run_meta = {'object': 'plug', 'llm_calls': 1, 'agreement': None, 'selection': dict(service.selection)}
+    from deployment.grasp.service import RunRecorder
+    service.recorder = RunRecorder(service.root/'runs', service, 'pick-place')
+    service._learn('pick-place', {'ok': True, 'steps': 30}, 40.0)
+
+    class Fabric:
+        def __init__(self, result=None, error=None):
+            self.result, self.error, self.calls = result, error, []
+        def submit(self, capability, payload, route='auto', deadline_s=30, source='api'):
+            self.calls.append((capability, route, len(payload['queries_b64'])))
+            if self.error:
+                raise ValueError(self.error)
+            return {'id': 'j1', 'status': 'done', 'result': self.result, 'node': 'ws', 'total_ms': 1400}
+        def wait(self, job_id, wait_s):
+            raise AssertionError('already final')
+    fabric = Fabric({'ok': True, 'score': 0.83, 'bbox': [box[0] + 2, box[1], box[2], box[3]], 'query': 0, 'ms': 1300})
+    service.fabric_provider = lambda: fabric
+    found = service.locate('plug')
+    assert fabric.calls == [('vision.find_by_example', 'worker_only', 1)]
+    assert found['located']['finder'] == 'owlvit' and service.selection['source'] == 'local:owlvit:plug'
+    fabric = Fabric({'ok': False, 'score': 0.21, 'bbox': [10, 10, 40, 40], 'query': 0, 'ms': 1300})
+    service.fabric_provider = lambda: fabric
+    with pytest.raises(ValueError, match='owlvit最高分0.21'):
+        service.locate('plug')
+    service.fabric_provider = lambda: Fabric(error='没有在线的工作端节点提供vision.find_by_example')
+    found = service.locate('plug')                      # model unavailable: the classical matcher on the same scene
+    assert found['located']['finder'] == 'template' and 'model_error' in found['located']
+
+
+def test_example_finder_and_worker_register_only_with_a_model(tmp_path):
+    from deployment.grasp.example_finder import ExampleFinder, in_jaws
+    from deployment.autonomy.worker import Providers
+    assert not ExampleFinder(tmp_path).available()
+    assert in_jaws([200, 380, 40, 40]) and not in_jaws([380, 150, 120, 100])
+    p = Providers(None, 'tiny-not-cached', owl_model=str(tmp_path))
+    assert 'vision.find_by_example' not in p.available and p.details['vision.find_by_example']['available'] is False
 

@@ -18,8 +18,8 @@ STATIC = Path(__file__).with_name('static')
 CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
 
 
-def install(app, *, data_dir, allowed_origins=None, controller='http://127.0.0.1:8765', service=None):
-    service = service or GraspService(data_dir, controller)
+def install(app, *, data_dir, allowed_origins=None, controller='http://127.0.0.1:8765', service=None, fabric_provider=None):
+    service = service or GraspService(data_dir, controller, fabric_provider=fabric_provider)
     app.state.grasp = service
     router = APIRouter(prefix=API)
     streams = {'open': 0}

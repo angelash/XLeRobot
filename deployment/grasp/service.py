@@ -217,7 +217,8 @@ class RunRecorder:
 
 
 class GraspService:
-    def __init__(self, data_dir, controller='http://127.0.0.1:8765', executor=None, feeds=None, clock=time.monotonic):
+    def __init__(self, data_dir, controller='http://127.0.0.1:8765', executor=None, feeds=None, clock=time.monotonic,
+                 fabric_provider=None):
         self.root = Path(data_dir)
         self.root.mkdir(parents=True, exist_ok=True)
         (self.root/'runs').mkdir(exist_ok=True)
@@ -244,6 +245,7 @@ class GraspService:
         self.timings = []
         self.knowledge = Knowledge(self.root/'knowledge')
         self.selection = None
+        self.fabric_provider = fabric_provider
 
     def _read(self, name, default):
         try:
@@ -337,15 +339,48 @@ class GraspService:
         return {'selected': state, 'source': self.selection['source']}
 
     def locate(self, name=None, select=True):
-        """Local finder (v2 R6): stored templates instead of a large-model box."""
+        """Local finder (v2 R6): stored views instead of a large-model box. First the
+        workstation's image-guided detector through the compute fabric, then the
+        classical template matcher; either abstains below its score."""
         if not self.knowledge.data['objects']:
             raise ValueError('知识库还没有任何物体模板：先由大模型框选并成功抓取一次')
-        hit = self.knowledge.locate(self._fresh_gray(), name)
+        hit = self._locate_by_model(name)
+        if hit is None or (not hit['ok'] and hit.get('finder_error')):
+            classical = self.knowledge.locate(self._fresh_gray(), name)
+            classical['finder'] = 'template'
+            if hit is not None:
+                classical['model_error'] = hit.get('finder_error')
+            hit = classical
         if not hit['ok']:
-            raise ValueError(f'本地没有认出目标（最高分{hit["score"]}，阈值0.6），请交回大模型框选')
+            raise ValueError(f'本地没有认出目标（{hit.get("finder")}最高分{hit["score"]}），请交回大模型框选'
+                             + (f'；模型不可用：{hit["model_error"]}' if hit.get('model_error') else ''))
         if select:
-            self.select(hit['bbox'], source='local:' + hit['object'])
+            self.select(hit['bbox'], source=f'local:{hit.get("finder")}:{hit["object"]}')
         return {'located': hit}
+
+    def _locate_by_model(self, name):
+        fabric = self.fabric_provider() if self.fabric_provider else None
+        if fabric is None:
+            return None
+        import base64
+        obj_name = Knowledge.name(name) if name else next(iter(self.knowledge.data['objects']))
+        obj = self.knowledge.data['objects'].get(obj_name) or {}
+        files = [self.knowledge.root/'templates'/t['file'] for t in reversed(obj.get('templates', []))][:3]
+        frame = self.feeds[2].latest(max_age=1.0)
+        if frame is None:
+            raise ValueError('需要1秒内的腕部画面：先开启相机')
+        payload = {'image_b64': base64.b64encode(frame[0]).decode(),
+                   'queries_b64': [base64.b64encode(p.read_bytes()).decode() for p in files if p.is_file()]}
+        try:
+            job = fabric.submit('vision.find_by_example', payload, route='worker_only', deadline_s=25, source='grasp')
+            if job['status'] not in ('done', 'failed', 'expired'):
+                job = fabric.wait(job['id'], 25)
+        except (ValueError, KeyError) as exc:
+            return {'ok': False, 'score': None, 'finder': 'owlvit', 'finder_error': str(exc)[:120]}
+        result = job.get('result') if job.get('status') == 'done' else None
+        if not result:
+            return {'ok': False, 'score': None, 'finder': 'owlvit', 'finder_error': (job.get('error') or job.get('status') or '无结果')[:120]}
+        return {**result, 'object': obj_name, 'finder': 'owlvit', 'node': job.get('node'), 'total_ms': job.get('total_ms')}
 
     def propose(self):
         box = propose(self._fresh_gray())

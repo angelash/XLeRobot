@@ -28,6 +28,7 @@ from . import resources
 
 VERSION = 'autonomy-worker-1'
 DEFAULT_TOKEN = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'XLeRobotRemote'/'autonomy-token.txt'
+DEFAULT_OWL = Path(__file__).resolve().parents[2]/'.local-deploy'/'models'/'owlvit-base-patch32'
 # A missing cuDNN DLL aborts the whole process inside native code, so CUDA is
 # first proven in a disposable child process before this node relies on it.
 CUDA_PROBE = '''
@@ -43,8 +44,10 @@ print("cuda-ok")
 class Providers:
     """Optional workstation-only capabilities, enabled only when really available."""
 
-    def __init__(self, llm_url=None, whisper_model='small', allow_download=False, timeout=2.0, whisper_device='auto'):
+    def __init__(self, llm_url=None, whisper_model='small', allow_download=False, timeout=2.0, whisper_device='auto',
+                 owl_model=None):
         self.llm_url = llm_url.rstrip('/') if llm_url else None
+        self.owl_model = owl_model
         self.whisper_model_name = whisper_model
         self.allow_download = allow_download
         self.whisper_device_mode = whisper_device
@@ -60,6 +63,17 @@ class Providers:
         import cv2
         if hasattr(cv2, 'calibrateHandEye'):
             self.available['vision.hand_eye'] = self.hand_eye
+        if self.owl_model:
+            try:
+                from deployment.grasp.example_finder import ExampleFinder
+                finder = ExampleFinder(self.owl_model)
+                if finder.available():
+                    self.available['vision.find_by_example'] = finder.run_payload
+                    self.details['vision.find_by_example'] = {'model': finder.model_dir.name, 'device': 'cpu', 'loaded': 'on first job'}
+                else:
+                    self.details['vision.find_by_example'] = {'available': False, 'reason': '本地没有模型文件：' + str(self.owl_model)}
+            except Exception as exc:  # noqa: BLE001 - optional capability
+                self.details['vision.find_by_example'] = {'available': False, 'reason': f'{type(exc).__name__}: {exc}'[:200]}
         try:
             from faster_whisper.utils import download_model
             path = download_model(self.whisper_model_name, local_files_only=not self.allow_download)
@@ -289,6 +303,7 @@ def main(argv=None):
     parser.add_argument('--whisper-device', choices=('auto', 'cpu'), default='auto')
     parser.add_argument('--cuda-dll-dir', action='append', default=[], help='cuDNN/cuBLAS所在目录，可多次指定')
     parser.add_argument('--allow-model-download', action='store_true')
+    parser.add_argument('--owl-model', default=str(DEFAULT_OWL), help='以图找物模型目录（OWL-ViT，本地文件）；不存在时不注册')
     parser.add_argument('--duration', type=float, default=None, help='运行指定秒数后退出（测试用）')
     args = parser.parse_args(argv)
     for folder in args.cuda_dll_dir:
@@ -296,7 +311,8 @@ def main(argv=None):
         if hasattr(os, 'add_dll_directory'):
             os.add_dll_directory(folder)
     token = Path(args.token_file).read_text(encoding='ascii').strip()
-    providers = Providers(args.llm_url or None, args.whisper_model, args.allow_model_download, whisper_device=args.whisper_device)
+    providers = Providers(args.llm_url or None, args.whisper_model, args.allow_model_download, whisper_device=args.whisper_device,
+                          owl_model=args.owl_model or None)
     worker = Worker(args.server, token, args.node_id, platform.node(), providers, args.parallel,
                     log=lambda m: print(time.strftime('%H:%M:%S'), m, flush=True))
     print(json.dumps({'node_id': args.node_id, 'capabilities': worker.capabilities(), 'providers': providers.details},
