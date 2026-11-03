@@ -115,14 +115,14 @@ class CameraFeed:
 class HttpExecutor:
     """The controller's /api/servo contract; refusals surface as GraspFailure."""
     def __init__(self, controller, client=None):
-        self.base = controller
+        self.url = controller
         self.http = client or httpx.Client(trust_env=False, timeout=5)
         self.session_id = None
         self.active = False
 
     def _post(self, path, body, timeout=8.0):
         try:
-            r = self.http.post(self.base + path, json=body, timeout=timeout)
+            r = self.http.post(self.url + path, json=body, timeout=timeout)
         except httpx.HTTPError as exc:
             self.active = False
             raise GraspFailure('控制服务无响应：' + type(exc).__name__) from None
@@ -166,14 +166,14 @@ class HttpExecutor:
 
     def stop(self, reason='停止'):
         try:
-            self.http.post(self.base + '/api/servo/stop', json={'reason': reason}, timeout=4)
+            self.http.post(self.url + '/api/servo/stop', json={'reason': reason}, timeout=4)
         except httpx.HTTPError:
             pass
         self.active = False
 
     def status(self):
         try:
-            return self.http.get(self.base + '/api/servo/status', timeout=1.5).json()
+            return self.http.get(self.url + '/api/servo/status', timeout=1.5).json()
         except Exception as exc:  # noqa: BLE001
             return {'reachable': False, 'error': type(exc).__name__}
 

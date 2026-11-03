@@ -390,3 +390,23 @@ def test_service_learns_after_a_large_model_box_and_then_selects_locally(service
     assert found['located']['ok'] and service.selection['source'] == 'local:plug'
     assert service.status()['knowledge']['objects']['plug']['by_source']['llm']['successes'] == 1
 
+
+def test_http_executor_speaks_the_controller_contract_for_arm_and_chassis():
+    import httpx
+    from deployment.grasp.service import HttpExecutor
+    seen = []
+    def handler(request):
+        body = json.loads(request.content or b'{}')
+        seen.append((request.url.path, body))
+        if request.url.path == '/api/servo/session':
+            return httpx.Response(200, json={'session_id': 'abc'})
+        if request.url.path == '/api/servo/base' and body['distance_m'] > 0:
+            return httpx.Response(409, json={'detail': '底盘步骤只接受后退'})
+        return httpx.Response(200, json={'joints': {}, 'base': {'stopped_by': 'target'}})
+    ex = HttpExecutor('http://ctl', client=httpx.Client(transport=httpx.MockTransport(handler)))
+    ex.start('t')
+    assert ex.base(-0.05, AUTH, '后退')['base']['stopped_by'] == 'target'
+    with pytest.raises(Exception, match='只接受后退'):
+        ex.base(0.05, AUTH)
+    assert seen[1] == ('/api/servo/base', {'session_id': 'abc', 'distance_m': -0.05, 'authorization': AUTH, 'label': '后退'})
+
