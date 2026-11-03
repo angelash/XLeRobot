@@ -142,6 +142,7 @@ fabrication/assembly/debug_console/platform-data/
 fabrication/assembly/debug_console/platform.*.log
 fabrication/assembly/debug_console/platform.pid
 .local-deploy/
+.local-archive/
 
 # Portable exclusions formerly stored only in .git/info/exclude.
 # Original evidence stays local and is indexed by PROJECT_HANDOFF_ZH.md.
