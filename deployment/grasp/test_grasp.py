@@ -250,7 +250,14 @@ def test_service_validates_requests_and_records_keyframes(service):
     with pytest.raises(ValueError, match='不可修改'):
         service.update_config({'grip_empty': 1000})
     assert service.update_config({'desk_z': -7.5})['desk_z'] == -7.5
-    assert json.loads((service.root/'config.json').read_text(encoding='utf-8'))['desk_z'] == -7.5
+    assert json.loads((service.root/'config.json').read_text(encoding='utf-8')) == {'overrides': {'desk_z': -7.5}}
+    from deployment.grasp.service import GraspService
+    legacy = {**{k: DEFAULTS[k] for k in ('desk_z', 'insert_cm')}, 'survey_height': 6.0, 'clear_bottom': 335.0, 'approach_clearance': 2.0}
+    (service.root/'config.json').write_text(json.dumps(legacy), encoding='utf-8')
+    again = GraspService(service.root, executor=service.executor, feeds={})
+    assert again.config['survey_height'] == DEFAULTS['survey_height'] and again.config['clear_bottom'] == DEFAULTS['clear_bottom']
+    assert again.config['approach_clearance'] == 2.0, 'A real operator change in an old file is kept'
+    again.track_stop.set()
     from deployment.grasp.service import RunRecorder
     rec = RunRecorder(service.root/'runs', service, 'survey')
     rec.keyframe('start'); rec.event({'kind': 'x'}); rec.finish({'ok': True}, {'phase': 'done'})

@@ -24,6 +24,8 @@ from .vision import draw, propose
 
 FRAME_STALE_S = 1.5
 CAMERAS = (2, 1, 0)
+# Defaults of the first releases (464ffb9–eadd5b0), which saved every editable value.
+LEGACY_DEFAULTS = {'survey_height': 6.0, 'clear_bottom': 335.0}
 
 
 class CameraFeed:
@@ -215,8 +217,7 @@ class GraspService:
         self.clock = clock
         self.executor = executor or HttpExecutor(controller)
         self.feeds = feeds or {c: CameraFeed(c, controller, clock=clock) for c in CAMERAS}
-        saved = self._read('config.json', {})
-        self.config = {**DEFAULTS, **{k: v for k, v in saved.items() if k in EDITABLE or k == 'end_pose'}}
+        self.config = {**DEFAULTS, **self._load_overrides()}
         self.tracker = TemplateTracker()
         self.lock = threading.Lock()
         self.cond = threading.Condition()
@@ -396,6 +397,17 @@ class GraspService:
         self.executor.stop('页面点击立即停止')
         return self.status()
 
+    def _load_overrides(self):
+        """Only operator changes are kept, so a new default is not shadowed by an
+        old saved value. Files written before 2026-11-03 15:40 hold every editable
+        value; there an entry equal to that release's default is not a change."""
+        saved = self._read('config.json', {})
+        if isinstance(saved.get('overrides'), dict):
+            over = saved['overrides']
+        else:
+            over = {k: v for k, v in saved.items() if v != LEGACY_DEFAULTS.get(k, DEFAULTS.get(k))}
+        return {k: v for k, v in over.items() if k in EDITABLE or k == 'end_pose'}
+
     def update_config(self, changes):
         if not isinstance(changes, dict):
             raise ValueError('配置需为对象')
@@ -409,7 +421,8 @@ class GraspService:
             updated[key] = int(value) if isinstance(low, int) and isinstance(high, int) else float(value)
         self.config = updated
         tmp = self.root/'config.tmp'
-        tmp.write_text(json.dumps({k: v for k, v in updated.items() if k in EDITABLE}, ensure_ascii=False), encoding='utf-8')
+        overrides = {k: v for k, v in updated.items() if k in EDITABLE and v != DEFAULTS.get(k)}
+        tmp.write_text(json.dumps({'overrides': overrides}, ensure_ascii=False), encoding='utf-8')
         tmp.replace(self.root/'config.json')
         return {k: self.config[k] for k in EDITABLE}
 
