@@ -126,3 +126,37 @@ def test_the_controller_api(runtime, servo, monkeypatch):
     assert client.post('/api/agent/run', json={'steps': [{'op': 'wait'}], 'confirmed': True}).status_code == 409
     assert not client.post('/api/servo/stop', json={}).json()['active']
     assert client.post('/api/servo/end', json={'session_id': sid}).status_code == 409
+
+
+AUTH = '2026-11-03 用户：目前机器人向后移动10-20厘米完全没问题'
+
+
+def test_reverse_legs_stay_inside_the_user_budget_and_a_stall_is_a_contact(runtime, servo, tmp_path):
+    from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
+    sid = servo.start('让位', True)['session_id']
+    for bad, match in [(dict(distance_m=0.03, authorization=AUTH), '后退'), (dict(distance_m=-0.06, authorization=AUTH), '后退'),
+                       (dict(distance_m=-0.03, authorization='好'), '授权')]:
+        with pytest.raises(ValueError, match=match):
+            servo.base(sid, **bad)
+    moving_wheels(runtime)
+    entry = servo.base(sid, -0.05, AUTH)
+    assert entry['base']['stopped_by'] == 'target' and entry['contact'] is None
+    assert entry['base']['wheel_distance_m_estimate'] < 0 and entry['budget']['used_m'] == 0.05
+    assert servo.active, 'Arms stay held; the session continues'
+    for _ in range(3):
+        servo.base(sid, -0.05, AUTH)
+    with pytest.raises(ValueError, match='额度'):
+        servo.base(sid, -0.01, AUTH)
+    servo.end(sid)
+    again = ServoSession(runtime, tmp_path/'servo', watchdog=False)
+    assert again.reverse_budget(AUTH)['left_m'] == 0, 'The budget survives a restart'
+
+
+def test_a_blocked_reverse_leg_is_reported_as_base_contact(runtime, servo):
+    from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
+    moving_wheels(runtime, increment=20, cap=200)
+    sid = servo.start('让位', True)['session_id']
+    entry = servo.base(sid, -0.05, AUTH)
+    assert entry['base']['stopped_by'] == 'stall' and entry['contact']['joint'] == 'base'
+    assert servo.active and servo.snapshot()['contacts'][-1]['joint'] == 'base'
+

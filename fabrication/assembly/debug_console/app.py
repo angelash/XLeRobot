@@ -369,6 +369,14 @@ class ServoRefCommand(BaseModel):
     reason: str = '完成'
 
 
+class ServoBaseCommand(BaseModel):
+    session_id: str
+    distance_m: float
+    authorization: str
+    max_raw: int = 160
+    label: str = ''
+
+
 class ServoStopCommand(BaseModel):
     reason: str = '页面点击立即停止'
 
@@ -398,6 +406,19 @@ def servo_hold(payload: ServoRefCommand):
         return servo().hold(payload.session_id)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+@app.post('/api/servo/base')
+def servo_base(payload: ServoBaseCommand):
+    try:
+        return servo().base(payload.session_id, payload.distance_m, payload.authorization, payload.max_raw, payload.label)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.get('/api/servo/base-budget')
+def servo_base_budget(authorization: str):
+    return servo().reverse_budget(authorization)
 
 
 @app.post('/api/servo/end')

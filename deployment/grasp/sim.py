@@ -301,6 +301,30 @@ class SimExecutor:
         self._need()
         return {'active': True, 'joints': self.world.joints()}
 
+    def base(self, distance_m, authorization='', label=''):
+        """Reverse leg: the robot backs away, so the object ends up farther along +x."""
+        self._need()
+        if not -0.05 - 1e-9 <= distance_m <= -0.005:
+            raise ValueError('底盘步骤只接受后退0.5–5cm')
+        if len(str(authorization).strip()) < 8:
+            raise ValueError('后退需要附上用户授权原文')
+        self.reversed_m = getattr(self, 'reversed_m', 0.0) + abs(distance_m)
+        if self.reversed_m > 0.20 + 1e-9:
+            raise ValueError('本授权后退额度20cm已用完')
+        blocked = getattr(self.world, 'base_block_cm', None)
+        moved = abs(distance_m)*100 if blocked is None else min(abs(distance_m)*100, blocked)
+        if self.world.held is None:
+            start = self.world.obj.copy()
+            # the camera keeps streaming while the chassis backs off: the observer replays these positions
+            self.world.obj_path = [start + np.array([moved*k/12, 0.0, 0.0]) for k in range(1, 13)]
+            self.world.obj = start + np.array([moved, 0.0, 0.0])
+        contact = None if blocked is None or moved >= abs(distance_m)*100 else {'joint': 'base', 'reason': '仿真：底盘被挡住'}
+        entry = {'n': len(self.steps), 'label': label, 'base': {'requested_distance_m': distance_m,
+                 'wheel_distance_m_estimate': -moved/100, 'stopped_by': 'stall' if contact else 'target'},
+                 'contact': contact, 'joints': self.world.joints()}
+        self.steps.append(entry)
+        return entry
+
     def end(self, reason='完成'):
         if self.active:
             self.active, self.ended = False, reason
@@ -330,6 +354,14 @@ class SimObserver:
         return self.tracker.init(g, [x0, y0, min(WIDTH, x + w) - x0, min(HEIGHT, y + h) - y0])
 
     def observe(self, after=None, timeout=2.0):
+        moving = getattr(self.world, 'obj_path', None) or []
+        self.world.obj_path = []
+        final = self.world.obj.copy()
+        for o in moving[1::2] + moving[-1:]:
+            self.world.obj = o
+            self.tracker.update(self.gray())
+            self.frames += 1
+        self.world.obj = final
         path = self.world.trajectory or [self.world.q]
         self.world.trajectory = []
         state, g = None, None

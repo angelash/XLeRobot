@@ -8,7 +8,7 @@ from fabrication.assembly.debug_console.rotation_scan import bounded_travel
 from fabrication.assembly.debug_console.torque_control import word
 
 
-def moving_wheels(runtime,increment=40,uneven=False,wrong=False,coast=0):
+def moving_wheels(runtime,increment=40,uneven=False,wrong=False,coast=0,cap=None):
     p=runtime.session.ports['COM4'];original=p.write
     for i in (9,10):set_word(p.regs[i],56,4090)
     def write(packet):
@@ -17,6 +17,8 @@ def moving_wheels(runtime,increment=40,uneven=False,wrong=False,coast=0):
             sign=-1 if word(reg,46)&0x8000 else 1
             if wrong:sign=-sign
             delta=(increment*3 if uneven and i==10 else increment)*sign
+            if cap is not None and abs((word(reg,56)-4090+2048)%4096-2048)>=cap:
+                delta=0                        # blocked: the wheel no longer gains
             set_word(reg,56,(word(reg,56)+delta)%4096)
         if i in (9,10) and packet[4]==3 and packet[5]==40 and packet[6]==0 and word(reg,46)==0:
             set_word(reg,56,(word(reg,56)+(coast if i==10 else -coast))%4096)
@@ -64,6 +66,17 @@ def test_abort_preserves_trace_and_stops(runtime):
             raise RuntimeError('operator input')
     with pytest.raises(RuntimeError,match='operator input') as caught:bounded_travel(runtime,check)
     assert 'readbacks' in caught.value.rotation
+    stopped(p)
+
+
+def test_a_blocked_wheel_mid_leg_stops_as_contact_not_fault(runtime):
+    import time
+    p=moving_wheels(runtime,increment=20,cap=200)
+    began=time.monotonic()
+    result=bounded_travel(runtime,lambda:None,-.05)
+    assert result['stopped_by']=='stall' and result['stall']['reason']=='stall'
+    assert time.monotonic()-began<2.5
+    assert 190<=min(abs(v) for v in result['wheel_delta_raw'].values())<=230
     stopped(p)
 
 

@@ -12,7 +12,11 @@ async function request(path,body,timeout){
   finally{clearTimeout(timer);}
 }
 function fact(name,value,cls=''){return `<dt>${esc(name)}</dt><dd class="${cls}">${value}</dd>`;}
-const PHASES={idle:'空闲',survey:'到观察位',ready:'观察位就绪',align:'对准',lower:'下降',advance:'推进',close:'闭合',squeeze:'加压',lift:'提起',retry:'重试',hold:'保持',transport:'搬运',place:'放下',release:'松开',retreat:'撤离',home:'收回',rehearsal:'演练',done:'完成',failed:'失败',stopped:'已停止'};
+const PHASES={idle:'空闲',survey:'到观察位',ready:'观察位就绪',align:'对准',lower:'下降',advance:'推进',close:'闭合',squeeze:'加压',lift:'提起',retry:'重试',hold:'保持',transport:'搬运',place:'放下',release:'松开',retreat:'撤离',home:'收回',rehearsal:'演练',reposition:'底盘让位',done:'完成',failed:'失败',stopped:'已停止'};
+function renderKnowledge(k){const objs=Object.entries((k&&k.objects)||{});
+  $('knowledge').innerHTML=objs.map(([name,o])=>{const src=o.by_source||{},llm=src.llm||{},loc=src.local||{};
+    return `<p><b>${esc(name)}</b> 模板 ${esc(o.templates)} 个 · 成功 ${esc(o.successes)}/${esc(o.attempts)} · 大模型框选 ${esc(llm.successes??0)}/${esc(llm.attempts??0)} · 本地框选 ${esc(loc.successes??0)}/${esc(loc.attempts??0)} · 一致率 ${o.agreement_ok_rate==null?'—':esc(Math.round(o.agreement_ok_rate*100))+'%（'+esc(o.agreement_n)+'次）'}</p>`;}).join('')
+    +(k&&k.base_legs?`<p class="hint">底盘后退记录 ${esc(k.base_legs)} 段</p>`:'')||'<p class="hint">还没有沉淀任何物体</p>';}
 function render(s){
   state=s;const b=s.brain||{},t=s.track||{},ex=s.executor||{},phase=b.phase||'idle';
   $('phase').textContent=PHASES[phase]||phase;$('note').textContent=b.note||'';
@@ -27,12 +31,14 @@ function render(s){
     fact('控制会话',ex.active?`进行中 · ${ex.steps}步`:ex.reachable===false?'控制服务无响应':`空闲${ex.ended?' · 上次：'+esc(ex.ended):''}`,ex.reachable===false?'bad':'')+
     fact('尝试',b.attempt||'—')+
     fact('上次结果',r?(r.ok?`成功 · ${r.seconds??'—'}秒 · ${r.steps??'—'}步`:'未完成：'+esc(r.error)):'—',r?(r.ok?'ok':'bad'):'');
-  $('events').innerHTML=(b.events||[]).slice(-12).reverse().map(e=>`<p><b>${esc(e.t)}s</b> ${esc(e.kind==='phase'?(PHASES[e.phase]||e.phase)+'：'+(e.note||''):e.kind==='step'?(e.label||'动作')+(e.contact?'（受阻）':''):e.kind==='verify'?'提起核对：'+(e.why||''):e.kind==='contact'?'夹爪接触 '+e.grip:e.kind==='lateral'?'横向误差 '+e.err+'px → 肩水平'+e.dpan:e.kind)}</p>`).join('');
-  $('target').textContent=t.active?`已选目标，跟踪${t.ok?'正常':'丢失'}`:'尚未选目标';
+  $('events').innerHTML=(b.events||[]).slice(-12).reverse().map(e=>`<p><b>${esc(e.t)}s</b> ${esc(e.kind==='phase'?(PHASES[e.phase]||e.phase)+'：'+(e.note||''):e.kind==='step'?(e.label||'动作')+(e.contact?'（受阻）':''):e.kind==='base'?(e.label||'底盘')+' 估计'+e.estimate_cm+'cm'+(e.contact?'（卡住停车）':''):e.kind==='verify'?'提起核对：'+(e.why||''):e.kind==='contact'?'夹爪接触 '+e.grip:e.kind==='lateral'?'横向误差 '+e.err+'px → 肩水平'+e.dpan:e.kind)}</p>`).join('');
+  $('target').textContent=t.active?`已选目标（${s.selection_source&&s.selection_source.startsWith('local')?'本地识别':'人工/大模型框选'}），跟踪${t.ok?'正常':'丢失'}`:'尚未选目标';
+  renderKnowledge(s.knowledge);
   if(!configShown&&s.config){$('config').innerHTML=CONFIG.map(([k,n,st])=>`<label>${esc(n)} <input data-key="${k}" type="number" step="${st}" value="${s.config[k]}"></label>`).join('');configShown=true;}
   $('cam-start').disabled=busy||s.cameras_on;$('cam-stop').disabled=busy||!s.cameras_on||running;
   $('survey').disabled=busy||running||!s.cameras_on;$('run').disabled=busy||running||!(t.active&&t.ok);
   $('propose').disabled=busy||running||!s.cameras_on;$('use-proposal').disabled=busy||running||!proposal;$('clear').disabled=busy||running;
+  $('locate').disabled=busy||running||!s.cameras_on;$('reposition').disabled=busy||running||!s.cameras_on;
   if(s.cameras_on&&!streaming){$('live').src='/grasp/stream.mjpg';streaming=true;}
   if(!s.cameras_on&&streaming){$('live').removeAttribute('src');streaming=false;}
 }
@@ -55,7 +61,10 @@ $('propose').addEventListener('click',async e=>{const out=await act(e.currentTar
 $('use-proposal').addEventListener('click',async e=>{if(!proposal)return;const out=await act(e.currentTarget,'/select',{bbox:proposal});if(out){proposal=null;drawBox(null);}});
 $('clear').addEventListener('click',e=>act(e.currentTarget,'/clear'));
 $('survey').addEventListener('click',e=>act(e.currentTarget,'/survey',{confirmed:$('confirm').checked}));
-$('run').addEventListener('click',e=>act(e.currentTarget,'/run',{confirmed:$('confirm').checked,options:{place_lateral_cm:Number($('lateral').value)||0,place_forward_cm:Number($('forward').value)||0,end_pose:$('end-pose').value,stop_after:$('mode').value==='inserted'?'inserted':null}}));
+$('run').addEventListener('click',e=>act(e.currentTarget,'/run',{confirmed:$('confirm').checked,options:{place_lateral_cm:Number($('lateral').value)||0,place_forward_cm:Number($('forward').value)||0,end_pose:$('end-pose').value,stop_after:$('mode').value==='inserted'?'inserted':null,
+  object:$('object').value||'plug',auto_select:$('auto-select').checked,...($('reverse-auth').value.trim()?{reverse_authorization:$('reverse-auth').value.trim()}:{})}}));
+$('locate').addEventListener('click',e=>act(e.currentTarget,'/locate',{object:$('object').value||'plug'}));
+$('reposition').addEventListener('click',e=>act(e.currentTarget,'/reposition',{confirmed:$('confirm').checked,back_cm:Number($('back-cm').value)||0,authorization:$('reverse-auth').value.trim()}));
 $('stop').addEventListener('click',async()=>{try{await request('/stop',{},4000);notice('已发送停止');}catch(e){notice('停止请求失败：'+e.message+'；请按手柄任意键');}refresh();});
 $('save-config').addEventListener('click',e=>{const changes={};for(const input of document.querySelectorAll('#config input'))changes[input.dataset.key]=Number(input.value);act(e.currentTarget,'/config',{changes});});
 refresh();loadRuns();setInterval(refresh,500);setInterval(loadRuns,5000);

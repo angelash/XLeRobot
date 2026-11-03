@@ -301,3 +301,92 @@ def test_routes_are_local_only_and_never_proxy_motion():
     assert client.get('/grasp', follow_redirects=False).headers['location'] == '/#grasp'
     paths = {r.path for r in app.routes}
     assert not any('servo' in p or p.startswith('/api/servo') for p in paths), 'Motion only via the service, never a proxy'
+
+
+# ---- v2: chassis reposition, make room, knowledge and local finder ------------------------------
+AUTH = '2026-11-03 用户：目前机器人向后移动10-20厘米完全没问题'
+
+
+def test_reposition_backs_the_chassis_away_in_legs():
+    w = SimWorld(obj=(21.0, 0.0))
+    ex = SimExecutor(w)
+    c = GraspController(ex, SimObserver(w), config={'reverse_authorization': AUTH})
+    c._update(w.joints())
+    result = c.run_reposition(12)
+    assert result['ok'] and [l['requested_cm'] for l in result['legs']] == [5.0, 5.0, 2.0]
+    assert w.obj[0] == pytest.approx(33.0)
+    with pytest.raises(ValueError, match='额度'):
+        ex.start(); [ex.base(-0.05, AUTH) for _ in range(2)]
+
+
+def test_reposition_needs_the_users_words_and_stops_on_a_stall():
+    w = SimWorld(obj=(21.0, 0.0))
+    c = GraspController(SimExecutor(w), SimObserver(w), config={})
+    c._update(w.joints())
+    assert not c.run_reposition(5)['ok'] and w.obj[0] == 21.0
+    w.base_block_cm = 2.0
+    c = GraspController(SimExecutor(w), SimObserver(w), config={'reverse_authorization': AUTH})
+    c._update(w.joints())
+    result = c.run_reposition(10)
+    assert not result['ok'] and '受阻' in result['error'] and len(result['legs']) == 1
+
+
+@pytest.mark.parametrize('authorized', [True, False])
+def test_an_object_too_close_for_the_arm_makes_room_with_the_chassis(authorized):
+    # One arm back-off is not enough here; the chassis makes up the rest, so the object stays within reach.
+    cfg = {**calibrate({}), 'hold_s': 0, 'arm_backoff_max': 1, 'stop_after': 'inserted',
+           **({'reverse_authorization': AUTH} if authorized else {})}
+    w = SimWorld(obj=(26.0, 0.0))
+    ex, ob = SimExecutor(w), SimObserver(w)
+    c = GraspController(ex, ob, config=cfg, sleep=lambda s: None)
+    assert c.run_survey()['ok']
+    ob.select_exact()
+    result = c.run_pick_place()
+    bases = [s for s in ex.steps if 'base' in s]
+    if authorized:
+        assert result['ok'] and result['rehearsal'], c.events[-4:]
+        kinds = [e['kind'] for e in c.events]
+        assert bases and kinds.index('base') < kinds.index('inserted'), 'Arm back-off, then the chassis, then the insertion'
+        assert w.obj[0] == pytest.approx(29.0)
+    else:
+        assert not result['ok'] and '后退授权' in result['error'] and not bases
+
+
+def test_knowledge_learns_a_view_and_finds_it_again_after_the_object_moves(tmp_path):
+    from deployment.grasp.knowledge import Knowledge, iou
+    w = SimWorld()
+    q = arm.ik(23.0, 1.0, 108)
+    w.q.update(lift=q[0], elbow=q[1], pitch=q[2], grip=2045)
+    ob = SimObserver(w)
+    k = Knowledge(tmp_path)
+    assert not k.locate(ob.gray())['ok'], 'Nothing known yet: abstain'
+    box = w.bbox()
+    k.learn('plug', ob.gray(), box, 'operator', {'approach_clearance': 2.0}, run='r1')
+    w.obj = w.obj + np.array([1.0, 1.5, 0.0])
+    hit = k.locate(ob.gray())
+    assert hit['ok'] and hit['object'] == 'plug' and iou(hit['bbox'], w.bbox()) > 0.6, hit
+    k.record('plug', True, 'operator', run='r1', llm_calls=1)
+    k.record('plug', True, 'local:plug', run='r2', agreement=0.8, llm_calls=0)
+    again = Knowledge(tmp_path).summary()['objects']['plug']
+    assert again['templates'] == 1 and again['by_source'] == {'llm': {'attempts': 1, 'successes': 1}, 'local': {'attempts': 1, 'successes': 1}}
+    assert again['params']['approach_clearance'] == 2.0 and again['agreement_ok_rate'] == 1.0
+    with pytest.raises(ValueError):
+        k.learn('Plug!', ob.gray(), box, 'operator')
+
+
+def test_service_learns_after_a_large_model_box_and_then_selects_locally(service):
+    service.start_cameras()
+    box = [round(v) for v in service.world.bbox()]
+    with pytest.raises(ValueError, match='知识库'):
+        service.locate('plug')
+    service.select(box)
+    assert service.selection['source'] == 'operator'
+    service.run_meta = {'object': 'plug', 'llm_calls': 1, 'agreement': None, 'selection': dict(service.selection)}
+    from deployment.grasp.service import RunRecorder
+    service.recorder = RunRecorder(service.root/'runs', service, 'pick-place')
+    out = service._learn('pick-place', {'ok': True, 'steps': 30}, 42.0)
+    assert out['learned']['templates'] == 1 and out['llm_calls'] == 1
+    found = service.locate('plug')
+    assert found['located']['ok'] and service.selection['source'] == 'local:plug'
+    assert service.status()['knowledge']['objects']['plug']['by_source']['llm']['successes'] == 1
+

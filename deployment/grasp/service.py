@@ -19,6 +19,7 @@ import httpx
 import numpy as np
 
 from .controller import DEFAULTS, EDITABLE, GraspController, GraspFailure
+from .knowledge import Knowledge, iou
 from .tracker import TemplateTracker
 from .vision import draw, propose
 
@@ -148,6 +149,13 @@ class HttpExecutor:
     def hold(self):
         return self._post('/api/servo/hold', {'session_id': self.session_id})
 
+    def base(self, distance_m, authorization, label=''):
+        entry = self._post('/api/servo/base', {'session_id': self.session_id, 'distance_m': float(distance_m),
+                                               'authorization': authorization, 'label': label}, timeout=20)
+        if entry.get('ended'):
+            self.active = False
+        return entry
+
     def end(self, reason='完成'):
         if self.active:
             try:
@@ -234,6 +242,8 @@ class GraspService:
         self.recorder = None
         self.last_result = None
         self.timings = []
+        self.knowledge = Knowledge(self.root/'knowledge')
+        self.selection = None
 
     def _read(self, name, default):
         try:
@@ -315,7 +325,7 @@ class GraspService:
             raise ValueError('腕部画面无法解码')
         return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
 
-    def select(self, bbox):
+    def select(self, bbox, source='operator'):
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in bbox):
             raise ValueError('目标框需为[x, y, 宽, 高]（640×480画面像素）')
         if self.op_thread and self.op_thread.is_alive():
@@ -323,7 +333,19 @@ class GraspService:
         gray = self._fresh_gray()
         with self.lock:
             state = self.tracker.init(gray, bbox)
-        return {'selected': state}
+        self.selection = {'bbox': [float(v) for v in bbox], 'gray': gray, 'source': str(source)[:40], 'at': self.clock()}
+        return {'selected': state, 'source': self.selection['source']}
+
+    def locate(self, name=None, select=True):
+        """Local finder (v2 R6): stored templates instead of a large-model box."""
+        if not self.knowledge.data['objects']:
+            raise ValueError('知识库还没有任何物体模板：先由大模型框选并成功抓取一次')
+        hit = self.knowledge.locate(self._fresh_gray(), name)
+        if not hit['ok']:
+            raise ValueError(f'本地没有认出目标（最高分{hit["score"]}，阈值0.6），请交回大模型框选')
+        if select:
+            self.select(hit['bbox'], source='local:' + hit['object'])
+        return {'located': hit}
 
     def propose(self):
         box = propose(self._fresh_gray())
@@ -336,6 +358,7 @@ class GraspService:
             raise ValueError('抓取进行中，不能清除目标')
         with self.lock:
             self.tracker.reset()
+        self.selection = None
         return self.status()
 
     # ---- operations ------------------------------------------------------------
@@ -352,10 +375,15 @@ class GraspService:
         self.op = name
 
         def runner():
+            begun = self.clock()
             try:
                 result = work(self.brain)
             except Exception as exc:  # noqa: BLE001 - recorded
                 result = {'ok': False, 'error': f'{type(exc).__name__}: {exc}'}
+            try:
+                result = {**(result or {}), **self._learn(name, result or {}, self.clock() - begun)}
+            except Exception as exc:  # noqa: BLE001 - learning never hides the motion result
+                result = {**(result or {}), 'learn_error': f'{type(exc).__name__}: {exc}'}
             self.last_result = {'operation': name, **(result or {}), 'dir': self.recorder.dir.name}
             self.recorder.finish(result, self.brain.status())
             self.op = None
@@ -363,11 +391,53 @@ class GraspService:
         self.op_thread.start()
         return self.status()
 
+    def _learn(self, name, result, seconds):
+        """After a real pick-and-place: keep what worked and count who chose the target (v2 R6–R8)."""
+        meta = getattr(self, 'run_meta', None) or {}
+        if name != 'pick-place' or result.get('rehearsal') or not meta:
+            return {}
+        obj, sel = meta['object'], meta.get('selection') or {}
+        ok = bool(result.get('ok'))
+        out = {'object': obj, 'select_source': sel.get('source'), 'llm_calls': meta.get('llm_calls', 0),
+               'local_agreement': meta.get('agreement')}
+        self.knowledge.record(obj, ok, sel.get('source', 'operator'), run=self.recorder.dir.name, agreement=meta.get('agreement'),
+                              seconds=round(seconds, 1), steps=result.get('steps'), llm_calls=meta.get('llm_calls', 0),
+                              note=result.get('error', ''))
+        if ok and sel.get('gray') is not None:
+            c = self.brain.cfg if self.brain else self.config
+            params = {k: c.get(k) for k in ('desk_z', 'approach_clearance', 'survey_height', 'insert_cm', 'squeeze_lead', 'squeeze_torque')}
+            out['learned'] = self.knowledge.learn(obj, sel['gray'], sel['bbox'], sel.get('source', 'operator'), params, self.recorder.dir.name)
+        return out
+
     def survey(self, confirmed):
         return self._launch('survey', confirmed, lambda brain: brain.run_survey())
 
+    def reposition(self, confirmed, back_cm, authorization):
+        if isinstance(back_cm, bool) or not isinstance(back_cm, (int, float)) or not 0.5 <= back_cm <= 20:
+            raise ValueError('后退距离需在0.5–20cm')
+        if len(str(authorization or '').strip()) < 8:
+            raise ValueError('后退需要附上用户授权原文')
+        def work(brain):
+            brain.cfg['reverse_authorization'] = str(authorization).strip()
+            result = brain.run_reposition(float(back_cm))
+            for leg in result.get('legs') or []:
+                self.knowledge.note_base(-leg['requested_cm']/100, -leg['estimate_cm']/100, leg['stopped_by'], run=self.recorder.dir.name)
+            return result
+        return self._launch('reposition', confirmed, work)
+
     def run(self, confirmed, options=None):
         options = options or {}
+        obj = Knowledge.name(options.get('object', 'plug'))
+        meta = {'object': obj, 'llm_calls': 0, 'agreement': None}
+        if options.get('auto_select'):
+            self.locate(obj)                      # L2: the local finder chooses the target
+        sel = self.selection or {}
+        if not str(sel.get('source', 'operator')).startswith('local'):
+            meta['llm_calls'] = 1                 # the box came from the large model or the operator
+            if self.knowledge.data['objects'].get(obj, {}).get('templates') and sel.get('gray') is not None:
+                hit = self.knowledge.locate(sel['gray'], obj)
+                meta['agreement'] = round(iou(hit['bbox'], sel['bbox']), 3) if hit['bbox'] else 0.0
+        meta['selection'] = sel
         with self.lock:
             ready = self.tracker.active and self.tracker.lost == 0
         if not ready:
@@ -387,10 +457,17 @@ class GraspService:
         if options.get('stop_after') not in (None, 'inserted'):
             raise ValueError('演练只支持送入两指后停止')
         overrides['stop_after'] = options.get('stop_after')
+        if options.get('reverse_authorization'):
+            if len(str(options['reverse_authorization']).strip()) < 8:
+                raise ValueError('后退授权需写明用户原话')
+            overrides['reverse_authorization'] = str(options['reverse_authorization']).strip()
+        learned = self.knowledge.params(obj)
         def work(brain):
             brain.cfg.update(overrides)
             return brain.run_pick_place()
-        return self._launch('pick-place', confirmed, work)
+        self.run_meta = meta
+        status = self._launch('pick-place', confirmed, work)
+        return {**status, 'object': obj, 'select_source': sel.get('source'), 'learned_params': learned}
 
     def stop(self):
         self.op_stop.set()
@@ -454,4 +531,5 @@ class GraspService:
         return {'cameras_on': self.cameras_on, 'cameras': [f.status() for f in self.feeds.values()],
                 'track': track, 'tracking_ms_median': timings[len(timings)//2] if timings else None,
                 'operation': self.op, 'brain': self.brain.status() if self.brain else None, 'last_result': self.last_result,
-                'executor': self.executor.status(), 'config': {k: self.config[k] for k in EDITABLE}}
+                'executor': self.executor.status(), 'config': {k: self.config[k] for k in EDITABLE},
+                'selection_source': (self.selection or {}).get('source'), 'knowledge': self.knowledge.summary()}

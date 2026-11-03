@@ -42,6 +42,9 @@ DEFAULTS = {
     'place_torque': 450, 'place_speed': 3.0, 'release_target': 2000,
     'retreat_raw': 150, 'end_pose': 'upright', 'max_attempts': 2,
     'place_lateral_cm': 0.0, 'place_forward_cm': 0.0, 'stop_after': None,
+    # chassis (v2): reverse legs to make room, only with the user's authorization text
+    'reverse_authorization': '', 'reverse_leg_cm': 5.0, 'reverse_auto_leg_cm': 3.0, 'reverse_max_auto_cm': 10.0,
+    'arm_backoff_max': 3,
     'observe_timeout_s': 2.5, 'settle_s': 0.12,
 }
 EDITABLE = {
@@ -152,6 +155,22 @@ class GraspController:
     def _arm(self, q3, torque=None, speed=12.0, label=''):
         return self._move({'left:2': q3[0], 'left:3': q3[1], 'left:4': q3[2]}, torque=torque, speed=speed, label=label)
 
+    def _base(self, cm, label=''):
+        """One reverse leg of the chassis (cm < 0). A stall is a contact: reported, never pushed again."""
+        self._stop_check()
+        auth = self.cfg.get('reverse_authorization') or ''
+        if not auth:
+            raise GraspFailure('没有用户的后退授权，不能移动底盘')
+        entry = self.ex.base(cm/100.0, auth, label=label)
+        self._update(entry.get('joints') or {})
+        base = entry.get('base') or {}
+        self._event('base', label=label, requested_cm=cm, estimate_cm=round((base.get('wheel_distance_m_estimate') or 0)*100, 2),
+                    stopped_by=base.get('stopped_by'), contact=entry.get('contact'), budget=entry.get('budget'))
+        if entry.get('ended'):
+            raise GraspFailure('控制服务结束了会话：' + entry['ended'])
+        self._stop_check()
+        return entry
+
     def _look(self, label=''):
         self._stop_check()
         obs = self.obs.observe(self.clock() + self.cfg['settle_s'], self.cfg['observe_timeout_s'])
@@ -234,6 +253,39 @@ class GraspController:
         self._go(target, label, keep_out=keep_out)
 
     # ---- operations --------------------------------------------------------
+    def run_reposition(self, back_cm):
+        """Back the chassis away by back_cm in legs, arms held, a keyframe after every leg."""
+        self.started = self.clock()
+        self.ex.start('快速抓取：底盘让位')
+        legs, reason = [], '完成'
+        try:
+            self._phase('reposition', f'底盘后退{back_cm:g}cm')
+            self._refresh()
+            self._key('before')
+            left = float(back_cm)
+            while left > 0.25:
+                leg = min(float(self.cfg['reverse_leg_cm']), left)
+                entry = self._base(-leg, f'后退{leg:g}cm')
+                base = entry.get('base') or {}
+                legs.append({'requested_cm': leg, 'estimate_cm': round(abs(base.get('wheel_distance_m_estimate') or 0)*100, 2),
+                             'stopped_by': base.get('stopped_by')})
+                self._key(f'leg{len(legs)}')
+                left -= leg
+                if entry.get('contact'):
+                    raise GraspFailure('底盘后退受阻，已停：' + str(entry['contact'].get('reason')))
+            self._phase('done', '让位完成')
+            self.result = {'ok': True, 'legs': legs, 'moved_cm_estimate': round(sum(l['estimate_cm'] for l in legs), 2),
+                           'seconds': round(self.clock() - self.started, 1)}
+        except GraspStopped as exc:
+            reason = str(exc); self.ex.stop(reason); self._phase('stopped', reason)
+            self.result = {'ok': False, 'error': reason, 'legs': legs}
+        except Exception as exc:  # noqa: BLE001 - every failure ends the session holding still
+            reason = str(exc); self._phase('failed', reason)
+            self.result = {'ok': False, 'error': reason, 'legs': legs}
+        finally:
+            self.ex.end(reason[:100])
+        return self.result
+
     def run_survey(self):
         self.started = self.clock()
         self.ex.start('快速抓取：到观察位')
@@ -314,7 +366,7 @@ class GraspController:
         self._phase('lower', '降到贴近桌面的推进高度')
         z_app = c['desk_z'] + c['approach_clearance']
         tip = self._tip()['tip']
-        for _ in range(3):
+        for _ in range(int(c['arm_backoff_max'])):
             if edges(obs['bbox'])['bottom'] < c['clear_bottom']:
                 break
             back = arm.ik(tip[0] - 2.0, tip[1], c['survey_pitch'], min_bend=c['min_bend'])
@@ -322,7 +374,8 @@ class GraspController:
             tip = self._tip()['tip']
             obs = self._need_track(self._look('后撤后'), '后撤')
         else:
-            raise GraspFailure('目标离指尖太近，无法安全下降')
+            obs = self._make_room(obs)
+            tip = self._tip()['tip']
         mid = arm.ik(tip[0], (tip[1] + z_app)/2, (c['survey_pitch'] + c['approach_pitch'])/2, min_bend=c['min_bend'])
         low = arm.ik(tip[0], z_app, c['approach_pitch'], min_bend=c['min_bend'])
         self._go(mid, '下降', speed=8, torque=c['approach_torque'], final_floor=z_app - 0.3)
@@ -362,6 +415,24 @@ class GraspController:
         self._event('inserted', by_vision=in_jaws(obs['bbox'], c), tip_x=round(self._tip()['tip'][0], 2),
                     inserted_cm=None if at_tips is None else round(self._tip()['tip'][0] - at_tips, 2))
         self._key('in_jaws')
+        return obs
+
+    def _make_room(self, obs):
+        """The object is still too close after backing the arm off: back the chassis away (v2 R2)."""
+        c = self.cfg
+        moved = 0.0
+        while edges(obs['bbox'])['bottom'] >= c['clear_bottom']:
+            if not c.get('reverse_authorization'):
+                raise GraspFailure('目标离指尖太近，无法安全下降（没有后退授权，不移动底盘）')
+            if moved + 1e-6 >= float(c['reverse_max_auto_cm']):
+                raise GraspFailure(f'底盘已让位{moved:g}cm，目标仍离指尖太近')
+            leg = min(float(c['reverse_auto_leg_cm']), float(c['reverse_max_auto_cm']) - moved)
+            entry = self._base(-leg, f'让位后退{leg:g}cm')
+            moved += leg
+            if entry.get('contact'):
+                raise GraspFailure('底盘让位受阻，已停：' + str(entry['contact'].get('reason')))
+            obs = self._need_track(self._look('让位后'), '让位')
+        self._key('made_room')
         return obs
 
     def _lateral_error(self, obs):

@@ -86,6 +86,20 @@ def install(app, *, data_dir, allowed_origins=None, controller='http://127.0.0.1
         payload = await body(request)
         return await call(service.survey, payload.get('confirmed'))
 
+    @router.post('/reposition')
+    async def reposition(request: Request):
+        payload = await body(request)
+        return await call(service.reposition, payload.get('confirmed'), payload.get('back_cm'), payload.get('authorization'))
+
+    @router.post('/locate')
+    async def locate(request: Request):
+        payload = await body(request)
+        return await call(service.locate, payload.get('object'), payload.get('select', True) is not False)
+
+    @router.get('/knowledge')
+    async def knowledge():
+        return await run_in_threadpool(service.knowledge.summary)
+
     @router.post('/run')
     async def run(request: Request):
         payload = await body(request)

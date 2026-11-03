@@ -12,6 +12,7 @@ when the session ends: on request, on lease expiry, on abort, on a hazard.
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 import uuid
@@ -33,6 +34,11 @@ MAX_SESSION_S = 300.0
 TEMP_STOP_C = 50
 VOLT_STOP = 10.5
 ARM_IDS = range(1, 7)
+# Chassis: reverse only, inside a budget the user granted in words (2026-11-03:
+# "向后移动10-20厘米完全没问题"). Each leg stops by wheel counts, and on a stall
+# (rotation_scan contact stop). Nothing behind the robot is seen by a camera.
+BASE_LEG_M = 0.05
+REVERSE_BUDGET_M = 0.20
 
 
 class ServoSession:
@@ -180,6 +186,84 @@ class ServoSession:
         return None
 
     # ---- motion ------------------------------------------------------------
+    def _reverse_used(self):
+        try:
+            data = json.loads((self.root/'base-authorizations.json').read_text(encoding='utf-8'))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def reverse_budget(self, authorization):
+        used = float(self._reverse_used().get(str(authorization or '').strip(), {}).get('used_m', 0.0))
+        return {'budget_m': REVERSE_BUDGET_M, 'used_m': round(used, 4), 'left_m': round(max(0.0, REVERSE_BUDGET_M - used), 4)}
+
+    def base(self, session_id, distance_m, authorization='', max_raw=160, label=''):
+        """One reverse leg of the chassis inside the session (wheels only, arms held)."""
+        self._check(session_id)
+        if (isinstance(distance_m, bool) or not isinstance(distance_m, (int, float)) or not math.isfinite(distance_m)
+                or not -BASE_LEG_M - 1e-9 <= distance_m <= -0.005):
+            raise ValueError(f'底盘步骤只接受后退0.5–{BASE_LEG_M*100:g}cm（distance_m取负值）')
+        auth = str(authorization or '').strip()
+        if len(auth) < 8:
+            raise ValueError('后退需要附上用户授权原文')
+        if type(max_raw) is not int or not 60 <= max_raw <= 220:
+            raise ValueError('轮速需在60–220')
+        budget = self.reverse_budget(auth)
+        if abs(distance_m) > budget['left_m'] + 1e-9:
+            raise ValueError(f'本授权后退额度{REVERSE_BUDGET_M*100:g}cm，已用{budget["used_m"]*100:.1f}cm')
+        if not self.step_lock.acquire(blocking=False):
+            raise ValueError('上一步尚未完成')
+        try:
+            self._check(session_id)
+            self.busy = True; self.last_call = self.clock()
+            begun = time.perf_counter()
+            from .rotation_scan import bounded_travel
+            try:
+                result = bounded_travel(self.runtime, self.lt._check_abort, float(distance_m), max_raw)
+            except Aborted as exc:
+                self._end(str(exc))
+                raise ValueError(str(exc)) from None
+            except Exception as exc:  # noqa: BLE001 - every wheel fault ends the session holding the arms
+                self._end('底盘后退失败：' + str(exc)[:80])
+                raise ValueError('底盘后退失败：' + str(exc)) from None
+            finally:
+                used = self._reverse_used()
+                row = used.get(auth) if isinstance(used.get(auth), dict) else {'used_m': 0.0, 'legs': 0}
+                row['used_m'] = round(float(row.get('used_m', 0.0)) + abs(distance_m), 4)
+                row['legs'] = int(row.get('legs', 0)) + 1
+                row['last_at'] = now()
+                used[auth] = row
+                try:
+                    atomic_json(self.root/'base-authorizations.json', used)
+                except OSError:
+                    pass
+            contact = None
+            if result.get('stopped_by') == 'stall':
+                contact = {'joint': 'base', 'reason': (result.get('stall') or {}).get('message', '底盘疑似碰撞'), 'at': now()}
+                self.contacts.append(contact)
+                self.lt._log('抓取会话底盘后退受阻：' + contact['reason'])
+            joints = self.telemetry()
+            summary = {k: result.get(k) for k in ('requested_distance_m', 'wheel_distance_m_estimate', 'wheel_delta_raw',
+                                                  'stopped_by', 'duration_s', 'target_counts', 'radius_m_used')}
+            entry = {'n': self.steps, 'at': now(), 'label': str(label or '底盘后退')[:80], 'base': summary,
+                     'authorization': auth[:120], 'elapsed_ms': round((time.perf_counter() - begun)*1000),
+                     'contact': contact, 'joints': joints, 'budget': self.reverse_budget(auth)}
+            self.steps += 1; self.last = entry
+            try:
+                with open(self.dir/'steps.jsonl', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({**entry, 'base_full': result}, ensure_ascii=False, default=str) + '\n')
+            except OSError:
+                pass
+            hazard = self._hazard(joints)
+            if hazard:
+                entry['ended'] = hazard
+                self._end(hazard)
+            self.last_call = self.clock()
+            return entry
+        finally:
+            self.busy = False
+            self.step_lock.release()
+
     def step(self, session_id, targets, torque=None, speed_deg=12, label=''):
         self._check(session_id)
         if not isinstance(targets, dict) or not targets or len(targets) > 8:
