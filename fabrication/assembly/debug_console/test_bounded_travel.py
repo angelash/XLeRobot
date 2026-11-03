@@ -169,3 +169,23 @@ def test_travel_rechecks_expiring_evidence_after_preparation_and_releases(runtim
     a.start([step],True,background=False)
     assert a.error and len(a.results)==1
     stopped(runtime.session.ports['COM4'])
+
+
+def test_a_single_temperature_glitch_is_reread_and_recorded_not_a_stop(runtime):
+    p=moving_wheels(runtime);original=p.write;reads={'n':0}
+    def once(packet):
+        i=packet[2]
+        if i==9 and packet[4]==2 and word(p.regs[i],46):
+            reads['n']+=1
+            if reads['n']==4:
+                p.regs[i][63]=49
+                try:return original(packet)
+                finally:p.regs[i][63]=35
+        return original(packet)
+    p.write=once
+    result=bounded_travel(runtime,lambda:None,-.05)
+    assert result['stopped_by']=='target' and len(result['read_glitches'])==1
+    glitch=result['read_glitches'][0]
+    assert glitch['motor']==9 and glitch['first'][63]==49 and glitch['reread'][63]==35
+    stopped(p)
+

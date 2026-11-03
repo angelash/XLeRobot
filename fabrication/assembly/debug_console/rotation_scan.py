@@ -101,6 +101,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     fault=None
     blocked=None
     best=0;best_t=0.
+    glitches=[]
 
     def stable(rows):
         # STS speed is quantized in 50-count steps: idle encoder jitter by one
@@ -245,10 +246,20 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                     progress={}
                     for motor in (9,10):
                         reg=read_registers(runtime.session.ports['COM4'],motor)
-                        if reg[33]!=1 or reg[40]!=1 or reg[65] or reg[63]>=45 or not 11.5<=reg[62]/10<=12.6:
+                        bad=lambda r:r[33]!=1 or r[40]!=1 or r[65] or r[63]>=45 or not 11.5<=r[62]/10<=12.6
+                        if bad(reg):
+                            # Twice (2026-11-02 wheel 10 57 C, 2026-11-03 wheel 9 49 C) one read jumped and the
+                            # next was 34-35 C. Re-read at once: a real fault reads the same twice and still stops.
+                            first=list(reg)
+                            reg=read_registers(runtime.session.ports['COM4'],motor)
+                            if not bad(reg):
+                                glitches.append({'t':round(time.monotonic()-started,3),'motor':motor,'first':first,'reread':list(reg)})
+                                if len(glitches)>3:
+                                    raise RuntimeError('行进中轮组读数反复异常，已停')
+                        if bad(reg):
                             fault={'motor':motor,'registers':list(reg),'position':word(reg,56),
                                    'mode':reg[33],'torque':reg[40],'status':reg[65],
-                                   'temperature':reg[63],'voltage':reg[62]/10}
+                                   'temperature':reg[63],'voltage':reg[62]/10,'glitches':glitches}
                             raise RuntimeError(f'直行中轮{motor}状态异常：mode={reg[33]}, torque={reg[40]}, '
                                                f'status={reg[65]}, temperature={reg[63]}, voltage={reg[62]/10}')
                         progress[motor]=((word(reg,56)-before[motor]+2048)%4096-2048)*(1 if command[motor]>0 else -1)
@@ -284,7 +295,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
         stop()
         exc.rotation={'travel_trace':travel_trace,'readbacks':readbacks,
                       'target_counts':target_counts,'failures':failures,
-                      'wheel_start_raw':before,'fault':fault}
+                      'wheel_start_raw':before,'fault':fault,'read_glitches':glitches}
         raise
     finally:
         stop()
@@ -314,7 +325,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 'command_raw': command, 'rotation_command_rad_s': 0,
                 'direction': 'forward' if direction>0 else 'backward', 'distance_source': 'not_measured_no_metric_claim',
                 **({'target_counts':target_counts,'travel_trace':travel_trace,'max_duration_s':duration,
-                    'wheel_start_raw':before,'stopped_by':stopped_by,
+                    'wheel_start_raw':before,'stopped_by':stopped_by,'read_glitches':glitches,
                     **({'stall':blocked} if stopped_by=='stall' else {})} if target_counts is not None else {}),
                 **({'stopped_by':stopped_by,'gate_block':blocked if stopped_by=='obstacle_gate' else None} if gate is not None else {})}
     radius, track = runtime._wheel_geometry()

@@ -224,6 +224,12 @@ class ServoSession:
                 self._end(str(exc))
                 raise ValueError(str(exc)) from None
             except Exception as exc:  # noqa: BLE001 - every wheel fault ends the session holding the arms
+                try:
+                    with open(self.dir/'steps.jsonl', 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({'n': self.steps, 'at': now(), 'label': str(label or '底盘后退')[:80], 'base_error': str(exc),
+                                            'evidence': getattr(exc, 'rotation', None)}, ensure_ascii=False, default=str) + '\n')
+                except OSError:
+                    pass
                 self._end('底盘后退失败：' + str(exc)[:80])
                 raise ValueError('底盘后退失败：' + str(exc)) from None
             finally:
@@ -245,6 +251,7 @@ class ServoSession:
             joints = self.telemetry()
             summary = {k: result.get(k) for k in ('requested_distance_m', 'wheel_distance_m_estimate', 'wheel_delta_raw',
                                                   'stopped_by', 'duration_s', 'target_counts', 'radius_m_used')}
+            summary['read_glitches'] = len(result.get('read_glitches') or [])
             entry = {'n': self.steps, 'at': now(), 'label': str(label or '底盘后退')[:80], 'base': summary,
                      'authorization': auth[:120], 'elapsed_ms': round((time.perf_counter() - begun)*1000),
                      'contact': contact, 'joints': joints, 'budget': self.reverse_budget(auth)}
