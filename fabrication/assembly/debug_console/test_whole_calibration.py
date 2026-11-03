@@ -22,6 +22,9 @@ def runtime(tmp_path,monkeypatch):
     monkeypatch.setattr(orig,'CONTROLLER_SETTINGS',tmp_path/'controller-settings.json')
     monkeypatch.setattr(orig,'UPRIGHT_POSES',tmp_path/'upright-poses.json')
     monkeypatch.setattr(orig,'LOG_DIR',tmp_path)
+    # The robot's own camera-verified chassis direction must not leak into fake-bus tests.
+    from fabrication.assembly.debug_console import rotation_scan
+    monkeypatch.setattr(rotation_scan,'CHASSIS_DIRECTION',tmp_path/'chassis-direction.json')
     r=orig.OriginalRuntime(Session());r._check_ports=lambda:None
     r.gamepad=pad();r.pad_time=time.monotonic()
     for i in (9,10):r.session.ports['COM4'].regs[i][33]=1
