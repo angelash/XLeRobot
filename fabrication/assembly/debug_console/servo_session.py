@@ -39,6 +39,11 @@ ARM_IDS = range(1, 7)
 # (rotation_scan contact stop). Nothing behind the robot is seen by a camera.
 BASE_LEG_M = 0.05
 REVERSE_BUDGET_M = 0.20
+# 2026-11-03 later instruction: inside the authorised range the chassis may move both ways in small
+# legs. Net position relative to where the user placed the robot stays inside
+# [-REVERSE_BUDGET_M, +FORWARD_LIMIT_M] (the desk is just ahead of the start, so not past it); a
+# forward leg also needs the caller to state that the head camera showed the way clear.
+FORWARD_LIMIT_M = 0.0
 
 
 class ServoSession:
@@ -198,26 +203,34 @@ class ServoSession:
         row = row if isinstance(row, dict) else {}
         # forward_correction_m: legs recorded as reverse that the cameras showed moved toward the front
         # (sign error before the chassis direction was verified); the budget is net backward travel.
-        used = max(0.0, float(row.get('used_m', 0.0)) - float(row.get('forward_correction_m', 0.0)))
-        return {'budget_m': REVERSE_BUDGET_M, 'used_m': round(used, 4), 'left_m': round(max(0.0, REVERSE_BUDGET_M - used), 4)}
+        back = max(0.0, float(row.get('used_m', 0.0)) - float(row.get('forward_correction_m', 0.0)))
+        net = float(row.get('forward_m', 0.0)) - back          # chassis position relative to the start, + ahead
+        return {'budget_m': REVERSE_BUDGET_M, 'used_m': round(max(0.0, -net), 4),
+                'left_m': round(max(0.0, REVERSE_BUDGET_M + net), 4), 'net_m': round(net, 4),
+                'forward_left_m': round(max(0.0, FORWARD_LIMIT_M - net), 4)}
 
-    def base(self, session_id, distance_m, authorization='', max_raw=160, label=''):
-        """One reverse leg of the chassis inside the session (wheels only, arms held)."""
+    def base(self, session_id, distance_m, authorization='', max_raw=160, label='', forward_clear=False):
+        """One chassis leg inside the session (wheels only, arms held): reverse inside the budget, or a
+        forward leg back toward the start, at most FORWARD_LIMIT_M past it."""
         self._check(session_id)
         if (isinstance(distance_m, bool) or not isinstance(distance_m, (int, float)) or not math.isfinite(distance_m)
-                or not -BASE_LEG_M - 1e-9 <= distance_m <= -0.005):
-            raise ValueError(f'底盘步骤只接受后退0.5–{BASE_LEG_M*100:g}cm（distance_m取负值）')
+                or not 0.005 <= abs(distance_m) <= BASE_LEG_M + 1e-9):
+            raise ValueError(f'底盘每段只接受0.5–{BASE_LEG_M*100:g}cm（后退取负值）')
+        if distance_m > 0 and forward_clear is not True:
+            raise ValueError('前进需先用头部相机确认前方通道无人无障碍（forward_clear）')
         auth = str(authorization or '').strip()
         if len(auth) < 8:
-            raise ValueError('后退需要附上用户授权原文')
+            raise ValueError('底盘移动需要附上用户授权原文')
         if type(max_raw) is not int or not 60 <= max_raw <= 220:
             raise ValueError('轮速需在60–220')
         from .rotation_scan import chassis_direction
         if chassis_direction()[1] != 'camera_verified':
             raise ValueError('底盘前后方向未经相机核实，不执行后退（先写入chassis-direction.json）')
         budget = self.reverse_budget(auth)
-        if abs(distance_m) > budget['left_m'] + 1e-9:
+        if distance_m < 0 and abs(distance_m) > budget['left_m'] + 1e-9:
             raise ValueError(f'本授权后退额度{REVERSE_BUDGET_M*100:g}cm，已用{budget["used_m"]*100:.1f}cm')
+        if distance_m > 0 and budget['net_m'] + distance_m > FORWARD_LIMIT_M + 1e-9:
+            raise ValueError(f'前进会超出授权起点前方{FORWARD_LIMIT_M*100:g}cm（当前净位置{budget["net_m"]*100:+.1f}cm）')
         if not self.step_lock.acquire(blocking=False):
             raise ValueError('上一步尚未完成')
         try:
@@ -242,7 +255,10 @@ class ServoSession:
             finally:
                 used = self._reverse_used()
                 row = used.get(auth) if isinstance(used.get(auth), dict) else {'used_m': 0.0, 'legs': 0}
-                row['used_m'] = round(float(row.get('used_m', 0.0)) + abs(distance_m), 4)
+                if distance_m < 0:
+                    row['used_m'] = round(float(row.get('used_m', 0.0)) + abs(distance_m), 4)
+                else:
+                    row['forward_m'] = round(float(row.get('forward_m', 0.0)) + distance_m, 4)
                 row['legs'] = int(row.get('legs', 0)) + 1
                 row['last_at'] = now()
                 used[auth] = row

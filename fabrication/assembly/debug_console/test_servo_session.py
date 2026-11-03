@@ -134,7 +134,7 @@ AUTH = '2026-11-03 用户：目前机器人向后移动10-20厘米完全没问�
 def test_reverse_legs_stay_inside_the_user_budget_and_a_stall_is_a_contact(runtime, servo, tmp_path, verified_direction):
     from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
     sid = servo.start('让位', True)['session_id']
-    for bad, match in [(dict(distance_m=0.03, authorization=AUTH), '后退'), (dict(distance_m=-0.06, authorization=AUTH), '后退'),
+    for bad, match in [(dict(distance_m=0.03, authorization=AUTH), '前方'), (dict(distance_m=-0.06, authorization=AUTH), '每段'),
                        (dict(distance_m=-0.03, authorization='好'), '授权')]:
         with pytest.raises(ValueError, match=match):
             servo.base(sid, **bad)
@@ -182,4 +182,20 @@ def test_reverse_needs_a_camera_verified_direction_and_counts_net_backward_trave
     (tmp_path/'servo').mkdir(exist_ok=True)
     (tmp_path/'servo'/'base-authorizations.json').write_text(json.dumps({AUTH: {'used_m': 0.15, 'legs': 3, 'forward_correction_m': 0.15}}), encoding='utf-8')
     assert servo.reverse_budget(AUTH)['left_m'] == 0.2, 'Legs that went forward by a sign error do not use the backward budget'
+
+
+def test_forward_legs_need_a_clear_view_and_stay_inside_the_net_range(runtime, servo, verified_direction):
+    from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
+    moving_wheels(runtime)
+    sid = servo.start('红线内往返', True)['session_id']
+    servo.base(sid, -0.05, AUTH)
+    servo.base(sid, -0.05, AUTH)
+    assert servo.reverse_budget(AUTH)['net_m'] == -0.1
+    entry = servo.base(sid, 0.05, AUTH, forward_clear=True)
+    assert entry['base']['wheel_distance_m_estimate'] > 0 and entry['budget']['net_m'] == -0.05
+    servo.base(sid, 0.05, AUTH, forward_clear=True)
+    assert servo.reverse_budget(AUTH)['net_m'] == 0 and servo.reverse_budget(AUTH)['left_m'] == 0.2
+    assert servo.reverse_budget(AUTH)['forward_left_m'] == 0, 'Not past the place the user put the robot'
+    with pytest.raises(ValueError, match='前方0cm'):
+        servo.base(sid, 0.01, AUTH, forward_clear=True)
 

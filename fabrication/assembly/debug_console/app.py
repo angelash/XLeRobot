@@ -375,6 +375,7 @@ class ServoBaseCommand(BaseModel):
     authorization: str
     max_raw: int = 160
     label: str = ''
+    forward_clear: bool = False
 
 
 class ServoStopCommand(BaseModel):
@@ -411,7 +412,8 @@ def servo_hold(payload: ServoRefCommand):
 @app.post('/api/servo/base')
 def servo_base(payload: ServoBaseCommand):
     try:
-        return servo().base(payload.session_id, payload.distance_m, payload.authorization, payload.max_raw, payload.label)
+        return servo().base(payload.session_id, payload.distance_m, payload.authorization, payload.max_raw, payload.label,
+                            payload.forward_clear)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
