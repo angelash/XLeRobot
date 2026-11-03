@@ -38,6 +38,17 @@ def test_planned_paths_never_dip_below_the_desk_margin():
     assert len(path) >= 3, 'From folded the elbow unfolds first, then upright and the high pose'
 
 
+def test_survey_from_the_live_folded_pose_splits_moves_under_the_step_limit():
+    w = SimWorld()
+    w.q.update(zip(('pan', 'lift', 'elbow', 'pitch', 'roll', 'grip'), (1995, 1154, 2919, 2246, 2124, 1348)))
+    ex = SimExecutor(w)
+    c = GraspController(ex, SimObserver(w), config={'desk_z': -8.0})
+    c.run_survey()
+    assert c.result['ok'], c.result
+    assert any('（1/' in s['label'] for s in ex.steps), 'The 1062-count lift to upright is split'
+    assert c.phase == 'ready'
+
+
 # ---- tracker / vision -------------------------------------------------------
 def test_tracker_follows_the_object_through_an_approach():
     w = SimWorld()

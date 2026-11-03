@@ -282,11 +282,15 @@ class SimExecutor:
 
     def step(self, targets, torque=None, speed=12, label=''):
         self._need()
+        joints = self.world.joints()
         for key, value in targets.items():
             i = int(key.split(':')[1])
             lo, hi = LIMITS[i]
             if not lo <= value <= hi:
                 raise ValueError(f'{key}目标{value}超出当前限位{lo}–{hi}')
+            pos = (joints.get(key) or {}).get('position')
+            if pos is not None and abs(value - pos) > 900:
+                raise ValueError(f'{key}单步变化{abs(value - pos)}超过900计数')
         contact = self.world.apply(targets)
         entry = {'n': len(self.steps), 'label': label, 'targets': dict(targets), 'torque': torque, 'contact': contact,
                  'joints': self.world.joints()}

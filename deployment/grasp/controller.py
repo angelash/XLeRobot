@@ -47,6 +47,10 @@ EDITABLE = {
     'hold_s': (0.0, 10.0), 'max_attempts': (1, 3), 'place_lateral_cm': (-8.0, 8.0), 'place_forward_cm': (-5.0, 5.0),
 }
 UPRIGHT_GRIP = 1340
+# The control service rejects any joint change above 900 raw counts in one step
+# (servo_session.MAX_STEP_RAW); longer moves are split into straight sub-steps.
+STEP_RAW = 800
+JOINT_NAMES = {'left:1': 'pan', 'left:2': 'lift', 'left:3': 'elbow', 'left:4': 'pitch', 'left:5': 'roll', 'left:6': 'grip'}
 
 
 class GraspStopped(Exception):
@@ -111,6 +115,24 @@ class GraspController:
                     self.q['grip_goal'] = j.get('goal'); self.q['grip_load'] = j.get('load', 0)
 
     def _move(self, targets, torque=None, speed=12.0, label=''):
+        """One commanded move, split into straight sub-steps of at most STEP_RAW
+        counts per joint. A blocked sub-step ends the move holding there."""
+        start, span = {}, 0
+        for key, value in targets.items():
+            here = self.q.get(JOINT_NAMES.get(key, ''))
+            if here is not None:
+                start[key] = here
+                span = max(span, abs(value - here))
+        n = max(1, math.ceil(span / STEP_RAW))
+        entry = None
+        for j in range(1, n + 1):
+            part = {k: (int(round(start[k] + (v - start[k]) * j / n)) if k in start and j < n else v) for k, v in targets.items()}
+            entry = self._step(part, torque, speed, label if n == 1 else f'{label}（{j}/{n}）')
+            if entry.get('contact'):
+                break
+        return entry
+
+    def _step(self, targets, torque, speed, label):
         self._stop_check()
         entry = self.ex.step(targets, torque=torque, speed=speed, label=label)
         self._update(entry.get('joints') or {})
@@ -177,7 +199,9 @@ class GraspController:
 
     def _go(self, target, label, speed=12.0, torque=None, final_floor=None):
         for k, q3 in enumerate(self._plan(target, final_floor)):
-            self._arm(q3, torque=torque, speed=speed, label=f'{label}{k + 1}')
+            entry = self._arm(q3, torque=torque, speed=speed, label=f'{label}{k + 1}')
+            if entry.get('contact'):
+                raise GraspFailure(f'{label}途中受阻：{entry["contact"].get("joint")}停在{entry["contact"].get("position")}')
 
     def survey_joints(self):
         c = self.cfg
