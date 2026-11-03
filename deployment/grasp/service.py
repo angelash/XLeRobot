@@ -366,10 +366,15 @@ class GraspService:
         obj_name = Knowledge.name(name) if name else next(iter(self.knowledge.data['objects']))
         obj = self.knowledge.data['objects'].get(obj_name) or {}
         files = [self.knowledge.root/'templates'/t['file'] for t in reversed(obj.get('templates', []))][:3]
-        frame = self.feeds[2].latest(max_age=1.0)
-        if frame is None:
-            raise ValueError('需要1秒内的腕部画面：先开启相机')
-        payload = {'image_b64': base64.b64encode(frame[0]).decode(),
+        frames, last = [], None
+        for _ in range(3):                      # three distinct recent frames, about 0.2 s apart
+            frame = self.feeds[2].latest(max_age=1.0)
+            if frame is None:
+                raise ValueError('需要1秒内的腕部画面：先开启相机')
+            if frame[2] != last:
+                frames.append(base64.b64encode(frame[0]).decode()); last = frame[2]
+            time.sleep(0.2)
+        payload = {'images_b64': frames,
                    'queries_b64': [base64.b64encode(p.read_bytes()).decode() for p in files if p.is_file()]}
         try:
             job = fabric.submit('vision.find_by_example', payload, route='worker_only', deadline_s=25, source='grasp')

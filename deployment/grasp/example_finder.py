@@ -17,10 +17,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .knowledge import JAW_ZONES
+from .knowledge import JAW_ZONES, iou
 
-MIN_SCORE = 0.5
+# 2026-11-03 18:0x: the same lying plug scored 0.85 / 0.64 / 0.46 on frames minutes apart, frames without it
+# at most 0.25. One frame is not enough: up to three frames, any at >= 0.4, all best boxes in one place.
+MIN_SCORE = 0.4
+AGREE_IOU = 0.5
 MAX_QUERIES = 3
+MAX_FRAMES = 3
 
 
 def decode_image(b64):
@@ -93,9 +97,16 @@ class ExampleFinder:
         return result
 
     def run_payload(self, payload):
-        image = decode_image(payload['image_b64'])
+        frames = [decode_image(f) for f in (payload.get('images_b64') or [payload['image_b64']])[:MAX_FRAMES]]
         queries = [decode_image(q) for q in (payload.get('queries_b64') or [])[:MAX_QUERIES]]
         if not queries:
             raise ValueError('至少需要一张外观模板')
-        return self.find(image, queries, float(payload.get('min_score', MIN_SCORE)))
+        min_score = float(payload.get('min_score', MIN_SCORE))
+        results = [self.find(image, queries, min_score) for image in frames]
+        best = max(results, key=lambda r: r['score'] or -1)
+        boxes = [r['bbox'] for r in results if r['bbox']]
+        agree = bool(best['bbox']) and len(boxes) == len(results) and all(iou(b, best['bbox']) >= AGREE_IOU for b in boxes)
+        return {**best, 'ok': bool(best['score'] is not None and best['score'] >= min_score and agree), 'frames': len(results),
+                'frame_scores': [r['score'] for r in results], 'agree': agree,
+                'ms': round(sum(r['ms'] for r in results), 1)}
 
