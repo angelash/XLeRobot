@@ -52,6 +52,27 @@ def test_survey_from_the_live_folded_pose_splits_moves_under_the_step_limit():
     assert c.phase == 'ready'
 
 
+@pytest.mark.parametrize('start', [(2007, 2216, 959, 2244, 2124, 1347), (1995, 1154, 2919, 2246, 2124, 1348),
+                                   (2007, 2451, 2262, 1949, 2124, 2040)])
+def test_survey_is_entered_from_behind_and_above_a_standing_object(start):
+    """2026-11-03: a forward arc down to a 6 cm survey knocked over a plug standing just ahead of the tips."""
+    w = SimWorld()
+    w.q.update(zip(('pan', 'lift', 'elbow', 'pitch', 'roll', 'grip'), start))
+    ex = SimExecutor(w)
+    c = GraspController(ex, SimObserver(w), config={'desk_z': -8.0})
+    tips, step = [], ex.step
+    def recording(targets, **k):
+        entry = step(targets, **k)
+        tips.extend(arm.fk(q['lift'], q['elbow'], q['pitch'])['tip'] for q in w.trajectory)
+        return entry
+    ex.step = recording
+    c.run_survey()
+    assert c.result['ok'], c.result
+    x, z = DEFAULTS['survey_x'], -8.0 + DEFAULTS['survey_height']
+    assert not [t for t in tips if t[0] > x + 0.3 and t[1] < z - 0.2], 'Never below the survey height ahead of the tips'
+    assert arm.fk(c.q['lift'], c.q['elbow'], c.q['pitch'])['tip'][1] >= -8.0 + 8.5
+
+
 # ---- tracker / vision -------------------------------------------------------
 def test_tracker_follows_the_object_through_an_approach():
     w = SimWorld()

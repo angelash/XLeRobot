@@ -69,6 +69,11 @@ def segment_min_z(a, b, samples=20):
     return low_tip, low_wrist
 
 
+def segment_tips(a, b, samples=20):
+    """Tip positions while the joints interpolate linearly from a to b."""
+    return [fk(*[a[i] + (b[i] - a[i])*k/samples for i in range(3)])['tip'] for k in range(samples + 1)]
+
+
 def pan_angle(pan):
     """Degrees, positive to the robot's left (pan raw decreasing)."""
     return (PAN_REF - pan)*K

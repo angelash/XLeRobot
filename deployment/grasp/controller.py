@@ -15,14 +15,20 @@ from .vision import background_shift, edges, grip_window, in_jaws, ref_x, window
 
 DEFAULTS = {
     # geometry (planar model, cm / degrees)
-    'desk_z': -8.0, 'approach_clearance': 1.4, 'survey_x': 23.0, 'survey_height': 6.0, 'survey_pitch': 108.0,
+    # The survey tips sit 9 cm over the desk so a standing plug (about 5.5 cm with its pins) can be anywhere
+    # ahead; the survey is entered from behind and above (survey_back_cm / survey_rise_cm). 2026-11-03: a 6 cm
+    # survey reached by a forward arc knocked over a plug placed just ahead of the tips.
+    'desk_z': -8.0, 'approach_clearance': 1.4, 'survey_x': 23.0, 'survey_height': 9.0, 'survey_pitch': 108.0,
+    'survey_back_cm': 4.0, 'survey_rise_cm': 5.0,
     'approach_pitch': 105.0, 'min_bend': 22.0, 'path_clearance': 2.5,
     # lateral servo on the shoulder pan (px per raw count; negative: pan up moves the object left)
     'pan_gain': -1.9, 'pan_step_max': 30, 'align_tol_px': 14, 'align_max_iter': 8,
     'ref_x_far': 395.0, 'ref_x_near': 440.0, 'ref_bottom_far': 300.0, 'ref_bottom_near': 470.0,
     # when the object counts as ahead of the tips / at the tips / between the jaws. Near the jaws the
     # tracker's scale lags, so once the near edge reaches the tips the insertion is a measured distance.
-    'clear_bottom': 335.0, 'tips_bottom': 360.0, 'insert_cm': 3.0, 'in_bottom': 465.0, 'in_top': 215.0,
+    # clear_bottom is seen from the survey pose: row 335 at 6 cm and row 380 at 9 cm both put the near edge
+    # about 5 cm beyond the tips (wrist camera model).
+    'clear_bottom': 380.0, 'tips_bottom': 360.0, 'insert_cm': 3.0, 'in_bottom': 465.0, 'in_top': 215.0,
     'advance_far_cm': 2.0, 'advance_near_cm': 1.0, 'advance_near_bottom': 380.0, 'advance_max_steps': 12,
     'approach_torque': 450, 'approach_speed': 6.0,
     # gripper
@@ -171,10 +177,11 @@ class GraspController:
         self._update(held.get('joints') or {})
 
     # ---- paths -------------------------------------------------------------
-    def _plan(self, target, final_floor=None):
+    def _plan(self, target, final_floor=None, keep_out=None):
         """Waypoints from the current pose to target that stay above the desk. A
         path may start below the safety height (after a grasp) but never dips
-        below where each segment starts."""
+        below where each segment starts. keep_out=(x, z): ahead of x the tip may
+        not go below z (where objects stand), except while rising from lower."""
         here = (self.q['lift'], self.q['elbow'], self.q['pitch'])
         floor = self._floor()
         final_floor = floor if final_floor is None else final_floor
@@ -188,6 +195,10 @@ class GraspController:
                     limit = min(limit, final_floor)
                 if tip < limit - 0.05 or wrist < min(floor, start['wrist'][1] - 0.3):
                     return False
+                if keep_out is not None:
+                    low = min(keep_out[1], start['tip'][1] - 0.3)
+                    if any(t[0] > keep_out[0] and t[1] < low for t in arm.segment_tips(a, b)):
+                        return False
             return True
         candidates = [[target], [arm.HIGH_OVER_DESK, target], [arm.UPRIGHT, arm.HIGH_OVER_DESK, target]]
         if here[1] > 2600 and here[0] < 1500:        # folded: unfold the elbow first (verified 2026-11-03)
@@ -197,8 +208,8 @@ class GraspController:
                 return path
         raise GraspFailure('找不到不低于桌面安全高度的路径，请先把手臂收回竖直')
 
-    def _go(self, target, label, speed=12.0, torque=None, final_floor=None):
-        for k, q3 in enumerate(self._plan(target, final_floor)):
+    def _go(self, target, label, speed=12.0, torque=None, final_floor=None, keep_out=None):
+        for k, q3 in enumerate(self._plan(target, final_floor, keep_out)):
             entry = self._arm(q3, torque=torque, speed=speed, label=f'{label}{k + 1}')
             if entry.get('contact'):
                 raise GraspFailure(f'{label}途中受阻：{entry["contact"].get("joint")}停在{entry["contact"].get("position")}')
@@ -207,6 +218,21 @@ class GraspController:
         c = self.cfg
         return arm.ik(c['survey_x'], c['desk_z'] + c['survey_height'], c['survey_pitch'])
 
+    def _go_survey(self, label):
+        """Enter the survey pose from behind and above: first a point survey_back_cm
+        behind and survey_rise_cm over it, then forward and down. Ahead of the final
+        tips the path never goes below the survey height, so a standing object
+        in front is not swept by a forward arc."""
+        c = self.cfg
+        x, z = c['survey_x'], c['desk_z'] + c['survey_height']
+        target = self.survey_joints()
+        tip = self._tip()['tip']
+        keep_out = (x + 0.3, z - 0.2)
+        if math.hypot(tip[0] - x, tip[1] - z) > 1.0:
+            pre = arm.ik(x - c['survey_back_cm'], z + c['survey_rise_cm'], c['survey_pitch'], min_bend=10)
+            self._go(pre, label + '上方', keep_out=keep_out)
+        self._go(target, label, keep_out=keep_out)
+
     # ---- operations --------------------------------------------------------
     def run_survey(self):
         self.started = self.clock()
@@ -214,7 +240,7 @@ class GraspController:
         try:
             self._phase('survey', '移动到观察位')
             self._refresh()
-            self._go(self.survey_joints(), '观察位')
+            self._go_survey('观察位')
             self._move({'left:6': self.cfg['grip_open']}, torque=450, speed=20, label='张开夹爪')
             self._key('survey')
             self._phase('ready', '在观察位，等待框选目标')
@@ -515,7 +541,7 @@ class GraspController:
         c = self.cfg
         self._phase('home', '收回' + ('竖直' if c['end_pose'] == 'upright' else '观察位'))
         if c['end_pose'] == 'survey':
-            self._go(self.survey_joints(), '回观察位')
+            self._go_survey('回观察位')
         else:
             self._go(arm.UPRIGHT, '收回竖直')
             self._move({'left:6': UPRIGHT_GRIP}, speed=20, label='合上夹爪')
