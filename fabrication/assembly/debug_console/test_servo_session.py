@@ -131,7 +131,7 @@ def test_the_controller_api(runtime, servo, monkeypatch):
 AUTH = '2026-11-03 用户：目前机器人向后移动10-20厘米完全没问题'
 
 
-def test_reverse_legs_stay_inside_the_user_budget_and_a_stall_is_a_contact(runtime, servo, tmp_path):
+def test_reverse_legs_stay_inside_the_user_budget_and_a_stall_is_a_contact(runtime, servo, tmp_path, verified_direction):
     from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
     sid = servo.start('让位', True)['session_id']
     for bad, match in [(dict(distance_m=0.03, authorization=AUTH), '后退'), (dict(distance_m=-0.06, authorization=AUTH), '后退'),
@@ -152,11 +152,34 @@ def test_reverse_legs_stay_inside_the_user_budget_and_a_stall_is_a_contact(runti
     assert again.reverse_budget(AUTH)['left_m'] == 0, 'The budget survives a restart'
 
 
-def test_a_blocked_reverse_leg_is_reported_as_base_contact(runtime, servo):
+def test_a_blocked_reverse_leg_is_reported_as_base_contact(runtime, servo, verified_direction):
     from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
     moving_wheels(runtime, increment=20, cap=200)
     sid = servo.start('让位', True)['session_id']
     entry = servo.base(sid, -0.05, AUTH)
     assert entry['base']['stopped_by'] == 'stall' and entry['contact']['joint'] == 'base'
     assert servo.active and servo.snapshot()['contacts'][-1]['joint'] == 'base'
+
+
+@pytest.fixture
+def verified_direction(tmp_path, monkeypatch):
+    import json
+    from fabrication.assembly.debug_console import rotation_scan
+    path = tmp_path/'chassis-direction.json'
+    path.write_text(json.dumps({'camera_forward_sign': 1, 'evidence': ['test']}), encoding='utf-8')
+    monkeypatch.setattr(rotation_scan, 'CHASSIS_DIRECTION', path)
+    return path
+
+
+def test_reverse_needs_a_camera_verified_direction_and_counts_net_backward_travel(runtime, servo, tmp_path, monkeypatch):
+    import json
+    from fabrication.assembly.debug_console import rotation_scan
+    from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
+    monkeypatch.setattr(rotation_scan, 'CHASSIS_DIRECTION', tmp_path/'missing.json')
+    sid = servo.start('让位', True)['session_id']
+    with pytest.raises(ValueError, match='相机核实'):
+        servo.base(sid, -0.05, AUTH)
+    (tmp_path/'servo').mkdir(exist_ok=True)
+    (tmp_path/'servo'/'base-authorizations.json').write_text(json.dumps({AUTH: {'used_m': 0.15, 'legs': 3, 'forward_correction_m': 0.15}}), encoding='utf-8')
+    assert servo.reverse_budget(AUTH)['left_m'] == 0.2, 'Legs that went forward by a sign error do not use the backward budget'
 

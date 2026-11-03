@@ -5,11 +5,32 @@ path. A timer cannot protect against killing the entire serial-owner process;
 this primitive is supervised surveying, not unattended crash-safe navigation.
 """
 from __future__ import annotations
+import json
 import math
 import threading
 import time
+from pathlib import Path
 from .torque_control import read_registers, write_register, word
 from .upstream_teleop import encode_velocity
+
+# Which wheel-command sign moves the chassis toward where the head and arms look.
+# 2026-11-03: two legs commanded "backward" (-5cm each) brought the desk and the
+# plug closer in both the head and the right-wrist cameras, so on this build the
+# command sign is the opposite of the camera direction. Written per robot from
+# camera evidence; absent means unverified (+1, the upstream convention).
+CHASSIS_DIRECTION = Path(__file__).resolve().parents[3]/'.local-deploy'/'chassis-direction.json'
+
+
+def chassis_direction():
+    """(sign, source): multiply a camera-frame translation by sign to get the wheel command."""
+    try:
+        data = json.loads(CHASSIS_DIRECTION.read_text(encoding='utf-8'))
+        sign = data.get('camera_forward_sign')
+        if sign in (-1, 1) and data.get('evidence'):
+            return sign, 'camera_verified'
+    except (OSError, ValueError, AttributeError):
+        pass
+    return 1, 'uncalibrated'
 
 
 def bounded_rotate(runtime, check_abort, direction=1, duration=.18, max_raw=160):
@@ -214,7 +235,9 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 if not ok:
                     raise ValueError('视觉避障未放行：'+reason)
             # The mirrored-left chassis uses opposite raw signs for forward.
-            command = runtime.wheel_command(direction*(.025 if target_counts is not None else .02), 0, max_raw=max_raw) if advance else runtime.wheel_command(0, direction*.25, max_raw=max_raw)
+            # Translations are in the camera frame: the calibrated sign maps them to wheel commands.
+            sign, direction_source = chassis_direction() if advance else (1, 'rotation')
+            command = runtime.wheel_command(sign*direction*(.025 if target_counts is not None else .02), 0, max_raw=max_raw) if advance else runtime.wheel_command(0, direction*.25, max_raw=max_raw)
             if (set(command) != {9, 10} or not command[9]
                     or command[9] != (-command[10] if advance else command[10])
                     or max(abs(v) for v in command.values()) > max_raw):
@@ -323,7 +346,8 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
         return {'wheel_delta_raw': deltas, 'stop_readback': final, 'stop_trace': readbacks,
                 'duration_s': duration if target_counts is None else round(drive_elapsed,3),
                 'command_raw': command, 'rotation_command_rad_s': 0,
-                'direction': 'forward' if direction>0 else 'backward', 'distance_source': 'not_measured_no_metric_claim',
+                'direction': 'forward' if direction>0 else 'backward', 'direction_frame': 'camera',
+                'command_sign': sign, 'direction_source': direction_source, 'distance_source': 'not_measured_no_metric_claim',
                 **({'target_counts':target_counts,'travel_trace':travel_trace,'max_duration_s':duration,
                     'wheel_start_raw':before,'stopped_by':stopped_by,'read_glitches':glitches,
                     **({'stall':blocked} if stopped_by=='stall' else {})} if target_counts is not None else {}),

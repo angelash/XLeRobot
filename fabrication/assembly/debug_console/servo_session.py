@@ -194,7 +194,11 @@ class ServoSession:
             return {}
 
     def reverse_budget(self, authorization):
-        used = float(self._reverse_used().get(str(authorization or '').strip(), {}).get('used_m', 0.0))
+        row = self._reverse_used().get(str(authorization or '').strip(), {})
+        row = row if isinstance(row, dict) else {}
+        # forward_correction_m: legs recorded as reverse that the cameras showed moved toward the front
+        # (sign error before the chassis direction was verified); the budget is net backward travel.
+        used = max(0.0, float(row.get('used_m', 0.0)) - float(row.get('forward_correction_m', 0.0)))
         return {'budget_m': REVERSE_BUDGET_M, 'used_m': round(used, 4), 'left_m': round(max(0.0, REVERSE_BUDGET_M - used), 4)}
 
     def base(self, session_id, distance_m, authorization='', max_raw=160, label=''):
@@ -208,6 +212,9 @@ class ServoSession:
             raise ValueError('后退需要附上用户授权原文')
         if type(max_raw) is not int or not 60 <= max_raw <= 220:
             raise ValueError('轮速需在60–220')
+        from .rotation_scan import chassis_direction
+        if chassis_direction()[1] != 'camera_verified':
+            raise ValueError('底盘前后方向未经相机核实，不执行后退（先写入chassis-direction.json）')
         budget = self.reverse_budget(auth)
         if abs(distance_m) > budget['left_m'] + 1e-9:
             raise ValueError(f'本授权后退额度{REVERSE_BUDGET_M*100:g}cm，已用{budget["used_m"]*100:.1f}cm')

@@ -189,3 +189,25 @@ def test_a_single_temperature_glitch_is_reread_and_recorded_not_a_stop(runtime):
     assert glitch['motor']==9 and glitch['first'][63]==49 and glitch['reread'][63]==35
     stopped(p)
 
+
+@pytest.mark.parametrize('sign',[1,-1])
+def test_translations_follow_the_camera_verified_chassis_direction(runtime,tmp_path,monkeypatch,sign):
+    from fabrication.assembly.debug_console import rotation_scan
+    path=tmp_path/'chassis-direction.json'
+    path.write_text(json.dumps({'camera_forward_sign':sign,'evidence':['20261103-170422-reposition']}),encoding='utf-8')
+    monkeypatch.setattr(rotation_scan,'CHASSIS_DIRECTION',path)
+    moving_wheels(runtime)
+    result=bounded_travel(runtime,lambda:None,-.05)
+    assert result['direction']=='backward' and result['command_sign']==sign and result['direction_source']=='camera_verified'
+    # uncalibrated "backward" turns wheel 9 positive (as on the robot, +120 at 16:58); a -1 sign flips it
+    assert result['wheel_delta_raw'][9]*sign>0
+    assert result['wheel_distance_m_estimate']<0
+
+
+def test_without_evidence_the_direction_is_reported_unverified(runtime,tmp_path,monkeypatch):
+    from fabrication.assembly.debug_console import rotation_scan
+    path=tmp_path/'chassis-direction.json'
+    path.write_text(json.dumps({'camera_forward_sign':-1}),encoding='utf-8')
+    monkeypatch.setattr(rotation_scan,'CHASSIS_DIRECTION',path)
+    assert rotation_scan.chassis_direction()==(1,'uncalibrated')
+
