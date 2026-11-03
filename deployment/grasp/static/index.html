@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>快速抓取 · XLeRobot Studio</title><link rel="stylesheet" href="/grasp/assets/style.css">
+  <script src="/grasp/assets/app.js" defer></script>
+</head>
+<body>
+<main>
+  <section class="intro">
+    <div><p class="eyebrow">FAST GRASP / LEFT WRIST CAMERA</p><h1>框一次，剩下交给闭环<span class="accent">。</span></h1>
+      <p class="summary">左腕相机实时跟踪你框选的物体；肩水平按画面误差对准，夹爪近水平贴桌推进，按负载和画面判断接触、加压、只抬肩提起并核对是否夹住，再放回、松开、收回。全程不调用大模型，动作只经控制服务的受限会话执行。</p></div>
+    <div class="controls"><span id="state" class="pill">读取中</span>
+      <div class="buttons"><button id="cam-start">开启相机</button><button id="cam-stop" class="quiet">关闭相机</button></div>
+      <button id="stop" class="danger">立即停止</button></div>
+  </section>
+  <section class="layout">
+    <figure class="live"><div class="stage"><img id="live" alt="左腕实时画面：绿框为跟踪目标，蓝线为横向参考，橙线为进入两指的判据"><canvas id="pick" width="640" height="480"></canvas></div>
+      <figcaption id="caption">开启相机后，在画面上拖出一个框选中目标（尽量只包住物体本身）。</figcaption></figure>
+    <aside class="panel">
+      <div class="gauge"><span>阶段</span><b id="phase">—</b></div>
+      <p id="note" class="hint"></p>
+      <dl id="facts"></dl>
+      <div id="events" class="events"></div>
+    </aside>
+  </section>
+  <section class="grid">
+    <div class="card"><h2>1 · 目标</h2><p class="hint">在画面上拖框；或让算法给一个建议框，看过再采用。</p>
+      <div class="buttons"><button id="propose">建议目标框</button><button id="use-proposal" disabled>使用建议框</button><button id="clear" class="quiet">清除目标</button></div>
+      <p id="target" class="hint"></p></div>
+    <div class="card"><h2>2 · 动作</h2>
+      <label class="check"><input type="checkbox" id="confirm"> 手臂运动范围内无人、桌面工作区已清理，我会盯着画面随时停止</label>
+      <div class="buttons"><button id="survey">到观察位</button><button id="run" class="primary">抓起并放下</button></div>
+      <div class="options"><label>放置横移 <input id="lateral" type="number" step="0.5" min="-8" max="8" value="0"> cm（左正）</label>
+        <label>放置前后 <input id="forward" type="number" step="0.5" min="-5" max="5" value="0"> cm</label>
+        <label>结束姿态 <select id="end-pose"><option value="upright">竖直（规范）</option><option value="survey">回观察位</option></select></label>
+        <label>模式 <select id="mode"><option value="full">完整抓起并放下</option><option value="inserted">演练：送入两指后不闭合</option></select></label></div></div>
+    <div class="card"><h2>3 · 参数</h2><p class="hint">按模型厘米；桌面高度是相对左肩抬升轴。</p>
+      <div class="options" id="config"></div><div class="buttons"><button id="save-config" class="quiet">保存参数</button></div></div>
+  </section>
+  <section class="card"><h2>最近记录</h2><div id="runs" class="runs"></div></section>
+  <section class="card"><h2>能力边界</h2><ul class="limits">
+    <li>目标由人（或一次大模型调用）框选；之后只用模板匹配跟踪，大幅转动、强反光或被遮挡时可能跟丢，跟丢即停止。</li>
+    <li>没有自动识别人员：开始前确认工作区无人，运行中任何人靠近请立即停止；手柄任意输入也会中止。</li>
+    <li>距离和高度来自平面运动学模型与舵机读数，未经尺量；够不到的目标会在推进时停止，不会移动底盘。</li>
+    <li>失败时保持夹爪现状（不会自动松手），只在离桌面过近时抬起少许，然后结束会话。</li></ul></section>
+  <p id="notice" class="notice" hidden role="status"></p>
+</main>
+</body>
+</html>

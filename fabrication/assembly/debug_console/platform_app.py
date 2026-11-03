@@ -303,6 +303,8 @@ install_autonomy(app, data_dir=DATA/'autonomy', evidence_root=REPO/'fabrication/
 from deployment.perception.integration import install as install_perception
 install_perception(app, data_dir=DATA/'perception', allowed_origins=lambda: ALLOWED_ORIGINS,
                    ledger_provider=lambda: app.state.autonomy['ledger'], controller=UPSTREAM)
+from deployment.grasp.integration import install as install_grasp
+install_grasp(app, data_dir=DATA/'grasp', allowed_origins=lambda: ALLOWED_ORIGINS, controller=UPSTREAM)
 
 @app.middleware('http')
 async def local_only(request,call_next):

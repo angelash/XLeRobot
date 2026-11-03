@@ -72,6 +72,18 @@ def test_obstacle_page_is_a_studio_module_without_motion_routes(client):
     assert mod.app.state.perception.running is False
 
 
+def test_grasp_page_is_a_studio_module_and_motion_stays_in_the_controller(client):
+    assert 'id="grasp-page"' in client.get('/').text
+    script=client.get('/assets/studio.js').text
+    assert "['grasp','快速抓取'" in script and "grasp:'/grasp/view'" in script
+    assert any(c['id']=='grasp' and c['route']=='grasp' for c in client.get('/api/platform/catalog').json()['capabilities'])
+    assert client.get('/grasp/view').status_code==200
+    assert client.post('/api/platform/grasp/run',json={'confirmed':True},headers={'Origin':'http://foreign.example'}).status_code==403
+    assert client.post('/api/platform/grasp/run',json={}).status_code==409
+    assert client.post('/api/servo/step',json={}).status_code==404,'The generic proxy does not expose the servo session'
+    assert mod.app.state.grasp.cameras_on is False
+
+
 def test_lan_origin_allows_tools_and_proxy_without_changing_takeover(client,tmp_path,monkeypatch):
     config=tmp_path/'studio-network.json'
     config.write_text(json.dumps({'allowed_origins':['http://192.0.2.20:8770']}),encoding='utf-8')
@@ -104,7 +116,7 @@ def test_invalid_lan_origin_never_expands_workbench_access(tmp_path,origin):
 
 def test_catalog_resolves_all_sources_and_media(client):
     c=client.get('/api/platform/catalog').json()
-    assert len(c['capabilities'])==23 and len(c['guides'])==14
+    assert len(c['capabilities'])==24 and len(c['guides'])==14
     assert all(p in c['source_ids'] for x in GUIDES+CAPABILITIES for p in x['sources'])
     for id in c['media']:assert client.get(c['media'][id]).status_code==200
     assert client.get('/api/platform/sources/'+c['sources'][0]['id']).json()['content']

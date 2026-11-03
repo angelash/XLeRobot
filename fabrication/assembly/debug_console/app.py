@@ -339,6 +339,85 @@ def safety_perception_status():
     return runtime.perception_gate.snapshot()
 
 
+# Vision-guided skills (Studio /grasp): bounded steps inside this serial owner.
+from .servo_session import ServoSession
+
+
+def servo():
+    session = getattr(runtime, 'servo', None)
+    if session is None or session.runtime is not runtime:
+        session = runtime.servo = ServoSession(runtime, LOG_DIR/'servo-sessions')
+    return session
+
+
+class ServoStartCommand(BaseModel):
+    label: str = ''
+    confirmed: bool = False
+    lease_s: float = 4.0
+
+
+class ServoStepCommand(BaseModel):
+    session_id: str
+    targets: dict[str, float]
+    torque: int | None = None
+    speed_deg: float = 12
+    label: str = ''
+
+
+class ServoRefCommand(BaseModel):
+    session_id: str
+    reason: str = '完成'
+
+
+class ServoStopCommand(BaseModel):
+    reason: str = '页面点击立即停止'
+
+
+@app.post('/api/servo/session')
+def servo_start(payload: ServoStartCommand):
+    try:
+        if isinstance(runtime, PreviewRuntime):
+            raise ValueError('隔离预览不操作实机')
+        return servo().start(payload.label, payload.confirmed, payload.lease_s)
+    except Exception as exc:
+        runtime.log('servo', '抓取会话未开始：'+str(exc))
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post('/api/servo/step')
+def servo_step(payload: ServoStepCommand):
+    try:
+        return servo().step(payload.session_id, payload.targets, payload.torque, payload.speed_deg, payload.label)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post('/api/servo/hold')
+def servo_hold(payload: ServoRefCommand):
+    try:
+        return servo().hold(payload.session_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post('/api/servo/end')
+def servo_end(payload: ServoRefCommand):
+    try:
+        return servo().end(payload.session_id, payload.reason)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post('/api/servo/stop')
+def servo_stop(payload: ServoStopCommand | None = None):
+    return servo().stop((payload.reason if payload else '') or '页面点击立即停止')
+
+
+@app.get('/api/servo/status')
+def servo_status():
+    return servo().snapshot()
+
+
 @app.get('/api/camera/{camera}/snapshot')
 def camera_snapshot(camera: int):
     from fastapi.responses import Response
