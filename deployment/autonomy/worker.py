@@ -69,7 +69,9 @@ class Providers:
                 finder = ExampleFinder(self.owl_model)
                 if finder.available():
                     self.available['vision.find_by_example'] = finder.run_payload
-                    self.details['vision.find_by_example'] = {'model': finder.model_dir.name, 'device': 'cpu', 'loaded': 'on first job'}
+                    self.details['vision.find_by_example'] = {'model': finder.model_dir.name, 'device': 'cpu', 'loaded': 'preloading'}
+                    # Loading takes about 20 s on the workstation CPU: do it now, not inside the first grasp's deadline.
+                    threading.Thread(target=finder._load, daemon=True, name='owlvit-preload').start()
                 else:
                     self.details['vision.find_by_example'] = {'available': False, 'reason': '本地没有模型文件：' + str(self.owl_model)}
             except Exception as exc:  # noqa: BLE001 - optional capability
