@@ -17,6 +17,9 @@ REF = {'lift': 2211, 'elbow': 955, 'pitch': 2245}
 PAN_REF = 2037          # folded left-arm pan centre (agent_ops.PAN_CENTRE)
 UPRIGHT = (2211, 955, 2245)
 HIGH_OVER_DESK = (2522, 1513, 2247)   # verified 2026-11-03, between upright and the desk
+# Left-arm EEPROM limits read 2026-11-03 (lift, elbow, wrist pitch). The single
+# elbow branch of ik() leaves them for targets closer than about 11 cm.
+JOINT_LIMITS = ((1132, 3471), (727, 2926), (980, 3258))
 
 
 class Unreachable(ValueError):
@@ -48,7 +51,11 @@ def ik(x, z, t3, margin=0.3, min_bend=18.0):
     a = math.degrees(math.acos(max(-1.0, min(1.0, (L1*L1 + d*d - L2*L2)/(2*L1*d)))))
     t1 = phi - a
     t2 = t1 + bend
-    return (round(REF['lift'] + t1/K), round(REF['elbow'] + bend/K), round(REF['pitch'] + (t3 - t2)/K))
+    q = (round(REF['lift'] + t1/K), round(REF['elbow'] + bend/K), round(REF['pitch'] + (t3 - t2)/K))
+    for name, raw, (low, high) in zip(('肩抬升', '肘', '腕俯仰'), q, JOINT_LIMITS):
+        if not low <= raw <= high:
+            raise Unreachable(f'指尖({x:.1f}, {z:.1f})需要{name}{raw}，超出限位{low}–{high}')
+    return q
 
 
 def segment_min_z(a, b, samples=20):

@@ -22,6 +22,9 @@ def test_ik_fk_round_trip_matches_the_2026_11_03_poses():
         assert abs(tip[0] - x) < 0.15 and abs(tip[1] - z) < 0.15
     with pytest.raises(arm.Unreachable):
         arm.ik(36, -6.6, 105)
+    with pytest.raises(arm.Unreachable):
+        arm.ik(9, -6.6, 105, min_bend=22)     # close to the body the single branch leaves the joint limits
+    assert arm.ik(12, -6.6, 105, min_bend=22) == (2674, 2787, 1145)
     assert arm.lateral_to_pan(1.0, 27) < 0, 'Moving left lowers the pan raw'
 
 
