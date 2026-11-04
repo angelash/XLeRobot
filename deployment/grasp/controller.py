@@ -59,6 +59,7 @@ UPRIGHT_GRIP = 1340
 # The control service rejects any joint change above 900 raw counts in one step
 # (servo_session.MAX_STEP_RAW); longer moves are split into straight sub-steps.
 STEP_RAW = 800
+MAX_CLOSE_STEPS = 32
 JOINT_NAMES = {'left:1': 'pan', 'left:2': 'lift', 'left:3': 'elbow', 'left:4': 'pitch', 'left:5': 'roll', 'left:6': 'grip'}
 
 
@@ -477,7 +478,7 @@ class GraspController:
         obs = self._need_track(self._look('收拢后'), '收拢')
         left = obs['bbox'][0]
         contact_at = None
-        while True:
+        for _ in range(MAX_CLOSE_STEPS):
             target = self.q['grip'] - c['grip_step']
             if target <= c['grip_empty']:
                 raise GraspFailure('夹爪合到底仍未接触目标（空夹）')
@@ -502,6 +503,8 @@ class GraspController:
                 # actually holds pressure; visual stillness alone is not grip.
                 if contact_at - self.q['grip'] >= c['grip_after_contact_max'] or (lead > 15 and load >= c['grip_contact_load']):
                     break
+        else:
+            raise GraspFailure('闭合次数达到上限，仍未确认夹持压力，保持当前位置')
         self._phase('squeeze', '加压夹紧')
         self._move({'left:6': self.q['grip'] - c['squeeze_lead']}, torque=c['squeeze_torque'], speed=3, label='加压')
         self.grasp_pose = dict(self.q)

@@ -521,3 +521,19 @@ def test_contact_on_an_arm_step_holds_and_prevents_followup_or_automatic_raise()
     assert c.contact_pending and len(ex.steps) == before + 1
     assert not ex.active, 'The session ends holding the contact position'
 
+
+def test_closing_stalled_without_load_cannot_keep_renewing_the_session(monkeypatch):
+    from deployment.grasp.controller import GraspFailure
+    c=GraspController(None,None)
+    c.q={'grip':1900,'grip_goal':1900,'grip_load':0}
+    calls=[]
+    def move(targets,**kwargs):
+        calls.append(targets)
+        assert len(calls) < 40, 'A stationary encoder must not produce an unbounded closing loop'
+        c.q.update(grip=1900,grip_goal=targets['left:6'],grip_load=0)
+    monkeypatch.setattr(c,'_move',move)
+    monkeypatch.setattr(c,'_look',lambda label:{'ok':True,'score':1.,'bbox':[350,300,100,100]})
+    with pytest.raises(GraspFailure,match='闭合次数达到上限'):
+        c._close({'ok':True,'score':1.,'bbox':[350,300,100,100]})
+    assert len(calls) <= 33 and not any(e.get('phase') == 'lift' for e in c.events)
+
