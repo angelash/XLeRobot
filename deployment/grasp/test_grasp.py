@@ -469,3 +469,36 @@ def test_laptop_rechecks_unsafe_worker_box_before_selection(service, monkeypatch
         service.locate('plug')
     assert service.selection is None
 
+
+def test_stationary_object_does_not_end_closing_before_pressure_or_travel_cap(monkeypatch):
+    c = GraspController(None, None)
+    c.q = {'grip': 2045, 'grip_goal': 2045, 'grip_load': 0}
+    moves = []
+    def move(targets, **kwargs):
+        goal = targets['left:6']
+        c.q.update(grip=goal + 6, grip_goal=goal, grip_load=35)
+        moves.append(goal)
+    monkeypatch.setattr(c, '_move', move)
+    monkeypatch.setattr(c, '_look', lambda label: {'ok': True, 'score': 1., 'bbox': [350, 300, 100, 100]})
+    c._close({'ok': True, 'score': 1., 'bbox': [350, 300, 100, 100]})
+    checks = [e for e in c.events if e['kind'] == 'grip_check']
+    assert checks[0]['grip'] - checks[-1]['grip'] >= c.cfg['grip_after_contact_max']
+    assert all(e['lead'] == 6 for e in checks), 'No pressure: stillness must not stop closing after two frames'
+    assert min(moves) > c.cfg['grip_empty'], 'The existing empty-grip limit remains'
+
+
+def test_one_attempt_option_reaches_the_controller_and_bad_options_are_rejected(service, monkeypatch):
+    service.start_cameras()
+    service.select([round(v) for v in service.world.bbox()])
+    def launch(name, confirmed, work):
+        c = GraspController(None, None, config=service.config)
+        c.run_pick_place = lambda: {'attempt_cap': c.cfg['max_attempts']}
+        return work(c)
+    monkeypatch.setattr(service, '_launch', launch)
+    assert service.run(True, {'max_attempts': 1})['attempt_cap'] == 1
+    for bad in [True, 0, 4, 1.5]:
+        with pytest.raises(ValueError, match='max_attempts'):
+            service.run(True, {'max_attempts': bad})
+    with pytest.raises(ValueError, match='不支持'):
+        service.run(True, {'max_attemps': 1})
+

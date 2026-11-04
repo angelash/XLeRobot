@@ -331,7 +331,7 @@ class GraspController:
                         break
                     self._abandon_grasp()
                     if self.attempt >= int(self.cfg['max_attempts']):
-                        raise GraspFailure('两次提起都未带起目标')
+                        raise GraspFailure(f'{self.attempt}次提起均未确认带起目标')
                     obs = self._need_track(self._look('重试前'), '重试')
                 except GraspFailure:
                     raise
@@ -470,7 +470,7 @@ class GraspController:
         self._move({'left:6': c['grip_free']}, torque=450, speed=10, label='夹爪快速收拢')
         obs = self._need_track(self._look('收拢后'), '收拢')
         left = obs['bbox'][0]
-        contact_at, still = None, 0
+        contact_at = None
         while True:
             target = self.q['grip'] - c['grip_step']
             if target <= c['grip_empty']:
@@ -482,14 +482,19 @@ class GraspController:
             dx = obs['bbox'][0] - left
             left = obs['bbox'][0]
             load = self.q.get('grip_load') or 0
+            lead = self.q['grip'] - (self.q.get('grip_goal') or self.q['grip'])
+            self._event('grip_check', grip=self.q['grip'], goal=self.q.get('grip_goal'), load=load,
+                        lead=lead, dx=round(dx, 1))
             if contact_at is None:
                 if load >= c['grip_contact_load'] or abs(dx) >= 5:
                     contact_at = self.q['grip']
                     self._event('contact', grip=contact_at, load=load, dx=round(dx, 1))
                     self._key('contact')
             else:
-                still = still + 1 if abs(dx) <= c['grip_settle_px'] else 0
-                if still >= 2 or contact_at - self.q['grip'] >= c['grip_after_contact_max'] or (self.q.get('grip_goal') or 0) < self.q['grip'] - 15:
+                # A stationary target may still be outside the closing fingers.
+                # Keep the existing travel cap, or stop sooner when the motor
+                # actually holds pressure; visual stillness alone is not grip.
+                if contact_at - self.q['grip'] >= c['grip_after_contact_max'] or (lead > 15 and load >= c['grip_contact_load']):
                     break
         self._phase('squeeze', '加压夹紧')
         self._move({'left:6': self.q['grip'] - c['squeeze_lead']}, torque=c['squeeze_torque'], speed=3, label='加压')
@@ -507,6 +512,7 @@ class GraspController:
             after = self._look('提起后')
             verdict = self._verify_held(before, after, pose_before, window)
             self._event('verify', **verdict)
+            self._key('verify-lift')
             if verdict['held'] is True:
                 self._key('lifted')
                 return True

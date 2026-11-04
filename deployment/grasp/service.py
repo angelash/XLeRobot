@@ -472,6 +472,12 @@ class GraspService:
 
     def run(self, confirmed, options=None):
         options = options or {}
+        allowed = {'object', 'auto_select', 'place_lateral_cm', 'place_forward_cm', 'end_pose', 'stop_after',
+                   'reverse_authorization', 'max_attempts'}
+        if not isinstance(options, dict) or set(options) - allowed:
+            raise ValueError('抓取选项含不支持的参数')
+        if 'max_attempts' in options and (type(options['max_attempts']) is not int or not 1 <= options['max_attempts'] <= 3):
+            raise ValueError('max_attempts需为1–3的整数')
         obj = Knowledge.name(options.get('object', 'plug'))
         meta = {'object': obj, 'llm_calls': 0, 'agreement': None}
         if options.get('auto_select'):
@@ -487,7 +493,7 @@ class GraspService:
             ready = self.tracker.active and self.tracker.lost == 0
         if not ready:
             raise ValueError('先在腕部画面中框选目标，并确认跟踪正常')
-        overrides = {}
+        overrides = {k: options[k] for k in ('max_attempts',) if k in options}
         for key in ('place_lateral_cm', 'place_forward_cm'):
             if key in options:
                 low, high = EDITABLE[key]
