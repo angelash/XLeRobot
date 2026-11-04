@@ -359,6 +359,12 @@ class GraspService:
             raise ValueError(f'本地没有认出目标（{hit.get("finder")}最高分{hit["score"]}），请交回大模型框选'
                              + (f'；模型不可用：{hit["model_error"]}' if hit.get('model_error') else '')
                              + (f'；{hit["reason"]}' if hit.get('reason') else ''))
+        if hit.get('finder') == 'template':
+            # Real empty white desks scored 0.70–0.77 on 2026-11-03.
+            # Keep the matcher for inspection; it cannot select for motion.
+            hit = {**hit, 'candidate_only': True}
+            if select:
+                raise ValueError('经典模板仅作候选，不能自动选中抓取；请恢复本地模型或交回大模型框选')
         if select:
             self.select(hit['bbox'], source=f'local:{hit.get("finder")}:{hit["object"]}')
         return {'located': hit}

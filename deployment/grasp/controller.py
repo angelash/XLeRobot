@@ -90,6 +90,7 @@ class GraspController:
         self.grasp_pose = None
         self.grip_box = None
         self.last_obs = None
+        self.contact_pending = False
 
     # ---- bookkeeping -------------------------------------------------------
     def _phase(self, name, note=''):
@@ -147,6 +148,11 @@ class GraspController:
         self._update(entry.get('joints') or {})
         self._event('step', label=label, targets=targets, torque=torque, contact=entry.get('contact'),
                     q={k: self.q.get(k) for k in ('pan', 'lift', 'elbow', 'pitch', 'grip')})
+        if entry.get('contact'):
+            self.contact_pending = True
+            self._event('contact_stop', contact=entry['contact'])
+            self._key('contact-stop')
+            raise GraspFailure('疑似碰阻，保持现场：' + str(entry['contact'].get('joint')))
         if entry.get('ended'):
             raise GraspFailure('控制服务结束了会话：' + entry['ended'])
         self._stop_check()
@@ -626,6 +632,8 @@ class GraspController:
 
     def _safe_raise(self):
         """After a failure: never open a possibly holding gripper; only lift clear if the tip is low."""
+        if self.contact_pending:
+            return
         try:
             if not getattr(self.ex, 'active', True) or 'lift' not in self.q:
                 return

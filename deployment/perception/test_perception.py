@@ -183,3 +183,60 @@ def test_config_validation_and_http_surface(tmp_path):
         view = client.get('/perception/view')
         assert "script-src 'self'" in view.headers['content-security-policy'] and '/perception/assets/app.js' in view.text
         assert client.post('/api/platform/perception/drive', json={}).status_code == 404
+
+
+def test_confirmed_floor_region_can_exclude_a_nearby_white_table(tmp_path):
+    service, _ = make_service(tmp_path)
+    region = [[0.56, 0.68], [0.96, 0.68], [0.96, 0.86], [0.56, 0.86]]
+    assert service.update_config({'learn_region': region})['learn_region'] == region
+    restored, _ = make_service(tmp_path)
+    assert restored.config['learn_region'] == region
+    mask = near_region(service.config, service.self_mask, None)
+    assert not mask[180, 100] and mask[180, 210], 'Left table excluded; right floor sampled'
+    for bad in [[], [[0.,0.],[1.,1.]], [[True,0.],[1.,0.],[1.,1.]], [[0.,0.],[1.1,0.],[1.,1.]]]:
+        with pytest.raises(ValueError):
+            service.update_config({'learn_region':bad})
+
+
+def test_busy_camera_uses_fresh_shared_frames_without_replaying_identical_images():
+    import httpx
+    import threading
+    from deployment.perception.service import mjpeg_frames
+    stop = threading.Event()
+    paths = []
+    def handle(request):
+        paths.append(request.url.path)
+        if request.url.path.endswith('.mjpg'):
+            return httpx.Response(409)
+        n = len(paths)-1
+        if n == 3:
+            stop.set()
+        return httpx.Response(200, content=b'a' if n < 3 else b'b', headers={'X-Captured-At':str(time.time())})
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        frames=list(mjpeg_frames('http://controller/camera/0.mjpg',stop,client))
+        assert [frame[0] for frame in frames] == [b'a',b'b']
+        assert all(0 <= time.monotonic()-frame[1] < .4 for frame in frames)
+    assert paths == ['/camera/0.mjpg']+['/api/camera/0/snapshot']*3
+
+
+def test_busy_camera_rejects_stale_shared_snapshot():
+    import httpx
+    import threading
+    from deployment.perception.service import mjpeg_frames
+    def handle(request):
+        return httpx.Response(409) if request.url.path.endswith('.mjpg') else httpx.Response(
+            200,content=b'old-jpeg',headers={'X-Captured-At':str(time.time()-1.)})
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        with pytest.raises(RuntimeError,match='过期'):
+            list(mjpeg_frames('http://controller/camera/0.mjpg',threading.Event(),client))
+
+
+def test_reader_preserves_shared_source_timestamp(tmp_path):
+    service,_=make_service(tmp_path)
+    stamp=time.monotonic()-.2
+    def source(stop):
+        yield b'jpeg',stamp
+        stop.set()
+    service.frame_source=source
+    service._reader()
+    assert service.frame_at == stamp and service.frame == b'jpeg'

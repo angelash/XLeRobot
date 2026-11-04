@@ -13,7 +13,7 @@ class Clock:
 
 
 def message(seq, clear=1.0, **changes):
-    return {'stream':'s1','seq':seq,'valid':True,'metric':True,'head_pose_ok':True,'clear_m':clear,**changes}
+    return {'stream':'s1','seq':seq,'valid':True,'metric':True,'head_pose_ok':True,'clear_m':clear,'frame_age_ms':0.,**changes}
 
 
 def test_gate_blocks_missing_stale_invalid_uncalibrated_and_close():
@@ -111,3 +111,17 @@ def test_snapshot_reuses_shared_stream_frame_when_camera_is_busy(runtime,monkeyp
     shots=agent.results[0]['shots']
     assert shots[0]['source']=='shared_stream' and 'source' not in shots[1]
     assert (agent.dir/shots[0]['file']).read_bytes().startswith(b'\xff\xd8')
+
+
+def test_fresh_message_cannot_hide_an_old_source_image():
+    clock=Clock();gate=PerceptionGate(clock)
+    gate.update(message(1,frame_age_ms=300.))
+    assert gate.check(.2)[0]
+    clock.t += .06
+    ok,reason,_=gate.check(.2)
+    assert not ok and '源画面过期' in reason
+    assert gate.snapshot()['effective_frame_age_ms'] == 360
+    gate.update(message(2,frame_age_ms=None))
+    assert not gate.check(.2)[0]
+    for bad in [True,-1.,float('nan'),'0']:
+        with pytest.raises(ValueError):gate.update(message(3,frame_age_ms=bad))

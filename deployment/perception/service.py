@@ -34,7 +34,27 @@ def mjpeg_frames(url, stop, client=None):
     try:
         with client.stream('GET', url) as response:
             if response.status_code == 409:
-                raise RuntimeError('头部相机已被其他页面占用；先关闭该视频')
+                # Studio skills and the live viewer may already own the stream.
+                # Reuse the controller's timestamped frame instead of opening UVC
+                # again or requiring the user to close another capability.
+                response.close()
+                base, camera = url.rsplit('/camera/', 1)
+                camera = camera.split('.', 1)[0]
+                last = None
+                while not stop.is_set():
+                    shared = client.get(f'{base}/api/camera/{camera}/snapshot', timeout=2)
+                    shared.raise_for_status()
+                    try:
+                        age = time.time() - float(shared.headers['X-Captured-At'])
+                    except (KeyError, ValueError):
+                        raise RuntimeError('共享画面缺少可靠时间戳') from None
+                    if not -0.1 <= age <= 0.35:
+                        raise RuntimeError('共享画面已过期')
+                    if shared.content != last:
+                        last = shared.content
+                        yield last, time.monotonic() - max(0.0, age)
+                    stop.wait(0.07)
+                return
             response.raise_for_status()
             buffer = bytearray()
             for chunk in response.iter_bytes():
@@ -145,9 +165,12 @@ class PerceptionService:
     def _reader(self):
         while not self.stop_event.is_set():
             try:
-                for jpeg in self.frame_source(self.stop_event):
+                for source_frame in self.frame_source(self.stop_event):
+                    # Shared snapshots retain their original receipt time;
+                    # polling a frame is not another camera exposure.
+                    jpeg, captured = source_frame if isinstance(source_frame, tuple) else (source_frame, self.clock())
                     with self.lock:
-                        self.frame, self.frame_at = jpeg, self.clock()
+                        self.frame, self.frame_at = jpeg, captured
                         self.frames_in += 1
                         self.reader_error = None
                     if self.stop_event.is_set():
@@ -259,6 +282,9 @@ class PerceptionService:
                     result['clear_m'] = min(recent)
             result.update(raw_clear_m=raw_clear, frame_age_ms=round((self.clock()-at)*1000, 1), at=time.time(),
                           total_ms=round((time.perf_counter()-started)*1000, 2))
+            if result['frame_age_ms'] > 350:
+                result['valid'] = False
+                result['reasons'].append('头部源画面已超过350ms')
             self.timings.append(result['total_ms'])
             self.latest = result
             self._send(result)
@@ -295,10 +321,11 @@ class PerceptionService:
             raise ValueError('配置需为对象')
         updated = dict(self.config)
         for key, value in changes.items():
-            if key == 'self_mask':
-                if (not isinstance(value, list) or len(value) > 6 or any(not isinstance(p, list) or not 3 <= len(p) <= 12 for p in value)
-                        or any(not (isinstance(pt, list) and len(pt) == 2 and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in pt)) for p in value for pt in p)):
-                    raise ValueError('车体遮罩需为最多6个、每个3–12点的归一化多边形')
+            if key in ('self_mask', 'learn_region'):
+                polygons = value if key == 'self_mask' else [value]
+                if (not isinstance(polygons, list) or len(polygons) > 6 or any(not isinstance(p, list) or not 3 <= len(p) <= 12 for p in polygons)
+                        or any(not (isinstance(pt, list) and len(pt) == 2 and all(type(v) in (int, float) and 0 <= v <= 1 for v in pt)) for p in polygons for pt in p)):
+                    raise ValueError('遮罩/地面学习区域需为3–12点的归一化多边形；车体遮罩最多6个')
                 updated[key] = value
             elif key in EDITABLE:
                 low, high = EDITABLE[key]
@@ -309,7 +336,7 @@ class PerceptionService:
                 raise ValueError('不可修改的配置：'+str(key))
         self.config = updated
         self.self_mask = polygon_mask(self.config['self_mask'])
-        self._write('config.json', {k: v for k, v in updated.items() if k in EDITABLE or k == 'self_mask'})
+        self._write('config.json', {k: v for k, v in updated.items() if k in EDITABLE or k in ('self_mask', 'learn_region')})
         return self.config
 
     def gate_view(self):

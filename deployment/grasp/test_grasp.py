@@ -386,8 +386,10 @@ def test_service_learns_after_a_large_model_box_and_then_selects_locally(service
     service.recorder = RunRecorder(service.root/'runs', service, 'pick-place')
     out = service._learn('pick-place', {'ok': True, 'steps': 30}, 42.0)
     assert out['learned']['templates'] == 1 and out['llm_calls'] == 1
-    found = service.locate('plug')
-    assert found['located']['ok'] and service.selection['source'] == 'local:template:plug'
+    with pytest.raises(ValueError, match='经典模板仅作候选'):
+        service.locate('plug')
+    found = service.locate('plug', select=False)
+    assert found['located']['ok'] and found['located']['candidate_only'] and service.selection['source'] == 'operator'
     assert service.status()['knowledge']['objects']['plug']['by_source']['llm']['successes'] == 1
 
 
@@ -440,8 +442,10 @@ def test_local_find_prefers_the_workstation_model_and_falls_back(service):
     with pytest.raises(ValueError, match='owlvit最高分0.21'):
         service.locate('plug')
     service.fabric_provider = lambda: Fabric(error='没有在线的工作端节点提供vision.find_by_example')
-    found = service.locate('plug')                      # model unavailable: the classical matcher on the same scene
-    assert found['located']['finder'] == 'template' and 'model_error' in found['located']
+    with pytest.raises(ValueError, match='经典模板仅作候选'):
+        service.locate('plug')
+    found = service.locate('plug', select=False)        # model unavailable: diagnostic only, never automatic motion
+    assert found['located']['finder'] == 'template' and 'model_error' in found['located'] and found['located']['candidate_only']
 
 
 def test_example_finder_and_worker_register_only_with_a_model(tmp_path):
@@ -501,4 +505,19 @@ def test_one_attempt_option_reaches_the_controller_and_bad_options_are_rejected(
             service.run(True, {'max_attempts': bad})
     with pytest.raises(ValueError, match='不支持'):
         service.run(True, {'max_attemps': 1})
+
+
+def test_contact_on_an_arm_step_holds_and_prevents_followup_or_automatic_raise():
+    w, ex, ob, c, _ = rehearse()
+    before = len(ex.steps)
+    step = ex.step
+    def contacted(*args, **kwargs):
+        out = step(*args, **kwargs)
+        out['contact'] = {'joint': 'left:2', 'position': w.q['lift']}
+        return out
+    ex.step = contacted
+    result = c.run_pick_place()
+    assert not result['ok'] and '疑似碰阻' in result['error']
+    assert c.contact_pending and len(ex.steps) == before + 1
+    assert not ex.active, 'The session ends holding the contact position'
 
