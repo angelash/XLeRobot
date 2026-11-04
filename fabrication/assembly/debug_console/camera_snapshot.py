@@ -33,7 +33,13 @@ class CameraSnapshots:
 
     def publish(self, camera, jpeg, sequence):
         with self.lock:
+            previous = self.frames.get(camera)
+            # DirectShow/ffmpeg can repeat the last pre-sleep JPEG while
+            # catching up timestamps. Receipt time must not renew that image.
+            if previous is not None and previous.jpeg == jpeg:
+                return False
             self.frames[camera] = Frame(jpeg, time.time(), sequence, time.monotonic())
+            return True
 
     def latest(self, camera, max_age=2.):
         with self.lock:

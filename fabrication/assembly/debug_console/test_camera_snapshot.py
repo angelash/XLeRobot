@@ -35,3 +35,21 @@ def test_api_returns_existing_frame_without_opening_camera(monkeypatch):
     assert response.headers['cache-control'] == 'no-store'
     assert client.get('/camera/0.mjpg').status_code == 409
     assert client.get('/api/camera/8/snapshot').status_code == 404
+
+
+def test_duplicate_sleep_frame_cannot_renew_freshness(monkeypatch):
+    from fabrication.assembly.debug_console import camera_snapshot as mod
+    clock = [10.]
+    monkeypatch.setattr(mod.time, 'monotonic', lambda: clock[0])
+    cache = CameraSnapshots()
+    cache.claim(0)
+    assert cache.publish(0, b'pre-sleep-jpeg', 1)
+    clock[0] += 0.5
+    assert not cache.publish(0, b'pre-sleep-jpeg', 200)
+    assert cache.latest(0).sequence == 1
+    clock[0] += 3.
+    assert not cache.publish(0, b'pre-sleep-jpeg', 1000)
+    with pytest.raises(ValueError, match='过期'):
+        cache.latest(0)
+    assert cache.publish(0, b'new-camera-image', 1001)
+    assert cache.latest(0).sequence == 1001

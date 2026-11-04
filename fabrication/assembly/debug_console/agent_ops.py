@@ -55,7 +55,7 @@ class AgentRunner:
     def lt(self):return self.runtime.limit_test
 
     # ---- addressing ------------------------------------------------------
-    def resolve(self,key):
+    def resolve(self,key,*,allow_wheels=False):
         """'COM4:2', 'left:2', 'right:3', 'head:7' -> (port, id)."""
         side,_,raw=str(key).partition(':')
         try:i=int(raw)
@@ -64,7 +64,7 @@ class AgentRunner:
         elif side=='head':port='COM3'
         else:port=side
         if port not in EXPECTED or i not in EXPECTED[port]:raise ValueError(f'未知关节：{key}')
-        if port=='COM4' and i in (9,10):raise ValueError('助手运行不驱动底盘轮')
+        if port=='COM4' and i in (9,10) and not allow_wheels:raise ValueError('助手运行不驱动底盘轮')
         if side=='head' and i not in (7,8):raise ValueError(f'头部只有7、8：{key}')
         return port,i
 
@@ -149,7 +149,7 @@ class AgentRunner:
                 self._advance_evidence(step)
             if op=='probe':self.lt._ordered([step.get('item')])
             if op in ('sample','backoff_trial'):
-                for key in (step.get('joints') or [step.get('joint')]):self.resolve(key)
+                for key in (step.get('joints') or [step.get('joint')]):self.resolve(key,allow_wheels=op=='sample')
             if op=='backoff_trial' and step.get('variant','A') not in ('A','B','C','D','S'):raise ValueError('退离实验只有A/B/C/D/S')
             if step.get('watch'):
                 if op not in MOTION_OPS:raise ValueError(f'第{n+1}步：只有动作步骤可以边动边拍')
@@ -456,10 +456,11 @@ class AgentRunner:
         reg=self.lt._read(port,i);load=word(reg,60)
         return {'t':round(time.monotonic()-start,4),'joint':f'{port}:{i}','pos':word(reg,56),'goal':word(reg,42),
                 'load':(load&0x3ff)*(-1 if load&0x400 else 1),'torque_limit':word(reg,48),'status':reg[65],
-                'moving':reg[66],'current_lo':reg[69],'volt':reg[62],'temp':reg[63],'torque':reg[40]}
+                'moving':reg[66],'current_lo':reg[69],'volt':reg[62],'temp':reg[63],'torque':reg[40],
+                'raw_hex':bytes(reg).hex()}
 
     def _op_sample(self,n,step):
-        joints=[self.resolve(k) for k in step['joints']]
+        joints=[self.resolve(k,allow_wheels=True) for k in step['joints']]
         seconds=max(.05,min(10.,float(step.get('seconds',1))));period=1/max(1.,min(50.,float(step.get('hz',20))))
         path=self.dir/f'{n:02d}-sample.jsonl';start=time.monotonic();count=0
         with open(path,'w',encoding='utf-8') as f:

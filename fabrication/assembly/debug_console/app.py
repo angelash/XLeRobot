@@ -462,6 +462,7 @@ def mjpeg(camera: int):
         "-f", "dshow", "-video_device_number", str(camera),
         "-video_size", "640x480", "-framerate", "15",
         "-i", "video=USB2.0_CAM1", "-an", "-c:v", "mjpeg", "-q:v", "5",
+        "-fps_mode", "passthrough",
         "-f", "image2pipe", "pipe:1",
     ]
     try:
@@ -488,7 +489,8 @@ def mjpeg(camera: int):
                 jpeg = bytes(buffer[start:end + 2])
                 del buffer[:end + 2]
                 frames += 1
-                camera_snapshots.publish(camera, jpeg, frames)
+                if not camera_snapshots.publish(camera, jpeg, frames):
+                    continue
                 set_camera(camera, "在线", frames)
                 yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n"
     finally:

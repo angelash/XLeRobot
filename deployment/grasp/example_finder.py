@@ -40,6 +40,24 @@ def in_jaws(box):
     return any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in JAW_ZONES)
 
 
+def usable_box(box, width=640, height=480):
+    """Survey targets must be complete and must not include both gripper jaws.
+
+    A centre-only jaw exclusion accepted a 556x175 box spanning both jaws on
+    2026-11-04. Temporal agreement does not remove that systematic false hit.
+    """
+    if box is None or len(box) != 4 or not np.isfinite(box).all():
+        return False
+    x, y, w, h = box
+    if w < 20 or h < 20 or x < 4 or y < 4 or x + w > width - 4 or y + h > height - 4:
+        return False
+    if w*h > 0.35*width*height or in_jaws(box):
+        return False
+    overlaps = [max(0, min(x+w, x1)-max(x, x0))*max(0, min(y+h, y1)-max(y, y0))/(w*h)
+                for x0, y0, x1, y1 in JAW_ZONES]
+    return not all(overlap > 0.1 for overlap in overlaps)
+
+
 class ExampleFinder:
     def __init__(self, model_dir):
         self.model_dir = Path(model_dir)
@@ -74,7 +92,7 @@ class ExampleFinder:
         for i in np.argsort(-raw):
             cx, cy, bw, bh = boxes[i]
             box = [float((cx - bw/2)*w), float((cy - bh/2)*h), float(bw*w), float(bh*h)]
-            if box[2]*box[3] > 0.35*w*h or box[2] < 20 or box[3] < 20 or in_jaws(box):
+            if not usable_box(box, w, h):
                 continue
             rows.append({'score': round(float(raw[i]), 4), 'bbox': [round(v, 1) for v in box]})
             if len(rows) >= keep:

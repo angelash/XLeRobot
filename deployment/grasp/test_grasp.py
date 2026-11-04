@@ -452,3 +452,20 @@ def test_example_finder_and_worker_register_only_with_a_model(tmp_path):
     p = Providers(None, 'tiny-not-cached', owl_model=str(tmp_path))
     assert 'vision.find_by_example' not in p.available and p.details['vision.find_by_example']['available'] is False
 
+
+def test_survey_finder_rejects_both_jaws_and_clipped_boxes():
+    from deployment.grasp.example_finder import usable_box
+    assert not usable_box([79.3, 304.4, 556.1, 175.3]), 'Actual three-frame false positive'
+    assert not usable_box([100, 305, 510, 165]), 'Spans both jaws even without clipping'
+    assert not usable_box([403, 310, 147, 88]), 'Too close: centre is inside the right jaw zone'
+    assert usable_box([380, 150, 120, 100])
+
+
+def test_laptop_rechecks_unsafe_worker_box_before_selection(service, monkeypatch):
+    service.knowledge.data['objects']['plug'] = {'templates': []}
+    monkeypatch.setattr(service, '_locate_by_model', lambda name: {
+        'ok': True, 'score': 0.55, 'bbox': [100, 305, 510, 165], 'finder': 'owlvit'})
+    with pytest.raises(ValueError, match='跨越双夹爪'):
+        service.locate('plug')
+    assert service.selection is None
+

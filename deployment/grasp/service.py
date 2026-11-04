@@ -351,9 +351,14 @@ class GraspService:
             if hit is not None:
                 classical['model_error'] = hit.get('finder_error')
             hit = classical
+        if hit.get('ok') and hit.get('finder') == 'owlvit':
+            from .example_finder import usable_box
+            if not usable_box(hit.get('bbox')):
+                hit = {**hit, 'ok': False, 'reason': '目标框被裁切、落在夹爪或跨越双夹爪'}
         if not hit['ok']:
             raise ValueError(f'本地没有认出目标（{hit.get("finder")}最高分{hit["score"]}），请交回大模型框选'
-                             + (f'；模型不可用：{hit["model_error"]}' if hit.get('model_error') else ''))
+                             + (f'；模型不可用：{hit["model_error"]}' if hit.get('model_error') else '')
+                             + (f'；{hit["reason"]}' if hit.get('reason') else ''))
         if select:
             self.select(hit['bbox'], source=f'local:{hit.get("finder")}:{hit["object"]}')
         return {'located': hit}

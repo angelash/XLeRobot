@@ -104,6 +104,23 @@ def test_sample_logs_telemetry_rows(runtime,agent):
     agent.start([{'op':'sample','joints':['head:7','right:4'],'seconds':0.12,'hz':50}],True,background=False)
     rows=[json.loads(x) for x in (agent.dir/agent.results[0]['file']).read_text(encoding='utf-8').splitlines()]
     assert len(rows)>=4 and {r['joint'] for r in rows}=={'COM3:7','COM4:4'} and 'status' in rows[0]
+    for row in rows:
+        raw = bytes.fromhex(row['raw_hex'])
+        assert len(raw) == 70
+        assert raw[63] == row['temp'] and raw[62] == row['volt'] and raw[65] == row['status']
+
+
+def test_wheel_health_sampling_never_enables_or_drives_wheels(runtime,agent):
+    port = runtime.session.ports['COM4']
+    before = {i: bytes(port.regs[i]) for i in (9, 10)}
+    agent.start([{'op':'sample','joints':['COM4:9','COM4:10'],'seconds':0.1,'hz':50}],True,background=False)
+    assert agent.error is None
+    rows = [json.loads(x) for x in (agent.dir/agent.results[0]['file']).read_text(encoding='utf-8').splitlines()]
+    assert {r['joint'] for r in rows} == {'COM4:9','COM4:10'}
+    assert all(len(bytes.fromhex(r['raw_hex'])) == 70 for r in rows)
+    assert {i: bytes(port.regs[i]) for i in (9, 10)} == before
+    with pytest.raises(ValueError,match='底盘'):
+        agent.start([{'op':'backoff_trial','joint':'COM4:9'}],True,background=False)
 
 
 def test_watch_captures_frames_while_a_motion_step_runs(runtime,agent,monkeypatch):
