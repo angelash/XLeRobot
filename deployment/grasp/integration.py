@@ -100,6 +100,17 @@ def install(app, *, data_dir, allowed_origins=None, controller='http://127.0.0.1
     async def knowledge():
         return await run_in_threadpool(service.knowledge.summary)
 
+    @router.get('/objects/{name}/profile')
+    async def object_profile(name: str):
+        return await call(service.object_profile, name)
+
+    @router.post('/objects/{name}/profile')
+    async def update_profile(name: str, request: Request):
+        payload = await body(request)
+        if set(payload) != {'profile'}:
+            raise HTTPException(422, '只接受profile物品档案')
+        return await call(service.update_object_profile, name, payload['profile'])
+
     @router.post('/run')
     async def run(request: Request):
         payload = await body(request)

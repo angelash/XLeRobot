@@ -13,6 +13,7 @@ intensity matching jumped to the wrong spot.
 from __future__ import annotations
 
 import json
+import copy
 import re
 import threading
 import time
@@ -20,6 +21,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+from .force_policy import assess_grip, normalize_profile
 
 MAX_TEMPLATES = 8
 SCALES = (0.8, 0.9, 1.0, 1.12, 1.25)
@@ -138,6 +141,29 @@ class Knowledge:
         obj = self.data['objects'].get(self.name(name))
         return dict(obj['params']) if obj and obj.get('params') else {}
 
+    def profile(self, name):
+        name = self.name(name)
+        with self.lock:
+            obj = self.data['objects'].get(name) or {}
+            profile = copy.deepcopy(obj.get('profile') or normalize_profile({}))
+            history = copy.deepcopy(obj.get('profile_history', []))
+        return {'object': name, 'profile': profile, 'history': history, 'assessment': assess_grip(profile)}
+
+    def set_profile(self, name, profile):
+        name, profile = self.name(name), normalize_profile(profile)
+        with self.lock:
+            previous = copy.deepcopy(self.data)
+            obj = self._object(name)
+            obj['profile_history'] = (obj.get('profile_history', []) + [
+                {'at': _now(), 'previous': copy.deepcopy(obj.get('profile')), 'profile': profile}])
+            obj['profile'] = profile
+            try:
+                self._save()
+            except OSError:
+                self.data = previous
+                raise
+        return self.profile(name)
+
     # ---- local finder ------------------------------------------------------
     def _image(self, file):
         if file not in self._images:
@@ -186,6 +212,7 @@ class Knowledge:
                 s = obj['stats']
                 agree = s.get('agreement') or []
                 objects[name] = {'templates': len(obj['templates']), 'params': obj.get('params') or {},
+                                 'profile': copy.deepcopy(obj.get('profile')), 'grip_assessment': assess_grip(obj.get('profile')),
                                  'attempts': s['attempts'], 'successes': s['successes'], 'by_source': s['by_source'],
                                  'agreement_n': len(agree), 'agreement_ok_rate': round(sum(a >= 0.5 for a in agree)/len(agree), 3) if agree else None}
             return {'objects': objects, 'site': dict(self.data['site']), 'base_legs': len(self.data['base']),

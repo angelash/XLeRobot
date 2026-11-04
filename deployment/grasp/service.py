@@ -367,7 +367,15 @@ class GraspService:
                 raise ValueError('经典模板仅作候选，不能自动选中抓取；请恢复本地模型或交回大模型框选')
         if select:
             self.select(hit['bbox'], source=f'local:{hit.get("finder")}:{hit["object"]}')
-        return {'located': hit}
+        return {'located': hit, 'grip_assessment': self.knowledge.profile(hit['object'])}
+
+    def object_profile(self, name):
+        return self.knowledge.profile(name)
+
+    def update_object_profile(self, name, profile):
+        if self.op_thread and self.op_thread.is_alive():
+            raise ValueError('抓取进行中，不能修改物品档案')
+        return self.knowledge.set_profile(name, profile)
 
     def _locate_by_model(self, name):
         fabric = self.fabric_provider() if self.fabric_provider else None
@@ -485,6 +493,9 @@ class GraspService:
         if 'max_attempts' in options and (type(options['max_attempts']) is not int or not 1 <= options['max_attempts'] <= 3):
             raise ValueError('max_attempts需为1–3的整数')
         obj = Knowledge.name(options.get('object', 'plug'))
+        assessment = self.knowledge.profile(obj)['assessment']
+        if assessment['hazards_block_motion']:
+            raise ValueError('物品存在未处理危险项，禁止开始通用抓取')
         meta = {'object': obj, 'llm_calls': 0, 'agreement': None}
         if options.get('auto_select'):
             self.locate(obj)                      # L2: the local finder chooses the target
