@@ -39,6 +39,7 @@ ARM_IDS = range(1, 7)
 # (rotation_scan contact stop). Nothing behind the robot is seen by a camera.
 BASE_LEG_M = 0.05
 REVERSE_BUDGET_M = 0.20
+MAX_GRANTED_REVERSE_M = 0.50
 # 2026-11-03 later instruction: inside the authorised range the chassis may move both ways in small
 # legs. Net position relative to where the user placed the robot stays inside
 # [-REVERSE_BUDGET_M, +FORWARD_LIMIT_M] (the desk is just ahead of the start, so not past it); a
@@ -205,9 +206,39 @@ class ServoSession:
         # (sign error before the chassis direction was verified); the budget is net backward travel.
         back = max(0.0, float(row.get('used_m', 0.0)) - float(row.get('forward_correction_m', 0.0)))
         net = float(row.get('forward_m', 0.0)) - back          # chassis position relative to the start, + ahead
-        return {'budget_m': REVERSE_BUDGET_M, 'used_m': round(max(0.0, -net), 4),
-                'left_m': round(max(0.0, REVERSE_BUDGET_M + net), 4), 'net_m': round(net, 4),
+        granted = row.get('granted_m', REVERSE_BUDGET_M)
+        if type(granted) not in (int, float) or not math.isfinite(granted) or not 0 < granted <= MAX_GRANTED_REVERSE_M:
+            granted = REVERSE_BUDGET_M
+        return {'budget_m': granted, 'used_m': round(max(0.0, -net), 4),
+                'left_m': round(max(0.0, granted + net), 4), 'net_m': round(net, 4),
                 'forward_left_m': round(max(0.0, FORWARD_LIMIT_M - net), 4)}
+
+    def grant_reverse(self, authorization, distance_m, confirmed=False):
+        """Record one explicit, immutable grant; never reset its consumed travel.
+
+        The supervisor binds the user's words to the current physical start.
+        Translation remains in <=5 cm legs. Turning does not make the budget
+        a map: after a turn, re-establish the original heading before travel.
+        """
+        auth = str(authorization or '').strip()
+        if confirmed is not True or len(auth) < 8:
+            raise ValueError('需要用户授权原文及当前起点确认')
+        if type(distance_m) not in (int, float) or not math.isfinite(distance_m) or not .05 <= distance_m <= MAX_GRANTED_REVERSE_M:
+            raise ValueError('后退授权需为5–50cm')
+        with self.state_lock, self.runtime.io:
+            if self.active or self.lt.running or self.runtime.controller['controller'] == 'online':
+                raise ValueError('动作或接管中不能登记后退授权')
+            used = self._reverse_used()
+            row = used.get(auth, {})
+            if not isinstance(row, dict):
+                raise ValueError('已有授权记录无效，需要先核验')
+            if auth in used and row.get('granted_m', REVERSE_BUDGET_M) != distance_m:
+                raise ValueError('已有授权额度不能修改或重置')
+            row.update(granted_m=float(distance_m), grant_at=row.get('grant_at') or now(),
+                       boundary='current_start_and_original_heading', authorization=auth[:1000])
+            used[auth] = row
+            atomic_json(self.root/'base-authorizations.json', used)
+            return self.reverse_budget(auth)
 
     def base(self, session_id, distance_m, authorization='', max_raw=160, label='', forward_clear=False):
         """One chassis leg inside the session (wheels only, arms held): reverse inside the budget, or a
@@ -228,7 +259,7 @@ class ServoSession:
             raise ValueError('底盘前后方向未经相机核实，不执行后退（先写入chassis-direction.json）')
         budget = self.reverse_budget(auth)
         if distance_m < 0 and abs(distance_m) > budget['left_m'] + 1e-9:
-            raise ValueError(f'本授权后退额度{REVERSE_BUDGET_M*100:g}cm，已用{budget["used_m"]*100:.1f}cm')
+            raise ValueError(f'本授权后退额度{budget["budget_m"]*100:g}cm，已用{budget["used_m"]*100:.1f}cm')
         if distance_m > 0 and budget['net_m'] + distance_m > FORWARD_LIMIT_M + 1e-9:
             raise ValueError(f'前进会超出授权起点前方{FORWARD_LIMIT_M*100:g}cm（当前净位置{budget["net_m"]*100:+.1f}cm）')
         if not self.step_lock.acquire(blocking=False):

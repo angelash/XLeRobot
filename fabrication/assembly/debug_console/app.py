@@ -382,6 +382,22 @@ class ServoStopCommand(BaseModel):
     reason: str = '页面点击立即停止'
 
 
+class ReverseGrantCommand(BaseModel):
+    authorization: str
+    distance_m: float
+    confirmed: bool = False
+
+
+@app.post('/api/servo/base-authorization')
+def servo_base_authorization(payload: ReverseGrantCommand):
+    try:
+        if isinstance(runtime, PreviewRuntime):
+            raise ValueError('隔离预览不登记实机授权')
+        return servo().grant_reverse(payload.authorization, payload.distance_m, payload.confirmed)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @app.post('/api/servo/session')
 def servo_start(payload: ServoStartCommand):
     try:

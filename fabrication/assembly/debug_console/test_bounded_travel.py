@@ -114,8 +114,12 @@ def test_expiry_still_stops_when_count_monitor_is_delayed(runtime,monkeypatch):
     def delayed():
         if not runtime.io._is_owned() and any(word(p.regs[i],46) for i in (9,10)):
             time.sleep(.35);stopped(p);observed.append(True)
-    with pytest.raises(RuntimeError):bounded_travel(runtime,delayed)
+    with pytest.raises(RuntimeError) as caught:bounded_travel(runtime,delayed)
     assert seen==[6.] and observed
+    trace = caught.value.rotation
+    assert trace['target_counts'] == 513 and trace['command_raw']
+    assert trace['readbacks'][-1]['after_zero_ms'] >= 200
+    assert max(abs(v) for v in trace['wheel_delta_raw'].values()) < 513
     stopped(p)
 
 

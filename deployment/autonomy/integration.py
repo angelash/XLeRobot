@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from . import protocols, resources
 from .compute import AuthError, ComputeFabric
 from .learning import Ledger
+from .reflex import Reflex
 
 API = '/api/platform/autonomy'
 PAGE = '/autonomy'
@@ -29,6 +30,7 @@ def install(app, *, data_dir, evidence_root=None, allowed_origins=None, start=Tr
     data_dir = Path(data_dir)
     fabric = ComputeFabric(data_dir/'compute', start=start)
     ledger = Ledger(data_dir/'learning', evidence_root)
+    reflex = Reflex(ledger)
     app.state.autonomy = {'fabric': fabric, 'ledger': ledger}
     router = APIRouter(prefix=API)
     evidence = Path(evidence_root) if evidence_root else None
@@ -183,6 +185,21 @@ def install(app, *, data_dir, evidence_root=None, allowed_origins=None, start=Tr
     async def fit(request: Request):
         p = await body(request, 20_000)
         return await run_in_threadpool(guard, ledger.fit, p.get('kind'), p.get('sessions'), p.get('params'))
+
+    @router.post('/learning/reflex/train')
+    async def train_reflex(request: Request):
+        p = await body(request, 20_000)
+        return await run_in_threadpool(guard, reflex.train, p.get('sessions'))
+
+    @router.post('/learning/reflex/{model_id}/predict')
+    async def predict_reflex(model_id: str, request: Request):
+        p = await body(request, 20_000)
+        return await run_in_threadpool(guard, reflex.predict, model_id, p.get('features'), p.get('scope'))
+
+    @router.post('/learning/reflex/{model_id}/validate')
+    async def validate_reflex(model_id: str, request: Request):
+        p = await body(request, 20_000)
+        return await run_in_threadpool(guard, reflex.validate, model_id, p.get('sessions'))
 
     @router.post('/learning/models/{model_id}/validate')
     async def validate(model_id: str, request: Request):

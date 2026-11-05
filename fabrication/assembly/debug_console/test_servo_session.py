@@ -131,6 +131,40 @@ def test_the_controller_api(runtime, servo, monkeypatch):
 AUTH = '2026-11-03 用户：目前机器人向后移动10-20厘米完全没问题'
 
 
+def test_explicit_fifty_cm_grant_is_scoped_durable_and_does_not_reset_usage(runtime, servo, tmp_path, verified_direction):
+    from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
+    auth = '2026-11-05 用户：移动可以向后移动50CM的，足够你后退转身'
+    assert servo.reverse_budget(AUTH)['budget_m'] == .2
+    for distance in (.6, float('nan'), True):
+        with pytest.raises(ValueError):
+            servo.grant_reverse(auth, distance, True)
+    with pytest.raises(ValueError):
+        servo.grant_reverse(auth, .5, False)
+    assert servo.grant_reverse(auth, .5, True)['budget_m'] == .5
+    sid = servo.start('50cm', True)['session_id']
+    with pytest.raises(ValueError, match='接管'):
+        servo.grant_reverse(auth, .5, True)
+    moving_wheels(runtime)
+    for _ in range(10):
+        servo.base(sid, -.05, auth)
+    with pytest.raises(ValueError, match='额度'):
+        servo.base(sid, -.005, auth)
+    servo.end(sid)
+    again = ServoSession(runtime, tmp_path/'servo', watchdog=False)
+    assert again.grant_reverse(auth, .5, True)['left_m'] == 0
+    assert again.reverse_budget(AUTH)['budget_m'] == .2
+    with pytest.raises(ValueError, match='不能修改'):
+        again.grant_reverse(auth, .3, True)
+    # Legacy rows predate granted_m. Registering again cannot inflate their old budget.
+    from fabrication.assembly.debug_console.whole_calibration import atomic_json
+    rows = again._reverse_used()
+    rows[AUTH] = {'used_m': .05, 'legs': 1}
+    atomic_json(again.root/'base-authorizations.json', rows)
+    with pytest.raises(ValueError, match='不能修改'):
+        again.grant_reverse(AUTH, .5, True)
+    assert again.grant_reverse(AUTH, .2, True)['left_m'] == .15
+
+
 def test_reverse_legs_stay_inside_the_user_budget_and_a_stall_is_a_contact(runtime, servo, tmp_path, verified_direction):
     from fabrication.assembly.debug_console.test_bounded_travel import moving_wheels
     sid = servo.start('让位', True)['session_id']

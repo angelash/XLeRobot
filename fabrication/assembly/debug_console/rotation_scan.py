@@ -323,11 +323,16 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     finally:
         stop()
         timer.cancel()
+    deltas = {motor: (final[motor]['position']-before[motor]+2048) % 4096-2048
+              for motor in (9, 10) if motor in final}
+    stop_evidence = {'wheel_delta_raw': deltas, 'stop_readback': final, 'readbacks': readbacks,
+                     'travel_trace': travel_trace, 'target_counts': target_counts,
+                     'command_raw': command, 'duration_s': drive_elapsed, 'read_glitches': glitches,
+                     'failures': failures}
     if failures:
         error = RuntimeError('扫描停车失败：'+'; '.join(failures))
-        error.rotation = {'readbacks': readbacks, 'failures': failures}
+        error.rotation = stop_evidence
         raise error
-    deltas = {motor: (final[motor]['position']-before[motor]+2048) % 4096-2048 for motor in (9, 10)}
     # A few counts differ under caster drag; record that as possible drift.
     # Larger disagreement or overshoot stops the scan instead of accumulating it.
     disagreement=abs(deltas[9]+deltas[10]) if advance else abs(deltas[9]-deltas[10])
@@ -335,12 +340,16 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             or max(abs(v) for v in deltas.values()) > (target_counts+max(20,round(target_counts*.1)) if target_counts is not None else 100 if advance else 130)
             or (advance and any(deltas[motor]*command[motor] <= 0 for motor in (9,10)))):
         error=RuntimeError('观察轮子位移不对称、反向或超限，已停')
-        error.rotation={'wheel_delta_raw':deltas,'stop_readback':final,'readbacks':readbacks}
+        error.rotation=stop_evidence
         raise error
     if min(abs(v) for v in deltas.values()) < 2 and not blocked:
-        raise RuntimeError('轮子未记录到有效转动，已停；需观察原因')
+        error = RuntimeError('轮子未记录到有效转动，已停；需观察原因')
+        error.rotation = stop_evidence
+        raise error
     if target_counts is not None and not blocked and (not reached or min(abs(v) for v in deltas.values())<target_counts*.75):
-        raise RuntimeError('直行未达到计数目标，已停；不自动续走')
+        error = RuntimeError('直行未达到计数目标，已停；不自动续走')
+        error.rotation = stop_evidence
+        raise error
     if advance:
         stopped_by=('stall' if blocked and blocked.get('reason')=='stall' else 'obstacle_gate' if blocked else 'target')
         return {'wheel_delta_raw': deltas, 'stop_readback': final, 'stop_trace': readbacks,
