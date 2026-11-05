@@ -1,6 +1,6 @@
 """Experiment catalogue; mirrors docs/autonomy/LEARNING_PROTOCOLS_ZH.md."""
 
-COMMON_STOPS = ['手柄接管或任意输入', '画面中有人进入运动范围', '温度≥55°C或读数跳变', '电压连续低于10.5V',
+COMMON_STOPS = ['手柄接管或任意输入', '画面中有人进入运动范围', '同电机当次最多3份温度读数均异常（复读正常继续，沿用动作原门值）', '电压连续低于10.5V',
                 '通信错误', '停车证据不全', '观察超过60秒']
 
 
