@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .store import Survey, STATIC
+from .body import profile as body_profile, plan as body_plan
 
 API = '/api/platform/fieldmap'
 PAGE = '/fieldmap'
@@ -72,6 +73,18 @@ def install(app, *, data_dir, allowed_origins=None):
     @router.get('/status')
     def status():
         return survey.status()
+
+    @router.get('/body')
+    def robot_body():
+        return body_profile()
+
+    @router.post('/body/plan')
+    async def robot_body_plan(request: Request):
+        payload = await body(request)
+        try:
+            return body_plan(payload)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @router.post('/review')
     async def review(request: Request):

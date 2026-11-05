@@ -33,6 +33,7 @@
       <p id="saveMessage" class="save-message" role="status"></p>
     </aside>
   </section>
+  <section class="body-preview" aria-labelledby="bodyTitle"><div><p class="eyebrow">ROBOT BODY / TURNING SPACE</p><h2 id="bodyTitle">先给整车留位置</h2><p id="bodySummary">正在读取粗略车体包络……</p><p class="subtle">包含车架、收起手臂、相机与线缆余量的暂定外框。未实测尺寸、轴心和外垂线缆；图中没有实时障碍与定位。</p><form id="bodyForm"><label>先向前（厘米）<input id="bodyForward" type="number" value="10" min="0" max="50" step="1"></label><label>再转身（度）<input id="bodyTurn" type="number" value="90" min="-180" max="180" step="5"></label><button type="submit">预览占用空间</button></form><p id="bodyResult" role="status">计算预览不发出动作。</p><a class="export" href="/api/platform/fieldmap/body" target="_blank" rel="noopener">查看尺寸依据 ↗</a></div><svg id="bodyDiagram" viewBox="0 0 400 350" role="img" aria-label="车体向前再转身的占用范围示意"></svg></section>
   <section class="scan-record"><div><p class="eyebrow">OBSERVATION LOG</p><h2>这一轮看到了多少</h2></div><div id="scanDetails"></div><a class="export" href="/api/platform/fieldmap/export" target="_blank" rel="noopener">查看地图与复核数据 ↗</a></section>
   <footer><span>小九 · XLeRobot</span><span id="dataSource">实际相机证据 · 观察结果待复核</span><span>分段观察 · 未知区域不通行</span></footer>
 </main>
