@@ -110,6 +110,36 @@ def test_overheating_after_a_step_ends_the_session(runtime, servo):
     assert '温度' in entry['ended'] and not servo.active
 
 
+def test_recovered_joint_temperature_does_not_end_the_session(runtime,servo,monkeypatch):
+    sid=servo.start('temperature recovery',True)['session_id']
+    original=servo.lt._read;injected=[]
+    def once(port,i):
+        value=original(port,i)
+        if port=='COM3' and i==4 and not injected:
+            injected.append(True);value=list(value);value[63]=92
+        return value
+    monkeypatch.setattr(servo.lt,'_read',once)
+    joints=servo.hold(sid)['joints']
+    assert servo._hazard(joints) is None and servo.active
+    recovered=[j for j in joints.values() if j.get('temperature_check')]
+    assert len(recovered)==1 and recovered[0]['temperature_check']['recovered']
+    servo.end(sid)
+
+
+def test_preparation_uses_fresh_temperature_after_a_bad_report(runtime,monkeypatch):
+    capture=runtime.capture_profile
+    def stale_report():
+        result=capture()
+        for port in runtime.report['ports']:
+            for motor in port['motors']:motor['temperature']=92
+        return result
+    monkeypatch.setattr(runtime,'capture_profile',stale_report)
+    prepared=runtime.prepare_hardware(True)
+    assert len(prepared['ready'])==16 and not prepared['blocked']
+    assert all(m['temperature_check']['reported']==92 and m['temperature_check']['fresh']<50
+               for m in prepared['ready'])
+
+
 def test_the_controller_api(runtime, servo, monkeypatch):
     from fastapi.testclient import TestClient
     from fabrication.assembly.debug_console import app as web

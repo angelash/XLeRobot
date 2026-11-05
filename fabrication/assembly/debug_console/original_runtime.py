@@ -12,6 +12,7 @@ from .control_settings import ControllerSettings,remap_motor_labels,MAPPING_KEYS
 from .torque_control import EXPECTED,read_registers,word,write_register,write_limits
 from .upstream_teleop import UpstreamTeleop,JOINTS,intentions,neutral,encode_velocity,forward,inverse,wheel_raw
 from .operator_control import LinkedModeUnavailable, NativeMenuControl, OperatorEvents
+from .temperature_guard import confirm_temperature, normal_temperature
 
 KINEMATIC_PROFILE=ROOT/'kinematic-calibration.json'
 SERVICE_PROFILE=ROOT.parents[1]/'.local-deploy'/'hardware-service.json'
@@ -193,9 +194,15 @@ class OriginalRuntime(ControlRuntime):
                     elif (not self.envelopes[(name,i)]['available'] or
                           not motor['min']<=motor['position']<=motor['max'] or motor['mode']!=0):
                         blocked.append({'port':name,'id':i,'reason':'设备范围/当前位置/模式未就绪'});continue
-                    if not 10<=motor['voltage']<=13 or motor['temperature']>=50:
+                    r,check=confirm_temperature(read_registers(p,i),lambda:read_registers(p,i),50,
+                        other_ok=lambda q:q[33]==motor['mode'] and not q[65] and 10<=q[62]/10<=13)
+                    temperature_check=None
+                    if check or not normal_temperature(motor['temperature'],50):
+                        temperature_check={'reported':motor['temperature'],'fresh':r[63],'confirmation':check}
+                    if (not 10<=motor['voltage']<=13
+                            or not normal_temperature(r[63],50)
+                            or r[33]!=motor['mode'] or r[65] or not 10<=r[62]/10<=13):
                         blocked.append({'port':name,'id':i,'reason':'供电或温度未就绪'});continue
-                    r=read_registers(p,i)
                     if wheel:write_register(p,i,46,0,2)
                     else:
                         pos=word(r,56)
@@ -205,7 +212,8 @@ class OriginalRuntime(ControlRuntime):
                     write_register(p,i,40,1,1)
                     after=read_registers(p,i)
                     if after[40]!=1 or after[33]!=(1 if wheel else 0):raise RuntimeError('扭矩/模式回读失败')
-                    ready.append({'port':name,'id':i,'position':word(after,56),'torque':after[40]})
+                    ready.append({'port':name,'id':i,'position':word(after,56),'torque':after[40],
+                                  **({'temperature_check':temperature_check} if temperature_check else {})})
             self.scan()
             self.preparation={'ready':ready,'blocked':blocked,'prepared_at':now(),
                               'message':'已保持当前位置；未归零，未修改模式、PID或设备限位'}

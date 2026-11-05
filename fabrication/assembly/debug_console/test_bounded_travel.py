@@ -194,6 +194,53 @@ def test_a_single_temperature_glitch_is_reread_and_recorded_not_a_stop(runtime):
     stopped(p)
 
 
+def test_recovered_temperature_jumps_do_not_accumulate_a_stop_budget(runtime):
+    p=moving_wheels(runtime,increment=10);original=p.write;reads={9:0,10:0}
+    def repeated(packet):
+        i=packet[2]
+        if i in reads and packet[4]==2 and word(p.regs[i],46):
+            reads[i]+=1
+            p.regs[i][63]=(92,52,35)[(reads[i]-1)%3]
+        return original(packet)
+    p.write=repeated
+    result=bounded_travel(runtime,lambda:None,-.05)
+    recovered=result['read_glitches']
+    assert result['stopped_by']=='target' and len(recovered)>3
+    assert all(g['kind']=='temperature' and g['recovered'] for g in recovered)
+    assert all([r[63] for r in g['samples']]==[92,52,35] for g in recovered)
+    stopped(p)
+
+
+def test_recovered_voltage_faults_still_have_the_existing_count_limit(runtime):
+    p=moving_wheels(runtime,increment=10);original=p.write;reads={9:0,10:0}
+    def repeated(packet):
+        i=packet[2]
+        if i in reads and packet[4]==2 and word(p.regs[i],46):
+            reads[i]+=1;p.regs[i][62]=110 if reads[i]%2 else 120
+        return original(packet)
+    p.write=repeated
+    with pytest.raises(RuntimeError,match='读数反复异常') as caught:
+        bounded_travel(runtime,lambda:None,-.05)
+    assert len(caught.value.rotation['read_glitches'])==4
+    assert all(g['kind']=='other' for g in caught.value.rotation['read_glitches'])
+    stopped(p)
+
+
+def test_a_temperature_spike_at_preflight_is_confirmed_before_motion(runtime):
+    p=moving_wheels(runtime);original=p.write;injected=[]
+    def once(packet):
+        if packet[2]==9 and packet[4]==2 and not injected:
+            injected.append(True);p.regs[9][63]=92
+            try:return original(packet)
+            finally:p.regs[9][63]=35
+        return original(packet)
+    p.write=once
+    result=bounded_travel(runtime,lambda:None,-.05)
+    assert result['stopped_by']=='target'
+    assert result['read_glitches'][0]['phase']=='preflight'
+    stopped(p)
+
+
 @pytest.mark.parametrize('sign',[1,-1])
 def test_translations_follow_the_camera_verified_chassis_direction(runtime,tmp_path,monkeypatch,sign):
     from fabrication.assembly.debug_console import rotation_scan

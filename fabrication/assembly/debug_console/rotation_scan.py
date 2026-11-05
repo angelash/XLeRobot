@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from .torque_control import read_registers, write_register, word
 from .upstream_teleop import encode_velocity
+from .temperature_guard import confirm_temperature, normal_temperature
 
 # Which wheel-command sign moves the chassis toward where the head and arms look.
 # 2026-11-03: two legs commanded "backward" (-5cm each) brought the desk and the
@@ -123,6 +124,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     blocked=None
     best=0;best_t=0.
     glitches=[]
+    other_glitches=0
 
     def stable(rows):
         # STS speed is quantized in 50-count steps: idle encoder jitter by one
@@ -210,7 +212,13 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             port = runtime.session.ports['COM4']
             for motor in (9, 10):
                 reg = read_registers(port, motor)
-                if reg[33] != 1 or reg[40] not in (0, 1) or not 11.5 <= reg[62]/10 <= 12.6 or reg[63] >= 45 or reg[65]:
+                other_ok = lambda r: r[33] == 1 and r[40] in (0, 1) and 11.5 <= r[62]/10 <= 12.6 and not r[65]
+                reg, temperature_check = confirm_temperature(
+                    reg, lambda: read_registers(port, motor), 45,
+                    other_ok=other_ok, check_abort=check_abort)
+                if temperature_check:
+                    glitches.append({'phase':'preflight','motor':motor,**temperature_check})
+                if not other_ok(reg) or not normal_temperature(reg[63], 45):
                     raise ValueError(f'轮{motor}模式、扭矩、供电、温度或状态异常')
                 if word(reg,46):
                     raise ValueError(f'轮{motor}存在其他速度指令')
@@ -254,11 +262,13 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 write_register(port, motor, 46, encode_velocity(command[motor]), 2)
             runtime.wheels_commanded = True
             runtime.wheel_goals = [command[9], command[10]]
-    except BaseException:
+    except BaseException as exc:
         # Release the serial lock before joining the independent expiry path.
         if timer is not None:
             stop()
             timer.cancel()
+        if glitches:
+            exc.rotation={'wheel_start_raw':before,'read_glitches':glitches,'readbacks':readbacks}
         raise
     try:
         while not stopped.wait(.015):
@@ -269,15 +279,21 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                     progress={}
                     for motor in (9,10):
                         reg=read_registers(runtime.session.ports['COM4'],motor)
-                        bad=lambda r:r[33]!=1 or r[40]!=1 or r[65] or r[63]>=45 or not 11.5<=r[62]/10<=12.6
-                        if bad(reg):
-                            # Twice (2026-11-02 wheel 10 57 C, 2026-11-03 wheel 9 49 C) one read jumped and the
-                            # next was 34-35 C. Re-read at once: a real fault reads the same twice and still stops.
+                        other_ok=lambda r:r[33]==1 and r[40]==1 and not r[65] and 11.5<=r[62]/10<=12.6
+                        reg, temperature_check = confirm_temperature(
+                            reg, lambda: read_registers(runtime.session.ports['COM4'],motor), 45,
+                            other_ok=other_ok, check_abort=check_abort)
+                        if temperature_check:
+                            glitches.append({'t':round(time.monotonic()-started,3),'motor':motor,**temperature_check})
+                        bad=lambda r:not other_ok(r) or not normal_temperature(r[63],45)
+                        if not other_ok(reg):
+                            # Preserve the existing bounded recovery for non-temperature faults.
                             first=list(reg)
                             reg=read_registers(runtime.session.ports['COM4'],motor)
                             if not bad(reg):
-                                glitches.append({'t':round(time.monotonic()-started,3),'motor':motor,'first':first,'reread':list(reg)})
-                                if len(glitches)>3:
+                                other_glitches+=1
+                                glitches.append({'kind':'other','t':round(time.monotonic()-started,3),'motor':motor,'first':first,'reread':list(reg)})
+                                if other_glitches>3:
                                     raise RuntimeError('行进中轮组读数反复异常，已停')
                         if bad(reg):
                             fault={'motor':motor,'registers':list(reg),'position':word(reg,56),
@@ -365,6 +381,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     angle = sum(deltas.values())/2 * 2*math.pi/4096 * 2*radius/track
     return {'wheel_delta_raw': deltas, 'stop_readback': final,
             'stop_trace': readbacks,
+            'read_glitches': glitches,
             'yaw_delta_deg_estimate': math.degrees(angle), 'duration_s': duration,
             'geometry_source': 'existing_design_values_not_measured',
             'translation_command_m_s': 0}

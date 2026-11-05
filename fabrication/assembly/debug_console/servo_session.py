@@ -23,6 +23,7 @@ from .control_runtime import now
 from .limit_selftest import Aborted, Blocked
 from .torque_control import word
 from .whole_calibration import atomic_json
+from .temperature_guard import POLICY_VERSION, confirm_temperature, normal_temperature
 
 MAX_STEP_RAW = 900        # largest change of one joint in one step
 MAX_STEP_S = 15.0         # a step must finish within this nominal time
@@ -416,6 +417,10 @@ class ServoSession:
         for port, i in joints:
             try:
                 reg = self.lt._read(port, i)
+                reg, temperature_check = confirm_temperature(
+                    reg, lambda: self.lt._read(port, i), TEMP_STOP_C,
+                    other_ok=lambda r:r[40]==1 and not r[65] and r[62]/10>=VOLT_STOP,
+                    check_abort=self.lt._check_abort)
             except Exception as exc:  # noqa: BLE001 - reported per joint
                 out[self._name(port, i)] = {'error': str(exc)[:80]}
                 continue
@@ -423,14 +428,16 @@ class ServoSession:
             out[self._name(port, i)] = {'position': word(reg, 56), 'goal': word(reg, 42), 'load': load & 0x3ff,
                                         'load_sign': -1 if load & 0x400 else 1, 'torque_limit': word(reg, 48),
                                         'torque': reg[40], 'temperature': reg[63], 'voltage': reg[62]/10, 'status': reg[65]}
+            if temperature_check:
+                out[self._name(port, i)]['temperature_check'] = temperature_check
         return out
 
     def _hazard(self, joints):
         for name, j in joints.items():
             if 'error' in j:
                 return f'{name}读数失败：{j["error"]}'
-            if j['temperature'] >= TEMP_STOP_C:
-                return f'{name}温度{j["temperature"]}°C，达到{TEMP_STOP_C}°C停止线'
+            if not normal_temperature(j['temperature'], TEMP_STOP_C):
+                return f'{name}温度复读仍异常：{j["temperature"]}°C（停止线{TEMP_STOP_C}°C）'
             if 0 < j['voltage'] < VOLT_STOP:
                 return f'{name}电压{j["voltage"]}V过低'
             if j['status'] & 32:
@@ -445,6 +452,7 @@ class ServoSession:
             if last:
                 last.pop('joints', None)
             return {'active': self.active, 'busy': self.busy, 'session_id': self.session_id if self.active else None,
+                    'temperature_policy': POLICY_VERSION,
                     'label': self.label, 'steps': self.steps, 'lease_s': self.lease_s,
                     'idle_s': round(self.clock() - self.last_call, 2) if self.active and self.last_call else None,
                     'started_at': self.started_at, 'finished_at': self.finished_at, 'ended': self.ended_reason,
