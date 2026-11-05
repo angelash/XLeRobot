@@ -7,6 +7,8 @@ status: active
 
 # XLeRobot 项目交接与后续路线
 
+> 2026-11-05 继续归档：[每日制作日志](docs/journal/README.md)更新至北京时间11-05 10:12，补齐11-03下午及11-04、11-05上午。12条会话累计171条用户消息，比首批新增21条；17个日期、11天有记录、19条经验。新E/G完整ZIP的6574个文件均独立读回校验，旧批次保留，见[本批回执](docs/journal/BACKUP_RECEIPT.md)与[批次历史](docs/journal/ARCHIVE_HISTORY.md)。午前训练仍在进行，日志没有把截止后的抓放或收尾提前写成完成。
+
 > 2026-11-03 对话归档更新：[每日制作日志](docs/journal/README.md)提供10-20至11-03的按日进展、失败、结果边界与待办；[离线阅读页](docs/journal/index.html)可检索和分享，[经验稿](docs/journal/EXPERIENCE_ZH.md)保留适用范围。当前工作区7条与open-share关联5条对话已建立私人原始快照，E/G两处ZIP均完成956个文件的读回哈希校验，G与工作区位于不同物理硬盘。聊天快照截止北京时间11-03 14:46；旧版历史缺口和截止后的抓取测试另见[覆盖说明](docs/journal/COVERAGE.md)与[备份回执](docs/journal/BACKUP_RECEIPT.md)，不以本次文档归档替代后续实机验收。
 
 这份交接把会话 `01a1584f-60ca-7cd1-bd00-bfb4774e0a23` 与
