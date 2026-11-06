@@ -21,6 +21,8 @@
 
 后者需开发用Playwright/Chromium，生成的截图和报告存私有`.local-deploy/history-3d-20261106/browser`；不新增生产站点或服务。
 
+2026-11-06本地双臂抓放工程CLI产生的配对照片/控制ZIP同样由历史索引按servo会话ID关联；试验原始失败与本地判据不得当成独立真值。实测结果和继续测试的现场条件见[双臂本地练习](../../docs/autonomy/LOCAL_DUAL_GRASP_20261106_ZH.md)。
+
 2026-11-05新增整车粗略包络与转身扫掠预览，入口仍在原“空间观察”页；`GET /api/platform/fieldmap/body`提供尺寸来源与假设，`POST /api/platform/fieldmap/body/plan`检查先平移再转身的区间扫掠。收臂暂定80×60cm、完整转身充分半径55cm，未实测、不开放动作或自动判净空；当前仅支持已核对收臂姿态。资料冲突、退离后继续转向实测及限制见[车体包络报告](../../docs/autonomy/BODY_ENVELOPE_20261105_ZH.md)。
 
 2026-11-02新增按编码器计数的受监督小段移动；红线范围实测、两次保护停车与多视角补图见[分段观察记录](../onboard/BOUNDARY_SURVEY_ZH.md)。该记录保留未到边界、未后退及温度回报异常的限制，不将地图复核当作自动行驶许可。

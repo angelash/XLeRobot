@@ -1,0 +1,535 @@
+"""Offline, supervised tabletop trials through the existing bounded executor.
+
+This is an experimental local skill for the two known unplugged adapters on
+the cleared desk, not a general detector or a promoted autonomous policy.
+No cloud/model provider, operator box, serial connection or chassis motion.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import time
+import urllib.request
+import zipfile
+
+# The laptop cannot afford BLAS's automatic one-thread-per-core allocation.
+for variable in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'):
+    os.environ[variable] = '1'
+import cv2
+import numpy as np
+cv2.setNumThreads(1)
+
+from . import arm
+from .controller import GraspController, GraspFailure
+from .service import HttpExecutor
+from .tracker import TemplateTracker
+
+REFS = {'left': (2211, 955, 2245), 'right': (2245, 901, 2049)}
+CAMERAS = {'left': 2, 'right': 1}
+
+
+def request(path, body=None, port=8765):
+    raw = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(f'http://127.0.0.1:{port}'+path, data=raw,
+                                 headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.load(r)
+
+
+def candidates(bgr, appearance, head=False):
+    """Rectangular body + colour + surrounding clear table, restricted ROI.
+
+    Shape/colour evidence is only for this named fixture. Reject ambiguities;
+    local tracking can start only after three distinct agreeing source frames.
+    """
+    if appearance not in ('light', 'dark'):
+        raise ValueError('Unknown fixture appearance')
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    height, width = gray.shape
+    if (width, height) != (640, 480):
+        raise ValueError('The local fixture uses 640x480 images only')
+    edge = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 20, 50)
+    edge = cv2.morphologyEx(edge, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=2)
+    contours, _ = cv2.findContours(edge, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    found = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = w*h
+        if not (22 <= w <= 130 and 35 <= h <= 180 and 950 <= area <= 16000 and .25 <= w/h <= 1.8):
+            continue
+        if head:
+            if not (145 < x and x+w < 465 and 105 < y and y+h < 320):
+                continue
+        elif not (65 < x and x+w < 560 and 150 < y and y+h < 405):
+            continue
+        fill = cv2.contourArea(contour)/area
+        if fill < (.35 if appearance == 'light' else .42):
+            continue
+        crop = gray[y:y+h, x:x+w]
+        mean = float(crop.mean())
+        if appearance == 'dark' and not 20 < mean < 145:
+            continue
+        if appearance == 'light' and not 130 < mean < 238:
+            continue
+        # A bounded ring around the body must be predominantly a light desk.
+        margin = 12
+        a, b, c, d = max(0, x-margin), max(0, y-margin), min(width, x+w+margin), min(height, y+h+margin)
+        ring = gray[b:d, a:c].copy()
+        mask = np.ones(ring.shape, np.uint8)
+        mask[y-b:y-b+h, x-a:x-a+w] = 0
+        surroundings = ring[mask.astype(bool)]
+        light_fraction = float((surroundings > 155).mean())
+        if light_fraction < (.65 if head else .50):
+            continue
+        contrast = float(surroundings.mean()-mean)
+        if appearance == 'dark' and contrast < 35:
+            continue
+        if appearance == 'light' and not 7 < contrast < 85:
+            continue
+        if appearance == 'light':
+            # Thin metal prongs are not a grasping surface. Trim rows that
+            # contain only the narrow prongs, retaining the broad plastic body.
+            silhouette = crop < float(surroundings.mean())-12
+            counts = silhouette.sum(axis=1)
+            broad = counts >= max(w*.4, counts.max()*.55)
+            runs = []
+            begin = None
+            for row, yes in enumerate([*broad, False]):
+                if yes and begin is None:
+                    begin = row
+                if not yes and begin is not None:
+                    runs.append((begin,row));begin=None
+            if runs:
+                a,b = max(runs,key=lambda v:v[1]-v[0])
+                if b-a >= 35 and a >= 5:
+                    y += a;h=b-a
+        found.append({'bbox': [x, y, w, h], 'fill': round(fill, 3), 'contrast': round(contrast, 2),
+                      'surrounding_light_fraction': round(light_fraction, 3), 'mean': round(mean, 2),
+                      'score': round(fill*light_fraction*math.sqrt(area), 2), 'appearance': appearance})
+    found.sort(key=lambda p: p['score'], reverse=True)
+    # Nested edge contours describe the same body, not distinct objects.
+    unique = []
+    for hit in found:
+        x, y, w, h = hit['bbox']
+        if any(abs(x+w/2-(q['bbox'][0]+q['bbox'][2]/2)) < min(w, q['bbox'][2])*.6
+               and abs(y+h/2-(q['bbox'][1]+q['bbox'][3]/2)) < min(h, q['bbox'][3])*.6 for q in unique):
+            continue
+        unique.append(hit)
+    return unique
+
+
+class Frames:
+    def __init__(self, root):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.previous = {}
+        self.receipts = []
+
+    def get(self, camera, after=0.):
+        deadline = time.monotonic()+2.5
+        while True:
+            with urllib.request.urlopen(f'http://127.0.0.1:8765/api/camera/{camera}/snapshot', timeout=3) as r:
+                jpeg = r.read()
+                captured = float(r.headers['X-Captured-At'])
+                seq = int(r.headers['X-Frame-Sequence'])
+            age = time.time()-captured
+            if not -.1 <= age <= .8:
+                raise GraspFailure('Stale source frame')
+            if captured > after and (captured, seq) != self.previous.get(camera):
+                break
+            if time.monotonic() >= deadline:
+                raise GraspFailure('No distinct fresh camera frame')
+            time.sleep(.06)
+        self.previous[camera] = (captured, seq)
+        im = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+        if im is None:
+            raise GraspFailure('Invalid camera JPEG')
+        self.receipts.append({'camera': camera, 'captured_at': captured, 'age_s': age, 'sequence': seq})
+        return im, jpeg, captured
+
+    def save(self, tag):
+        result = []
+        for camera in (0, 1, 2):
+            _, raw, captured = self.get(camera)
+            name = f'{tag}-cam{camera}.jpg'
+            (self.root/name).write_bytes(raw)
+            result.append({'camera': camera, 'file': name, 'captured_at': captured})
+        return result
+
+
+class SideExecutor:
+    """Reuse the verified planar kernel, with each arm's separate raw references."""
+    def __init__(self, side):
+        self.side, self.inner = side, HttpExecutor('http://127.0.0.1:8765')
+        self.offset = {i: v-a for i, v, a in zip((2, 3, 4), REFS[side], REFS['left'])}
+        self.contact = None
+
+    @property
+    def active(self):
+        return self.inner.active
+
+    def normalize(self, entry):
+        out = dict(entry)
+        joints = {}
+        for key, value in (entry.get('joints') or {}).items():
+            if key.startswith(self.side+':'):
+                i = int(key.split(':')[1]); j = dict(value)
+                for field in ('position', 'goal'):
+                    if field in j:
+                        j[field] -= self.offset.get(i, 0)
+                joints[f'left:{i}'] = j
+        out['joints'] = joints
+        if entry.get('contact'):
+            self.contact = entry['contact']
+        return out
+
+    def start(self, label=''):
+        return self.inner.start('local-'+self.side+': '+label)
+
+    def step(self, targets, torque=None, speed=12., label=''):
+        if any(not k.startswith('left:') for k in targets):
+            raise GraspFailure('Trial executor accepts only its assigned arm')
+        real = {self.side+':'+k.split(':')[1]: v+self.offset.get(int(k.split(':')[1]), 0) for k, v in targets.items()}
+        return self.normalize(self.inner.step(real, torque, speed, label))
+
+    def hold(self):
+        return self.normalize(self.inner.hold())
+
+    def end(self, reason='完成'):
+        self.inner.end(reason)
+
+    def stop(self, reason='停止'):
+        self.inner.stop(reason)
+
+    def base(self, *_):
+        raise GraspFailure('No chassis movement in grasp trials')
+
+
+class Observer:
+    def __init__(self, frames, side, appearance):
+        self.frames, self.side, self.appearance = frames, side, appearance
+        self.tracker = TemplateTracker()
+        self.detections = []
+
+    def locate(self):
+        hits = []
+        time.sleep(.5)  # arm settling is different from having a fresh frame
+        for _ in range(12):
+            im, _, at = self.frames.get(CAMERAS[self.side])
+            found = candidates(im, self.appearance)
+            self.detections.append({'at': at, 'candidates': found})
+            if len(found) == 1:
+                hits.append((found[0]['bbox'], im))
+                hits = hits[-3:]
+                if len(hits) == 3:
+                    centers = np.array([[x+w/2, y+h/2] for (x,y,w,h), _ in hits])
+                    if np.ptp(centers, axis=0).max() <= 8:
+                        break
+            else:
+                hits = []
+            time.sleep(.12)
+        if len(hits) < 3:
+            raise GraspFailure('Local target ambiguous or absent; no model fallback')
+        centers = np.array([[x+w/2, y+h/2] for (x, y, w, h), _ in hits])
+        if np.ptp(centers, axis=0).max() > 8:
+            raise GraspFailure('Local initial detections disagree')
+        gray = cv2.cvtColor(hits[-1][1], cv2.COLOR_BGR2GRAY)
+        box = hits[-1][0]
+        self.tracker.init(gray, box)
+        return box
+
+    def observe(self, after, timeout=2.5):
+        time.sleep(.13)
+        im, _, at = self.frames.get(CAMERAS[self.side], after=time.time()-.15)
+        gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        state = self.tracker.update(gray)
+        box = state.get('bbox')
+        return {**state, 'gray': gray, 'center': None if not box else (box[0]+box[2]/2, box[1]+box[3]/2), 'captured_at': at}
+
+
+class Recorder:
+    def __init__(self, frames):
+        self.frames = frames
+        self.captures = []
+        self.events = []
+
+    def event(self, item):
+        self.events.append(item)
+        with (self.frames.root/'events.jsonl').open('a', encoding='utf-8') as f:
+            f.write(json.dumps(item, ensure_ascii=False, default=str)+'\n')
+
+    def keyframe(self, tag, phase=''):
+        files = self.frames.save(f'{len(self.captures):02d}-{tag}')
+        self.captures.append({'tag': tag, 'phase': phase, 'frames': files})
+
+
+class LocalController(GraspController):
+    def prepare_open(self):
+        self._refresh()
+        if self.q['grip'] >= 1950:
+            return
+        if self._tip()['tip'][1] < self.cfg['desk_z']+6:
+            raise GraspFailure('Open-jaw preparation requires a clear high pose')
+        self._move({'left:6':2045},torque=450,speed=12,label='open jaws before target acquisition')
+        self._key('open-before-acquisition')
+
+    def _lateral_step(self, obs):
+        error = self._lateral_error(obs)
+        if abs(error) <= self.cfg['align_tol_px']:
+            return obs
+        delta = max(-30, min(30, round(-error/self.gain)))
+        actual = self.q['pan']
+        target = getattr(self, 'local_pan_goal', actual)+delta
+        target = max(actual-100, min(actual+100, target))
+        self._move({'left:1': target}, torque=450, speed=6, label='local pan with bounded deadband compensation')
+        self.local_pan_goal = target
+        newer = self._need_track(self._look('local lateral correction'), 'local lateral correction')
+        moved = self.q['pan']-actual
+        if abs(moved) >= 3:
+            measured = (newer['center'][0]-obs['center'][0])/moved
+            if measured < -.2:
+                self.gain = max(-6.,min(-.4,.6*self.gain+.4*measured))
+        self._event('local_lateral', error=error, target=target, actual_motion=moved, gain=self.gain)
+        return newer
+
+    def _home(self):
+        self._phase('home', '回到高位本地观察，避免目标被固定指挡住')
+        self._go(arm.ik(18,8,130,min_bend=22), 'local high observation', speed=8, torque=450)
+        self._key('home')
+
+    def _close(self, obs):
+        super()._close(obs)
+        self._refresh()
+        self.baseline = self.pressure()
+        # The old controller could stop after 220 counts of visual movement,
+        # although no pressure existed. Keep a finite measured closing budget.
+        for _ in range(7):
+            if self.baseline['load'] >= 60 and self.baseline['lead'] >= 15:
+                break
+            target = max(1450, int(self.q['grip'])-30)
+            if target >= self.q['grip']-5:
+                break
+            self._move({'left:6': target}, torque=600, speed=4, label='bounded local pressure correction')
+            self._refresh()
+            self.baseline = self.pressure()
+            self._event('pressure_correction', pressure=self.baseline, target=target)
+        if self.baseline['load'] < 60 or self.baseline['lead'] < 15:
+            raise GraspFailure('Local pressure baseline insufficient; no lift')
+        self.grasp_pose = dict(self.q)
+
+    def pressure(self):
+        return {'load': float(self.q.get('grip_load') or 0),
+                'lead': self.q['grip']-self.q.get('grip_goal', self.q['grip'])}
+
+    def _verify_held(self, before, after, pose_before, window=None):
+        verdict = super()._verify_held(before, after, pose_before, window)
+        if self.phase == 'lift' and verdict.get('held') is True:
+            p = self.pressure()
+            retained = p['load'] >= self.baseline['load']*.75 and p['lead'] >= self.baseline['lead']*.65
+            verdict.update(pressure=p, pressure_retained=retained)
+            if not retained:
+                verdict.update(held=False, why='Pressure lost after test lift')
+        return verdict
+
+    def _hold(self):
+        super()._hold()
+        self._refresh()
+        p = self.pressure()
+        if p['load'] < self.baseline['load']*.75 or p['lead'] < self.baseline['lead']*.65:
+            raise GraspFailure('Pressure lost during hold')
+
+    def _place(self):
+        super()._place()
+        check = next((e for e in reversed(self.events) if e['kind'] == 'release_check'), None)
+        if not check or not check.get('left_behind'):
+            # A weakly changed window is uncertainty. Obtain a larger measured
+            # retreat, then independently detect the whole body on the desk.
+            if self.q['grip'] < 1950 or abs(self.q.get('grip_load', 0)) > 60:
+                raise GraspFailure('Release after retreat not confirmed locally')
+            self._home()
+            self._refresh()
+            box = self.obs.locate()
+            if not box or box[1]+box[3] >= 405:
+                raise GraspFailure('Released body not redetected away from jaws')
+            self._event('release_redetection', bbox=box, full_body_detected=True,
+                        grip_position=self.q['grip'], grip_load=self.q.get('grip_load'))
+            self._key('release-redetected')
+
+    def _make_room(self, obs):
+        raise GraspFailure('Insufficient approach space; chassis is fixed for this trial')
+
+
+def preflight():
+    state = request('/api/status')
+    servo = request('/api/servo/status')
+    grasp = request('/api/platform/grasp/status', port=8770)
+    studio = request('/api/platform/status', port=8770)
+    motors = [m for p in state['ports'] for m in p['motors']]
+    if (servo['active'] or grasp['operation'] or studio['recording'] or state['agent_run']['running']
+            or state['limit_selftest']['running'] or state['controller']['controller'] != 'offline'):
+        raise GraspFailure('Other operator/activity owns the robot')
+    if len(motors) != 16 or any(m['voltage'] < 11.5 or not 0 < m['temperature'] < 45 or m['status'] for m in motors):
+        raise GraspFailure('Hardware health not ready')
+    if any(m['goal_velocity'] for m in motors if m['id'] in (9, 10)):
+        raise GraspFailure('Wheel goals not zero')
+    return state
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', choices=('inspect', 'survey', 'high', 'search', 'recover', 'park', 'pick'))
+    parser.add_argument('--side', choices=('left', 'right'), required=True)
+    parser.add_argument('--root', required=True)
+    parser.add_argument('--confirmed', action='store_true')
+    parser.add_argument('--previous')
+    args = parser.parse_args()
+    root = Path(args.root)
+    root.mkdir(parents=True, exist_ok=False)
+    frames = Frames(root)
+    recorder = Recorder(frames)
+    result = {'ok': False, 'side': args.side, 'action': args.action, 'llm_calls': 0,
+              'policy_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              'source': 'local_opencv_and_bounded_planar_controller', 'started_at': datetime.now().astimezone().isoformat()}
+    ex = obs = None
+    try:
+        state = preflight()
+        recorder.keyframe('preflight')
+        obs = Observer(frames, args.side, 'light' if args.side == 'left' else 'dark')
+        if args.action == 'inspect':
+            result['bbox'] = obs.locate()
+            result['ok'] = True
+        else:
+            if not args.confirmed:
+                raise GraspFailure('Supervised cleared-workspace confirmation required')
+            ex = SideExecutor(args.side)
+            config = {'max_attempts': 1, 'hold_s': 3., 'end_pose': 'survey',
+                      'squeeze_torque': 600, 'reverse_authorization': '', 'approach_torque': 450}
+            brain = LocalController(ex, obs, recorder, config)
+            if args.action == 'survey':
+                result.update(brain.run_survey())
+            elif args.action == 'park':
+                ex.start('return empty arm upright then folded')
+                brain.started = time.monotonic()
+                brain._refresh()
+                brain._go(arm.UPRIGHT, 'park upright', speed=12, torque=450)
+                real = (1168, 2914, 2246) if args.side == 'left' else (1230, 2868, 2312)
+                normalized = tuple(v-o for v,o in zip(real, [ex.offset[i] for i in (2,3,4)]))
+                initial = tuple(brain.q[k] for k in ('lift','elbow','pitch'))
+                for k in range(1,8):
+                    q = tuple(round(a+(b-a)*k/7) for a,b in zip(initial, normalized))
+                    brain._arm(q, torque=450, speed=12, label='known folded transition')
+                brain._move({'left:6':1340}, torque=450, speed=12, label='empty gripper stowed')
+                recorder.keyframe('folded')
+                result['ok'] = True
+            elif args.action == 'high':
+                ex.start('bounded raised observation; no approach')
+                brain.started = time.monotonic()
+                brain._refresh()
+                target = arm.ik(18, 8, 130, min_bend=22)
+                start = tuple(brain.q[k] for k in ('lift', 'elbow', 'pitch'))
+                brain._go(target, 'raise observation behind target', speed=8, torque=450)
+                recorder.keyframe('high-observe')
+                result['bbox'] = obs.locate()
+                result['ok'] = True
+            elif args.action == 'recover':
+                previous = Path(args.previous or '').resolve()
+                if not previous.is_relative_to(root.parent.resolve()):
+                    raise GraspFailure('Recovery receipt outside trial root')
+                old = json.loads(previous.read_text(encoding='utf-8'))
+                if old.get('side') != args.side or old.get('contact'):
+                    raise GraspFailure('Recovery requires the same arm with no contact')
+                events = old.get('controller', {}).get('events', [])
+                squeezed = next((e['q'] for e in reversed(events) if e.get('label') == '加压'), None)
+                if not squeezed:
+                    raise GraspFailure('No recorded supported grasp pose')
+                ex.start('controlled support release after insufficient pressure')
+                brain.started = time.monotonic()
+                brain._refresh()
+                brain._arm(tuple(squeezed[k] for k in ('lift','elbow','pitch')), torque=450, speed=5, label='return to recorded support')
+                brain._move({'left:6': 2045}, torque=450, speed=12, label='release with support')
+                recorder.keyframe('supported-release')
+                brain._go(arm.ik(18, 8, 130, min_bend=22), 'clear high observation', speed=8, torque=450)
+                recorder.keyframe('recovered-high')
+                result['ok'] = True
+            elif args.action == 'search':
+                ex.start('high observation search, no descent')
+                brain.started = time.monotonic()
+                brain._refresh()
+                for n in range(4):
+                    ex.hold()
+                    try:
+                        result['bbox'] = obs.locate()
+                        result['ok'] = True
+                        break
+                    except GraspFailure:
+                        if n == 3:
+                            raise
+                        f = brain._tip()
+                        if f['tip'][1] < brain.cfg['desk_z']+3 or f['tip'][0]-2 < 16:
+                            raise GraspFailure('Search must stay high and within the bounded rear workspace')
+                        q = arm.ik(f['tip'][0]-2, f['tip'][1]+2, 108, min_bend=22)
+                        start = tuple(brain.q[k] for k in ('lift', 'elbow', 'pitch'))
+                        if arm.segment_min_z(start, q)[0] < f['tip'][1]-.3:
+                            raise GraspFailure('Search interpolation would descend')
+                        brain._arm(q, torque=450, speed=6, label='local search: high retreat 2cm')
+                        recorder.keyframe('search-high-retreat')
+            else:
+                # Every new trial begins with an open empty gripper at high
+                # clearance; the original survey path opened it, high did not.
+                state_by_id = {m['id']:m for p in state['ports'] if p['port']==('COM4' if args.side=='left' else 'COM3') for m in p['motors']}
+                if state_by_id[6]['position'] < 1950:
+                    ex.start('prepare open jaws at high clearance')
+                    brain.started = time.monotonic()
+                    brain.prepare_open()
+                    ex.end('open-jaw preparation complete')
+                result['bbox'] = obs.locate()
+                result.update(brain.run_pick_place())
+            result['controller'] = brain.status()
+            result['contact'] = ex.contact
+            result['servo_receipt'] = request('/api/servo/status')
+        result['detections'] = obs.detections
+    except Exception as exc:
+        result.update(ok=False, error=type(exc).__name__+': '+str(exc))
+    finally:
+        if ex:
+            ex.end('local trial complete')
+            if 'servo_receipt' not in result and ex.inner.session_id:
+                try:
+                    receipt = request('/api/servo/status')
+                    if receipt.get('session_id') == ex.inner.session_id:
+                        result['servo_receipt'] = receipt
+                except Exception as exc:
+                    result['receipt_error'] = type(exc).__name__
+        result.update(finished_at=datetime.now().astimezone().isoformat(), captures=recorder.captures,
+                      frame_receipts=frames.receipts, detections=obs.detections if obs else [])
+        (root/'result.json').write_text(json.dumps(result, ensure_ascii=False, default=str, indent=2), encoding='utf-8')
+        # Existing history importer understands paired control/photo archives.
+        # Keep private images and receipt copies on the laptop, outside Git.
+        if result.get('servo_receipt', {}).get('dir'):
+            source = Path(result['servo_receipt']['dir']).resolve()
+            if 'servo-sessions' in source.parts:
+                with zipfile.ZipFile(root.parent/(root.name+'-control.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
+                    for p in source.iterdir():
+                        if p.is_file():
+                            z.write(p, p.name)
+                with zipfile.ZipFile(root.parent/(root.name+'.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
+                    for p in root.iterdir():
+                        if p.is_file():
+                            z.write(p, p.name)
+                    captures = []
+                    for cap in recorder.captures:
+                        if not cap['frames']:
+                            continue
+                        name = cap['frames'][0]['file'].rsplit('-cam', 1)[0]
+                        captures.append({'name': name, 'frames': cap['frames']})
+                    z.writestr('log.json', json.dumps({'captures': captures}, ensure_ascii=False))
+    print(json.dumps({k: v for k, v in result.items() if k not in ('captures', 'frame_receipts', 'controller', 'servo_receipt')}, ensure_ascii=False))
+
+
+if __name__ == '__main__':
+    main()
