@@ -208,11 +208,12 @@ async function refreshStatus(){
     $('indexStatus').title=JSON.stringify({scan:s.scan,coverage:s.coverage_issues,roots:s.source_roots,error:s.error});
     const scan=s.scan;
     $('coverageText').textContent=scan?`已检查 ${scan.discovered} 个来源；${scan.errors} 个读取失败，${scan.skipped} 个未关联。另有 ${scan.unlinked_archives||0} 个归档缺少运行关联，${scan.ignored_aggregate_archives||0} 个聚合备份未重复导入。${scan.discovery_truncated?'发现预算已截断。':''}${!s.source_roots.evidence_available?'原始回执目录当前不可用。':''}${!s.source_roots.fieldtests_available?'过程归档目录当前不可用。':''}`:'首次索引进行中，完成后显示默认时间范围。';
-    if(!S.range&&s.end_ms&&s.scan){range(Math.max(s.start_ms,s.end_ms-2*3600000),s.end_ms+1000);}else if(!S.range&&!s.indexing){message('尚无历史记录；可更新索引。');$('mapEmpty').textContent='尚无可回放的历史数据';}
+    const latest=s.latest_motion_ms||s.end_ms;
+    if(!S.range&&latest&&s.scan){range(Math.max(s.start_ms,latest-2*3600000),latest+1000);}else if(!S.range&&!s.indexing){message('尚无历史记录；可更新索引。');$('mapEmpty').textContent='尚无可回放的历史数据';}
   }catch(e){$('indexStatus').textContent='历史索引未响应';if(!S.range)message(e.message);}
 }
 $('refreshIndex').addEventListener('click',async()=>{try{const r=await fetch('/api/platform/fieldmap/history/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw Error(`刷新失败 ${r.status}`);message('已安排增量索引，原始记录保留；稍后重新查看这段。');refreshStatus();}catch(e){message(e.message);}});
-$('latestRange').addEventListener('click',()=>{if(S.status?.end_ms)range(Math.max(S.status.start_ms,S.status.end_ms-2*3600000),S.status.end_ms+1000);});
+$('latestRange').addEventListener('click',()=>{const latest=S.status?.latest_motion_ms||S.status?.end_ms;if(latest)range(Math.max(S.status.start_ms,latest-2*3600000),latest+1000);});
 $('allRange').addEventListener('click',()=>{if(S.status?.end_ms)range(S.status.start_ms,S.status.end_ms+1000);});
 $('todayRange').addEventListener('click',()=>{const d=new Date();d.setHours(0,0,0,0);range(d.valueOf(),d.valueOf()+86400000-1);});
 $('snapshotSelect').addEventListener('change',()=>{sceneKey='';environment.load($('snapshotSelect').value);});

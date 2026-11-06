@@ -178,6 +178,7 @@ class History:
         with self.connect() as db:
             counts = {table: db.execute(f'SELECT count(*) FROM {table}').fetchone()[0] for table in ('runs', 'events', 'photos')}
             extent = db.execute('SELECT min(start_ms),max(end_ms) FROM runs').fetchone()
+            motion_end = db.execute("SELECT max(end_ms) FROM events WHERE op IN ('travel','rotate','advance','drive','base')").fetchone()[0]
             scan = db.execute("SELECT value FROM meta WHERE key='scan'").fetchone()
             errors = db.execute("SELECT kind,state,count(*) n FROM sources WHERE state!='indexed' OR error IS NOT NULL GROUP BY kind,state").fetchall()
         scan_data = json.loads(scan[0]) if scan else None
@@ -185,6 +186,7 @@ class History:
         if scan_data and scan_data.get('unlinked_archives'):
             issues.append({'kind': 'fieldtests_archive', 'state': 'unlinked', 'n': scan_data['unlinked_archives']})
         return {**counts, 'start_ms': extent[0], 'end_ms': extent[1], 'indexing': self.running,
+                'latest_motion_ms': motion_end,
                 'scan': scan_data,
                 'source_roots': {'evidence_available': bool(self.evidence_root and Path(self.evidence_root).is_dir()),
                                  'fieldtests_available': bool(self.fieldtests_root and Path(self.fieldtests_root).is_dir())},

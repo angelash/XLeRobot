@@ -64,6 +64,7 @@ def test_native_export_dedup_and_incremental_scan(tmp_path):
     assert history.status()['runs'] == 1
     assert history.status()['events'] == 4
     assert history.status()['photos'] == 3
+    assert history.status()['latest_motion_ms'] == START + 5000
     assert history.scan()['unchanged'] == 2
     result = history.query(START, START+6000)
     assert result['summary']['translations'] == 2

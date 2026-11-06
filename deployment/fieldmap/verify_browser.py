@@ -94,7 +94,7 @@ def main():
                 page.mouse.move(box['x']+box['width']*.78, box['y']+42, steps=12); page.mouse.up()
                 assert float(page.locator('#timeline').get_attribute('aria-valuenow')) > START+4500
                 page.wait_for_timeout(220)
-                page.mouse.click(box['x']+box['width']*.85, box['y']+42)
+                page.mouse.click(box['x']+box['width']*.99, box['y']+42)
                 expect(page.locator('#photoName')).to_contain_text('later-cam0.jpg')
                 page.wait_for_timeout(700)
                 expect(page.locator('#photoName')).to_contain_text('later-cam0.jpg')
