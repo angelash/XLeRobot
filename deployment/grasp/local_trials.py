@@ -60,6 +60,20 @@ def candidates(bgr, appearance, head=False):
     edge = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), low, high)
     edge = cv2.morphologyEx(edge, cv2.MORPH_CLOSE, np.ones((size, size), np.uint8), iterations=2)
     contours, _ = cv2.findContours(edge, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    if appearance == 'light':
+        # A white body's edges can merge into the desk seam during closing.
+        # Local intensity contrast supplies a second contour proposal, still
+        # subject to the same fixture, shape, desk-ring and ambiguity gates.
+        adaptive=cv2.adaptiveThreshold(gray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY_INV,61,8)
+        line_edge=cv2.Canny(cv2.GaussianBlur(gray,(3,3),0),10,30)
+        lines=cv2.HoughLinesP(line_edge,1,np.pi/180,threshold=70,minLineLength=140,maxLineGap=20)
+        if lines is not None:
+            for x1,y1,x2,y2 in np.asarray(lines).reshape(-1,4):
+                cv2.line(adaptive,(x1,y1),(x2,y2),0,5)
+        adaptive=cv2.morphologyEx(adaptive,cv2.MORPH_CLOSE,np.ones((3,3),np.uint8))
+        more,_=cv2.findContours(adaptive,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+        contours=tuple(contours)+tuple(more)
     found = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
@@ -78,7 +92,7 @@ def candidates(bgr, appearance, head=False):
         mean = float(crop.mean())
         if appearance == 'dark' and not 20 < mean < 145:
             continue
-        if appearance == 'light' and not 130 < mean < 238:
+        if appearance == 'light' and not 115 < mean < 238:
             continue
         # A bounded ring around the body must be predominantly a light desk.
         margin = 12
@@ -105,6 +119,10 @@ def candidates(bgr, appearance, head=False):
     unique = []
     for hit in found:
         x, y, w, h = hit['bbox']
+        if any(q['bbox'][0]-3<=x and q['bbox'][1]-3<=y and
+               x+w<=q['bbox'][0]+q['bbox'][2]+3 and y+h<=q['bbox'][1]+q['bbox'][3]+3
+               for q in unique):
+            continue
         if any(abs(x+w/2-(q['bbox'][0]+q['bbox'][2]/2)) < min(w, q['bbox'][2])*.6
                and abs(y+h/2-(q['bbox'][1]+q['bbox'][3]/2)) < min(h, q['bbox'][3])*.6 for q in unique):
             continue
@@ -224,6 +242,26 @@ class Observer:
                 raise GraspFailure('Local camera worker did not stop')
         self.worker = None
 
+    def reanchor(self, observation):
+        """Refresh the same visible body at a stopped phase transition.
+
+        Initial high-view texture differs greatly from the final approach.
+        This does not acquire a different target or revive a failed track.
+        """
+        box = observation.get('bbox')
+        gray = observation.get('gray')
+        if not observation.get('ok') or observation.get('score', 0) < .70 or box is None or gray is None:
+            raise GraspFailure('Cannot anchor an uncertain closing target')
+        x,y,w,h = box
+        if w < 24 or h < 24 or x < 0 or y < 0 or x+w > gray.shape[1] or y+h > gray.shape[0]:
+            raise GraspFailure('Closing anchor must be fully visible')
+        with self.lock:
+            self.tracker.init(gray, box)
+            self.flow.init(gray, box)
+            self.samples.clear()
+        self.detections.append({'kind':'closing_anchor','bbox':list(box),
+                                'captured_at':observation.get('captured_at')})
+
     def _track(self):
         try:
             n = 0
@@ -335,6 +373,7 @@ class Recorder:
 class LocalController(GraspController):
     def acquire(self):
         """Finite local search at high clearance, never a blind approach."""
+        scan_x = scan_z = None
         for n in range(5):
             try:
                 return self.obs.locate()
@@ -348,10 +387,12 @@ class LocalController(GraspController):
                 f = self._tip()
                 if f['tip'][1] < self.cfg['desk_z']+6:
                     raise GraspFailure('Local reacquisition requires high clearance')
-                if getattr(self.obs, 'appearance', None) == 'light' and n == 0 and f['t3'] > 125:
-                    target = arm.ik(f['tip'][0], f['tip'][1], 115, min_bend=22)
-                elif getattr(self.obs, 'appearance', None) == 'light' and n == 1 and f['t3'] < 120:
-                    target = arm.ik(f['tip'][0], f['tip'][1], 130, min_bend=22)
+                if scan_x is None:
+                    scan_x,scan_z=f['tip'][0],max(8.,f['tip'][1])
+                if getattr(self.obs, 'appearance', None) == 'light':
+                    # Search both farther and nearer before retreating. The
+                    # previous 115->130->150 sequence missed far white bodies.
+                    target = arm.ik(scan_x, scan_z, (115,105,130,145)[n], min_bend=22)
                 elif f['t3'] < 147:
                     target = arm.ik(f['tip'][0], f['tip'][1], min(150, f['t3']+15), min_bend=22)
                 elif f['tip'][0]-2 >= 12:
@@ -377,6 +418,12 @@ class LocalController(GraspController):
             self._key('descent-clearance')
         else:
             raise GraspFailure('Local descent clearance budget exhausted')
+        if getattr(self.obs, 'side', None) == 'left':
+            measured = max(105., min(150., self._tip()['t3']))
+            self.cfg['survey_pitch'] = measured
+            self.cfg['approach_pitch'] = min(125., measured if measured<=115 else measured-5)
+            self._event('visible_approach_pitch', measured=measured,
+                        target=self.cfg['approach_pitch'])
         return super()._approach(obs)
 
     def prepare_open(self):
@@ -413,12 +460,25 @@ class LocalController(GraspController):
         self._key('home')
 
     def _close(self, obs):
+        anchor = list(obs['bbox']) if obs.get('bbox') else None
+        if hasattr(self.obs, 'reanchor'):
+            x,y,w,h=anchor
+            visible=min(h,obs['gray'].shape[0]-y)
+            if visible < h*.70:
+                raise GraspFailure('Too little closing surface remains visible')
+            anchor=[x,y,w,visible]
+            self.obs.reanchor({**obs,'bbox':anchor})
+            self._event('closing_anchor', bbox=anchor)
         super()._close(obs)
+        # Closing fingers can partly hide/rotate the body. A smaller NCC box
+        # must not silently move the lift-verification window onto the desk.
+        if anchor is not None:
+            self.grip_box = anchor
         self._refresh()
         self.baseline = self.pressure()
         # The old controller could stop after 220 counts of visual movement,
         # although no pressure existed. Keep a finite measured closing budget.
-        for _ in range(7):
+        for _ in range(10):
             if self.baseline['load'] >= 60 and self.baseline['lead'] >= 15:
                 break
             target = max(1450, int(self.q['grip'])-30)
@@ -463,7 +523,7 @@ class LocalController(GraspController):
                 raise GraspFailure('Release after retreat not confirmed locally')
             self._home()
             self._refresh()
-            box = self.obs.locate()
+            box = self.acquire()
             if not box or box[1]+box[3] >= 405:
                 raise GraspFailure('Released body not redetected away from jaws')
             self._event('release_redetection', bbox=box, full_body_detected=True,
@@ -632,10 +692,18 @@ def main():
             if 'servo_receipt' not in result and ex.inner.session_id:
                 try:
                     receipt = request('/api/servo/status')
-                    if receipt.get('session_id') == ex.inner.session_id:
+                    source=Path(receipt.get('dir') or '')
+                    session=source/'session.json'
+                    matches=(receipt.get('session_id') == ex.inner.session_id or
+                             ('servo-sessions' in source.parts and session.exists() and
+                              json.loads(session.read_text(encoding='utf8')).get('session_id')==ex.inner.session_id))
+                    if matches:
                         result['servo_receipt'] = receipt
                 except Exception as exc:
                     result['receipt_error'] = type(exc).__name__
+            if 'brain' in locals():
+                result.setdefault('controller', brain.status())
+            result.setdefault('contact', ex.contact)
         if obs:
             try:
                 obs.close()
@@ -643,6 +711,7 @@ def main():
                 result.update(ok=False, observer_error=str(exc))
         result.update(finished_at=datetime.now().astimezone().isoformat(), captures=recorder.captures,
                       frame_receipts=frames.receipts, detections=obs.detections if obs else [])
+        result['entered_closure'] = any(e.get('phase')=='close' for e in recorder.events)
         (root/'result.json').write_text(json.dumps(result, ensure_ascii=False, default=str, indent=2), encoding='utf-8')
         # Existing history importer understands paired control/photo archives.
         # Keep private images and receipt copies on the laptop, outside Git.
@@ -664,7 +733,7 @@ def main():
                         name = cap['frames'][0]['file'].rsplit('-cam', 1)[0]
                         captures.append({'name': name, 'frames': cap['frames']})
                     z.writestr('log.json', json.dumps({'captures': captures}, ensure_ascii=False))
-    print(json.dumps({k: v for k, v in result.items() if k not in ('captures', 'frame_receipts', 'controller', 'servo_receipt')}, ensure_ascii=False))
+    print(json.dumps({k: v for k, v in result.items() if k not in ('captures', 'frame_receipts', 'controller', 'servo_receipt','detections')}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

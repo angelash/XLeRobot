@@ -85,7 +85,7 @@ def test_pressure_correction_has_a_finite_budget_and_never_lifts_empty(monkeypat
     monkeypatch.setattr(brain, '_move', move)
     with pytest.raises(GraspFailure, match='baseline insufficient'):
         brain._close({})
-    assert len(commanded) == 7
+    assert len(commanded) <= 10 and commanded[-1][0]['left:6'] == 1450
     assert all(v[1]['torque'] == 600 and set(v[0]) == {'left:6'} for v in commanded)
     assert min(v[0]['left:6'] for v in commanded) >= 1450
 
@@ -225,3 +225,44 @@ def test_feature_continuity_accepts_rotation_but_rejects_vanished_fixture():
     assert result['ok'] and result['inliers']>=8
     assert result['center']==pytest.approx([392,289],abs=1)
     assert not flow.update(np.full_like(im,220))['ok']
+
+
+def test_closing_anchor_cannot_revive_failed_or_partial_target():
+    from deployment.grasp.local_trials import Observer
+    observer=Observer(None,'left','light')
+    gray=np.random.default_rng(1).integers(0,255,(480,640),dtype=np.uint8)
+    for box,ok,score in [([300,250,80,90],False,.95),([300,250,80,90],True,.6),
+                          ([300,410,80,90],True,.95)]:
+        with pytest.raises(GraspFailure):
+            observer.reanchor({'gray':gray,'bbox':box,'ok':ok,'score':score})
+    observer.reanchor({'gray':gray,'bbox':[300,250,80,90],'ok':True,'score':.8})
+    assert observer.tracker.state()['bbox']==pytest.approx([300,250,80,90],abs=2)
+
+
+def test_closing_drift_does_not_replace_original_verification_window(monkeypatch):
+    from deployment.grasp.controller import GraspController
+    brain=LocalController(None,None)
+    brain.q={'grip':1500,'grip_goal':1480,'grip_load':80}
+    def shrink(*_):brain.grip_box=[400,430,30,40]
+    monkeypatch.setattr(GraspController,'_close',shrink)
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    brain._close({'bbox':[320,250,120,150]})
+    assert brain.grip_box==[320,250,120,150]
+
+
+def test_white_fixture_next_to_a_desk_seam_and_shadow_is_still_distinct():
+    image=np.full((480,640,3),185,np.uint8)
+    cv2.line(image,(300,0),(300,479),(110,110,110),3)
+    cv2.rectangle(image,(317,300),(352,355),(145,145,145),-1)
+    cv2.rectangle(image,(317,296),(352,312),(175,175,175),-1)
+    found=candidates(image,'light')
+    assert len(found)==1
+    x,y,w,h=found[0]['bbox']
+    assert 310<=x<=320 and 290<=y<=318 and w>=30 and h>=35
+
+
+@pytest.mark.parametrize('shape',[(1,1,4),(1,4)])
+def test_hough_segment_layout_works_on_both_opencv_versions(monkeypatch,shape):
+    monkeypatch.setattr(cv2,'HoughLinesP',lambda *a,**k:np.array([300,0,300,479],np.int32).reshape(shape))
+    image=np.full((480,640,3),185,np.uint8)
+    assert candidates(image,'light')==[]
