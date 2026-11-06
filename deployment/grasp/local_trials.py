@@ -501,10 +501,15 @@ class LocalController(GraspController):
             self.grip_box = anchor
         self._refresh()
         self.baseline = self._settled_pressure()
+        # This is a named smooth, rigid unplugged adapter, not a colour-to-force
+        # model. Two left-arm trials lost pressure after a marginal 60/15 grip.
+        # Demand more measured preload within the same torque/travel budget.
+        required = {'load':90, 'lead':22} if getattr(self.obs,'appearance',None)=='dark' else {'load':60,'lead':15}
+        self._event('required_preload', required=required, torque_ceiling=600, raw_floor=1450)
         # The old controller could stop after 220 counts of visual movement,
         # although no pressure existed. Keep a finite measured closing budget.
         for _ in range(10):
-            if self.baseline['load'] >= 60 and self.baseline['lead'] >= 15:
+            if all(self.baseline[k] >= required[k] for k in required):
                 break
             target = max(1450, int(self.q['grip'])-30)
             if target >= self.q['grip']-5:
@@ -513,7 +518,7 @@ class LocalController(GraspController):
             self._refresh()
             self.baseline = self._settled_pressure()
             self._event('pressure_correction', pressure=self.baseline, target=target)
-        if self.baseline['load'] < 60 or self.baseline['lead'] < 15:
+        if any(self.baseline[k] < required[k] for k in required):
             raise GraspFailure('Local pressure baseline insufficient; no lift')
         self.grasp_pose = dict(self.q)
 

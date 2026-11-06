@@ -69,6 +69,22 @@ def test_visual_similarity_cannot_override_lost_grip_pressure(monkeypatch):
     assert brain._verify_held({}, {}, {})['held'] is True
 
 
+def test_named_smooth_black_fixture_cannot_lift_on_marginal_preload(monkeypatch):
+    from types import SimpleNamespace
+    from deployment.grasp.controller import GraspController
+    monkeypatch.setattr(GraspController,'_close',lambda *_:None)
+    brain=LocalController(None,SimpleNamespace(appearance='dark'))
+    brain.q={'grip':1450,'grip_goal':1433,'grip_load':80}
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_settled_pressure',brain.pressure)
+    monkeypatch.setattr(brain,'_move',lambda *a,**kw:None)
+    with pytest.raises(GraspFailure,match='baseline insufficient'):
+        brain._close({})
+    brain.q.update(grip=1495,grip_goal=1470,grip_load=100)
+    brain._close({})
+    assert brain.baseline=={'load':100.,'lead':25}
+
+
 def test_release_must_be_confirmed_after_empty_retreat(monkeypatch):
     from deployment.grasp.controller import GraspController
     monkeypatch.setattr(GraspController, '_place', lambda *_: None)
