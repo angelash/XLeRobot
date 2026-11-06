@@ -28,6 +28,7 @@ def load_trial(path):
     closed = any(e.get('phase') == 'close' and e.get('kind') == 'step'
                  and any(k.endswith(':6') for k in e.get('targets', {})) for e in events)
     return {'tag': path.parent.name, 'side': result['side'], 'ok': result.get('ok') is True,
+            'appearance': result.get('appearance', 'light' if result['side']=='left' else 'dark'),
             'entered_closure': closed, 'error': result.get('error'), 'contact': result.get('contact'),
             'started_at': result['started_at'], 'finished_at': result.get('finished_at'),
             'seconds': result.get('seconds'), 'policy_sha256': result.get('policy_sha256'),
@@ -55,10 +56,12 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--epoch', required=True)
     parser.add_argument('--side', choices=('left', 'right'), required=True)
+    parser.add_argument('--appearance', choices=('light', 'dark'))
     parser.add_argument('--target', type=int, default=100)
     parser.add_argument('--limit', type=int, default=100)
     parser.add_argument('--confirmed', action='store_true')
     args = parser.parse_args()
+    appearance = args.appearance or ('light' if args.side=='left' else 'dark')
     if not args.confirmed or not 1 <= args.target <= 100 or not 1 <= args.limit <= 100:
         parser.error('Confirmed bounded workspace and counts 1..100 are required')
     if not args.epoch.isascii() or not args.epoch.replace('-', '').isalnum():
@@ -76,7 +79,7 @@ def main():
     frozen = {name: hashlib.sha256((source/name).read_bytes()).hexdigest() for name in DEPENDENCIES}
     for name in frozen:
         (epoch/name).write_bytes((source/name).read_bytes())
-    protocol = {'side':args.side, 'target_closures':args.target, 'request_limit':args.limit,
+    protocol = {'side':args.side, 'appearance':appearance, 'target_closures':args.target, 'request_limit':args.limit,
                 'dependencies':frozen, 'started_at':datetime.now().astimezone().isoformat(),
                 'count_rule':'every actual close phase counts once, all failures retained',
                 'stop_rule':'first unsuccessful request, changed code, timeout, stop marker, or hardware guard',
@@ -101,6 +104,7 @@ def main():
             try:
                 completed = subprocess.run([sys.executable, '-X', 'utf8', '-m',
                     'deployment.grasp.local_trials', 'pick', '--side', args.side,
+                    '--appearance', appearance,
                     '--root', str(dest), '--confirmed'], cwd=source.parent.parent,
                     capture_output=True, text=True, encoding='utf8', timeout=290)
             except subprocess.TimeoutExpired:

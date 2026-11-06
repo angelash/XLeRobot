@@ -43,9 +43,12 @@ def test_failed_request_ends_epoch_without_an_automatic_second_grasp(tmp_path,mo
         return SimpleNamespace(stdout='',stderr='')
     monkeypatch.setattr(practice.subprocess,'run',run)
     monkeypatch.setattr(sys,'argv',['practice','--root',str(root),'--side','left',
-                                  '--epoch','left-test','--limit','100','--confirmed'])
+                                  '--appearance','dark','--epoch','left-test','--limit','100','--confirmed'])
     practice.main()
     assert len(calls)==1
+    assert calls[0][calls[0].index('--side')+1]=='left'
+    assert calls[0][calls[0].index('--appearance')+1]=='dark'
     saved=json.loads((root/'left-progress.json').read_text('utf8'))
     assert saved['counts']['actual_closures']==0 and saved['counts']['requests']==1
     assert saved['status']=='ended' and not (root/'practice.lock').exists()
+    assert saved['protocol']['appearance']=='dark'

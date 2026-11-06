@@ -430,7 +430,7 @@ class LocalController(GraspController):
             self._key('descent-clearance')
         else:
             raise GraspFailure('Local descent clearance budget exhausted')
-        if getattr(self.obs, 'side', None) == 'left':
+        if getattr(self.obs, 'appearance', None) == 'light':
             measured = max(105., min(150., self._tip()['t3']))
             self.cfg['survey_pitch'] = measured
             self.cfg['approach_pitch'] = min(125., measured if measured<=115 else measured-5)
@@ -572,6 +572,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=('inspect', 'survey', 'high', 'search', 'recover', 'park', 'pick'))
     parser.add_argument('--side', choices=('left', 'right'), required=True)
+    parser.add_argument('--appearance', choices=('light', 'dark'),
+                        help='Named unplugged fixture; defaults to light left / dark right')
     parser.add_argument('--root', required=True)
     parser.add_argument('--confirmed', action='store_true')
     parser.add_argument('--previous')
@@ -580,14 +582,15 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     frames = Frames(root)
     recorder = Recorder(frames)
-    result = {'ok': False, 'side': args.side, 'action': args.action, 'llm_calls': 0,
+    appearance = args.appearance or ('light' if args.side == 'left' else 'dark')
+    result = {'ok': False, 'side': args.side, 'appearance': appearance, 'action': args.action, 'llm_calls': 0,
               'policy_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'source': 'local_opencv_and_bounded_planar_controller', 'started_at': datetime.now().astimezone().isoformat()}
     ex = obs = None
     try:
         state = preflight()
         recorder.keyframe('preflight')
-        obs = Observer(frames, args.side, 'light' if args.side == 'left' else 'dark')
+        obs = Observer(frames, args.side, appearance)
         if args.action == 'inspect':
             result['bbox'] = obs.locate()
             result['ok'] = True
@@ -596,8 +599,8 @@ def main():
                 raise GraspFailure('Supervised cleared-workspace confirmation required')
             ex = SideExecutor(args.side)
             config = {'max_attempts': 1, 'hold_s': 3., 'end_pose': 'survey',
-                      'survey_pitch': 115. if args.side=='left' else 130.,
-                      'approach_pitch': 105. if args.side=='left' else 125.,
+                      'survey_pitch': 115. if appearance=='light' else 130.,
+                      'approach_pitch': 105. if appearance=='light' else 125.,
                       'squeeze_torque': 600, 'reverse_authorization': '', 'approach_torque': 450}
             brain = LocalController(ex, obs, recorder, config)
             if args.action == 'survey':
