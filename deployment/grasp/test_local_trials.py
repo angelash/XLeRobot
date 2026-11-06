@@ -263,6 +263,22 @@ def test_camera_failure_never_triggers_a_search_move(monkeypatch):
         brain.acquire()
 
 
+def test_near_target_search_retreats_once_at_high_clearance_then_stops(monkeypatch):
+    from types import SimpleNamespace
+    from deployment.grasp import arm
+    def absent():raise GraspFailure('Local target ambiguous or absent')
+    brain=LocalController(SimpleNamespace(active=True),SimpleNamespace(locate=absent,appearance='dark'))
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_tip',lambda:{'tip':(18,8),'t3':145})
+    moves=[]
+    monkeypatch.setattr(brain,'_go',lambda target,*a,**kw:moves.append(target))
+    monkeypatch.setattr(brain,'_key',lambda *_:None)
+    with pytest.raises(GraspFailure,match='exhausted'):
+        brain.acquire()
+    assert len(moves)==5
+    assert arm.fk(*moves[-1])['tip']==pytest.approx((16,10),abs=.1)
+
+
 def test_empty_arm_return_requires_open_low_load_gripper(monkeypatch):
     brain=LocalController(None,None)
     monkeypatch.setattr(brain,'_refresh',lambda:None)

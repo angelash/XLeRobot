@@ -384,13 +384,13 @@ class LocalController(GraspController):
     def acquire(self):
         """Finite local search at high clearance, never a blind approach."""
         scan_x = scan_z = None
-        for n in range(5):
+        for n in range(6):
             try:
                 return self.obs.locate()
             except GraspFailure as exc:
                 if not str(exc).startswith(('Local target ambiguous','Local initial detections')):
                     raise
-                if n == 4:
+                if n == 5:
                     raise GraspFailure('Bounded local view search exhausted: '+str(exc)) from None
                 if not self.ex.active:
                     self.ex.start('bounded local reacquisition at high clearance')
@@ -401,7 +401,14 @@ class LocalController(GraspController):
                     raise GraspFailure('Local reacquisition requires high clearance')
                 if scan_x is None:
                     scan_x,scan_z=f['tip'][0],max(8.,f['tip'][1])
-                if getattr(self.obs, 'appearance', None) == 'light':
+                if n == 4:
+                    # A near body may sit below the acquisition ROI at every
+                    # view angle. Make a single bounded high retreat rather
+                    # than accepting a cropped body next to the open fingers.
+                    if scan_x-2 < 12:
+                        raise GraspFailure('Local high retreat budget exhausted')
+                    target = arm.ik(scan_x-2, scan_z+2, 145, min_bend=22)
+                elif getattr(self.obs, 'appearance', None) == 'light':
                     # Search both farther and nearer before retreating. The
                     # previous 115->130->150 sequence missed far white bodies.
                     target = arm.ik(scan_x, scan_z, (115,105,130,145)[n], min_bend=22)
