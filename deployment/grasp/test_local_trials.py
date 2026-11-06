@@ -133,3 +133,95 @@ def test_closed_jaws_only_open_from_a_clear_high_pose(monkeypatch):
     monkeypatch.setattr(brain,'_tip',lambda:{'tip':(18,8)})
     brain.prepare_open()
     assert calls==[({'left:6':2045},)]
+
+
+def test_light_body_keeps_its_full_height_when_only_lower_rows_are_dark():
+    im = np.full((480, 640, 3), 220, np.uint8)
+    cv2.rectangle(im, (350, 240), (408, 328), (200, 200, 200), -1)
+    cv2.rectangle(im, (352, 286), (406, 327), (175, 175, 175), -1)
+    cv2.rectangle(im, (368, 260), (375, 270), (45, 45, 45), -1)
+    found = candidates(im, 'light')
+    assert len(found) == 1
+    assert found[0]['bbox'][1] <= 241
+    assert found[0]['bbox'][3] >= 86
+
+
+def test_observation_rejects_old_frames_and_propagates_camera_failure():
+    import time
+    from deployment.grasp.local_trials import Observer
+    obs = Observer(None, 'left', 'light')
+    obs.samples.append({'captured_at': time.time()-5, 'ok': True})
+    with pytest.raises(GraspFailure, match='post-settle'):
+        obs.observe(time.monotonic(), timeout=.04)
+    obs.failure = 'camera disconnected'
+    with pytest.raises(GraspFailure, match='camera disconnected'):
+        obs.observe(time.monotonic(), timeout=.04)
+
+
+def test_continuous_worker_rejects_high_score_shrunken_body(tmp_path):
+    import time
+    from types import SimpleNamespace
+    from deployment.grasp.local_trials import Observer
+    im = np.full((480,640,3),200,np.uint8)
+    frames=SimpleNamespace(root=tmp_path, get=lambda _: (im,b'jpeg',time.time()))
+    obs=Observer(frames,'left','light')
+    def update(_):
+        obs.stop.set()
+        return {'ok':True,'score':.95,'scale':.3,'bbox':[10,20,15,25]}
+    obs.tracker.update=update
+    obs._track()
+    assert obs.samples[-1]['ok'] is False
+    assert 'full-body' in obs.samples[-1]['why']
+
+
+def test_near_fixture_cannot_start_blind_descent_or_move_chassis(monkeypatch):
+    brain=LocalController(None,None)
+    obs={'ok':True,'bbox':[360,325,60,70]}
+    monkeypatch.setattr(brain,'_tip',lambda:{'tip':(12.5,8),'t3':130})
+    calls=[]
+    monkeypatch.setattr(brain,'_go',lambda *a,**k:calls.append(a))
+    with pytest.raises(GraspFailure,match='clearance'):
+        brain._approach(obs)
+    assert not calls
+
+
+def test_reacquisition_never_moves_at_unknown_low_clearance(monkeypatch):
+    from types import SimpleNamespace
+    def absent():
+        raise GraspFailure('target absent')
+    ex=SimpleNamespace(active=True)
+    brain=LocalController(ex,SimpleNamespace(locate=absent))
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_tip',lambda:{'tip':(18,-4),'t3':130})
+    moves=[]
+    monkeypatch.setattr(brain,'_go',lambda *a,**k:moves.append(a))
+    with pytest.raises(GraspFailure,match='high clearance'):
+        brain.acquire()
+    assert not moves
+
+
+def test_reacquisition_stops_when_rear_and_view_budgets_are_exhausted(monkeypatch):
+    from types import SimpleNamespace
+    def absent():
+        raise GraspFailure('target absent')
+    brain=LocalController(SimpleNamespace(active=True),SimpleNamespace(locate=absent))
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_tip',lambda:{'tip':(12,8),'t3':150})
+    with pytest.raises(GraspFailure,match='exhausted'):
+        brain.acquire()
+
+
+def test_feature_continuity_accepts_rotation_but_rejects_vanished_fixture():
+    from deployment.grasp.flow import FeatureContinuity
+    rng=np.random.default_rng(42)
+    im=np.full((480,640),220,np.uint8)
+    im[220:360,330:450]=rng.integers(30,150,(140,120),dtype=np.uint8)
+    flow=FeatureContinuity()
+    flow.init(im,[330,220,120,140])
+    transform=cv2.getRotationMatrix2D((390,290),3,1.02)
+    transform[:,2]+=(2,-1)
+    rotated=cv2.warpAffine(im,transform,(640,480),borderValue=220)
+    result=flow.update(rotated)
+    assert result['ok'] and result['inliers']>=8
+    assert result['center']==pytest.approx([392,289],abs=1)
+    assert not flow.update(np.full_like(im,220))['ok']

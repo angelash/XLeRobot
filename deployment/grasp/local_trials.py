@@ -7,6 +7,7 @@ No cloud/model provider, operator box, serial connection or chassis motion.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from datetime import datetime
 import hashlib
 import json
@@ -14,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import time
+import threading
 import urllib.request
 import zipfile
 
@@ -28,6 +30,7 @@ from . import arm
 from .controller import GraspController, GraspFailure
 from .service import HttpExecutor
 from .tracker import TemplateTracker
+from .flow import FeatureContinuity
 
 REFS = {'left': (2211, 955, 2245), 'right': (2245, 901, 2049)}
 CAMERAS = {'left': 2, 'right': 1}
@@ -53,8 +56,9 @@ def candidates(bgr, appearance, head=False):
     height, width = gray.shape
     if (width, height) != (640, 480):
         raise ValueError('The local fixture uses 640x480 images only')
-    edge = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 20, 50)
-    edge = cv2.morphologyEx(edge, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=2)
+    low, high, size = (10, 30, 5) if appearance == 'light' else (20, 50, 3)
+    edge = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), low, high)
+    edge = cv2.morphologyEx(edge, cv2.MORPH_CLOSE, np.ones((size, size), np.uint8), iterations=2)
     contours, _ = cv2.findContours(edge, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     found = []
     for contour in contours:
@@ -65,7 +69,7 @@ def candidates(bgr, appearance, head=False):
         if head:
             if not (145 < x and x+w < 465 and 105 < y and y+h < 320):
                 continue
-        elif not (65 < x and x+w < 560 and 150 < y and y+h < 405):
+        elif not (65 < x and x+w < 560 and (110 if appearance=='light' else 150) < y and y+h < 405):
             continue
         fill = cv2.contourArea(contour)/area
         if fill < (.35 if appearance == 'light' else .42):
@@ -91,23 +95,8 @@ def candidates(bgr, appearance, head=False):
             continue
         if appearance == 'light' and not 7 < contrast < 85:
             continue
-        if appearance == 'light':
-            # Thin metal prongs are not a grasping surface. Trim rows that
-            # contain only the narrow prongs, retaining the broad plastic body.
-            silhouette = crop < float(surroundings.mean())-12
-            counts = silhouette.sum(axis=1)
-            broad = counts >= max(w*.4, counts.max()*.55)
-            runs = []
-            begin = None
-            for row, yes in enumerate([*broad, False]):
-                if yes and begin is None:
-                    begin = row
-                if not yes and begin is not None:
-                    runs.append((begin,row));begin=None
-            if runs:
-                a,b = max(runs,key=lambda v:v[1]-v[0])
-                if b-a >= 35 and a >= 5:
-                    y += a;h=b-a
+        # Keep the full contour: threshold-based prong trimming also cut
+        # the plastic body in half on weak-contrast white fixtures.
         found.append({'bbox': [x, y, w, h], 'fill': round(fill, 3), 'contrast': round(contrast, 2),
                       'surrounding_light_fraction': round(light_fraction, 3), 'mean': round(mean, 2),
                       'score': round(fill*light_fraction*math.sqrt(area), 2), 'appearance': appearance})
@@ -129,8 +118,13 @@ class Frames:
         self.root.mkdir(parents=True, exist_ok=True)
         self.previous = {}
         self.receipts = []
+        self.lock = threading.Lock()
 
     def get(self, camera, after=0.):
+        with self.lock:
+            return self._get(camera, after)
+
+    def _get(self, camera, after):
         deadline = time.monotonic()+2.5
         while True:
             with urllib.request.urlopen(f'http://127.0.0.1:8765/api/camera/{camera}/snapshot', timeout=3) as r:
@@ -214,9 +208,64 @@ class Observer:
     def __init__(self, frames, side, appearance):
         self.frames, self.side, self.appearance = frames, side, appearance
         self.tracker = TemplateTracker()
+        self.flow = FeatureContinuity()
         self.detections = []
+        self.stop = threading.Event()
+        self.lock = threading.Lock()
+        self.samples = deque(maxlen=8)
+        self.worker = None
+        self.failure = None
+
+    def close(self):
+        self.stop.set()
+        if self.worker:
+            self.worker.join(timeout=4)
+            if self.worker.is_alive():
+                raise GraspFailure('Local camera worker did not stop')
+        self.worker = None
+
+    def _track(self):
+        try:
+            n = 0
+            while not self.stop.is_set():
+                began = time.monotonic()
+                im, raw, at = self.frames.get(CAMERAS[self.side])
+                gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+                with self.lock:
+                    state = self.tracker.update(gray)
+                    continuity = self.flow.update(gray)
+                    box = state.get('bbox')
+                    # Sparse, multi-second updates previously shrank onto a
+                    # prong and still reported ok. A fixture approaching the
+                    # camera cannot become a quarter of its initial body.
+                    if state.get('score', 0) < .65 or state.get('scale', 0) < .65:
+                        state = {**state, 'ok': False, 'why': 'Unreliable full-body track'}
+                    if continuity.get('ok') and box:
+                        a,b=continuity['bbox'],box
+                        distance=math.hypot(a[0]+a[2]/2-b[0]-b[2]/2,
+                                            a[1]+a[3]/2-b[1]-b[3]/2)
+                        agreement=distance<=30 and .65<=b[2]/a[2]<=1.5 and .65<=b[3]/a[3]<=1.5
+                        if (not state['ok'] and state.get('score',0)>=.45
+                                and state.get('scale',0)>=.65 and agreement):
+                            state.update(ok=True,bbox=a,center=continuity['center'],
+                                         why='Distributed reversible features confirm changing body')
+                        if state['ok'] and state.get('score',0)>=.85 and agreement and n%5==0:
+                            self.flow.init(gray,box)
+                    elif state['ok'] and state.get('score',0)>=.85 and n%5==0:
+                        self.flow.init(gray,box)
+                    state['continuity']=continuity
+                    state.update(gray=gray, captured_at=at, sampled_at=time.monotonic())
+                    self.samples.append(state)
+                    self.detections.append({k: v for k, v in state.items() if k != 'gray'})
+                if n % 5 == 0:
+                    (self.frames.root/f'track-{n:05d}-cam{CAMERAS[self.side]}.jpg').write_bytes(raw)
+                n += 1
+                self.stop.wait(max(0., .1-(time.monotonic()-began)))
+        except Exception as exc:
+            self.failure = f'{type(exc).__name__}: {exc}'
 
     def locate(self):
+        self.close()
         hits = []
         time.sleep(.5)  # arm settling is different from having a fresh frame
         for _ in range(12):
@@ -241,15 +290,30 @@ class Observer:
         gray = cv2.cvtColor(hits[-1][1], cv2.COLOR_BGR2GRAY)
         box = hits[-1][0]
         self.tracker.init(gray, box)
+        self.flow.init(gray, box)
+        self.samples.clear()
+        self.failure = None
+        self.stop.clear()
+        self.worker = threading.Thread(target=self._track, name='local-wrist-tracker', daemon=True)
+        self.worker.start()
         return box
 
     def observe(self, after, timeout=2.5):
-        time.sleep(.13)
-        im, _, at = self.frames.get(CAMERAS[self.side], after=time.time()-.15)
-        gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-        state = self.tracker.update(gray)
-        box = state.get('bbox')
-        return {**state, 'gray': gray, 'center': None if not box else (box[0]+box[2]/2, box[1]+box[3]/2), 'captured_at': at}
+        # Tracker runs during movement, so viewpoint changes arrive as small
+        # frame steps. Decisions still wait for an actual post-settle frame.
+        wall_after = time.time()+max(0., after-time.monotonic())
+        deadline = time.monotonic()+timeout
+        while time.monotonic() < deadline:
+            if self.failure:
+                raise GraspFailure('Local camera worker failed: '+self.failure)
+            with self.lock:
+                state = dict(self.samples[-1]) if self.samples else None
+            if state and state['captured_at'] >= wall_after:
+                if time.time()-state['captured_at'] > .8:
+                    raise GraspFailure('Stale tracked source frame')
+                return state
+            time.sleep(.03)
+        raise GraspFailure('No post-settle local tracking frame')
 
 
 class Recorder:
@@ -269,6 +333,52 @@ class Recorder:
 
 
 class LocalController(GraspController):
+    def acquire(self):
+        """Finite local search at high clearance, never a blind approach."""
+        for n in range(5):
+            try:
+                return self.obs.locate()
+            except GraspFailure:
+                if n == 4:
+                    raise
+                if not self.ex.active:
+                    self.ex.start('bounded local reacquisition at high clearance')
+                    self.started = time.monotonic()
+                self._refresh()
+                f = self._tip()
+                if f['tip'][1] < self.cfg['desk_z']+6:
+                    raise GraspFailure('Local reacquisition requires high clearance')
+                if getattr(self.obs, 'appearance', None) == 'light' and n == 0 and f['t3'] > 125:
+                    target = arm.ik(f['tip'][0], f['tip'][1], 115, min_bend=22)
+                elif getattr(self.obs, 'appearance', None) == 'light' and n == 1 and f['t3'] < 120:
+                    target = arm.ik(f['tip'][0], f['tip'][1], 130, min_bend=22)
+                elif f['t3'] < 147:
+                    target = arm.ik(f['tip'][0], f['tip'][1], min(150, f['t3']+15), min_bend=22)
+                elif f['tip'][0]-2 >= 12:
+                    target = arm.ik(f['tip'][0]-2, f['tip'][1], f['t3'], min_bend=22)
+                else:
+                    raise GraspFailure('Local high search exhausted without target')
+                self._go(target, 'local view search', speed=6, torque=450)
+                self._key('acquisition-search')
+
+    def _approach(self, obs):
+        # High/downward search can see an object which the horizontal
+        # descent would put behind the wrist camera. Make room with the arm
+        # while keeping the camera down; no chassis fallback or blind lower.
+        for _ in range(4):
+            if obs['bbox'][1]+obs['bbox'][3] < 330:
+                break
+            f = self._tip()
+            if f['tip'][1] < self.cfg['desk_z']+6 or f['tip'][0]-2 < 12:
+                raise GraspFailure('No observed clearance for local descent')
+            self._go(arm.ik(f['tip'][0]-2, f['tip'][1], max(130, f['t3']), min_bend=22),
+                     'make visual clearance before descent', torque=450, speed=6)
+            obs = self._need_track(self._look('high retreat before descent'), 'high retreat')
+            self._key('descent-clearance')
+        else:
+            raise GraspFailure('Local descent clearance budget exhausted')
+        return super()._approach(obs)
+
     def prepare_open(self):
         self._refresh()
         if self.q['grip'] >= 1950:
@@ -299,7 +409,7 @@ class LocalController(GraspController):
 
     def _home(self):
         self._phase('home', '回到高位本地观察，避免目标被固定指挡住')
-        self._go(arm.ik(18,8,130,min_bend=22), 'local high observation', speed=8, torque=450)
+        self._go(arm.ik(18,8,150,min_bend=22), 'local high observation', speed=8, torque=450)
         self._key('home')
 
     def _close(self, obs):
@@ -408,6 +518,8 @@ def main():
                 raise GraspFailure('Supervised cleared-workspace confirmation required')
             ex = SideExecutor(args.side)
             config = {'max_attempts': 1, 'hold_s': 3., 'end_pose': 'survey',
+                      'survey_pitch': 115. if args.side=='left' else 130.,
+                      'approach_pitch': 105. if args.side=='left' else 125.,
                       'squeeze_torque': 600, 'reverse_authorization': '', 'approach_torque': 450}
             brain = LocalController(ex, obs, recorder, config)
             if args.action == 'survey':
@@ -445,6 +557,12 @@ def main():
                     raise GraspFailure('Recovery requires the same arm with no contact')
                 events = old.get('controller', {}).get('events', [])
                 squeezed = next((e['q'] for e in reversed(events) if e.get('label') == '加压'), None)
+                if squeezed is None:
+                    # A visual refusal may occur during closing, before the
+                    # squeeze event. Use the measured support pose before
+                    # the first closure, never the later failure raise.
+                    squeezed = next((e['q'] for e in events
+                                     if e.get('label') == '夹爪快速收拢'), None)
                 if not squeezed:
                     raise GraspFailure('No recorded supported grasp pose')
                 ex.start('controlled support release after insufficient pressure')
@@ -470,9 +588,20 @@ def main():
                         if n == 3:
                             raise
                         f = brain._tip()
-                        if f['tip'][1] < brain.cfg['desk_z']+3 or f['tip'][0]-2 < 16:
+                        if f['tip'][1] < brain.cfg['desk_z']+3:
                             raise GraspFailure('Search must stay high and within the bounded rear workspace')
-                        q = arm.ik(f['tip'][0]-2, f['tip'][1]+2, 108, min_bend=22)
+                        # Retain the downward camera angle while stepping
+                        # back. Turning it forward to 108 hid near fixtures.
+                        # At the rear boundary, look further down with the
+                        # same high tip instead of moving into the chassis.
+                        if f['tip'][0]-2 >= 16:
+                            q = arm.ik(f['tip'][0]-2, f['tip'][1]+2,
+                                       max(130, f['t3']), min_bend=22)
+                        elif f['t3'] < 148:
+                            q = arm.ik(f['tip'][0], f['tip'][1],
+                                       min(150, f['t3']+15), min_bend=22)
+                        else:
+                            raise GraspFailure('Bounded high search exhausted; target remains unconfirmed')
                         start = tuple(brain.q[k] for k in ('lift', 'elbow', 'pitch'))
                         if arm.segment_min_z(start, q)[0] < f['tip'][1]-.3:
                             raise GraspFailure('Search interpolation would descend')
@@ -487,7 +616,9 @@ def main():
                     brain.started = time.monotonic()
                     brain.prepare_open()
                     ex.end('open-jaw preparation complete')
-                result['bbox'] = obs.locate()
+                result['bbox'] = brain.acquire()
+                if ex.active:
+                    ex.end('local acquisition complete')
                 result.update(brain.run_pick_place())
             result['controller'] = brain.status()
             result['contact'] = ex.contact
@@ -505,6 +636,11 @@ def main():
                         result['servo_receipt'] = receipt
                 except Exception as exc:
                     result['receipt_error'] = type(exc).__name__
+        if obs:
+            try:
+                obs.close()
+            except Exception as exc:
+                result.update(ok=False, observer_error=str(exc))
         result.update(finished_at=datetime.now().astimezone().isoformat(), captures=recorder.captures,
                       frame_receipts=frames.receipts, detections=obs.detections if obs else [])
         (root/'result.json').write_text(json.dumps(result, ensure_ascii=False, default=str, indent=2), encoding='utf-8')
