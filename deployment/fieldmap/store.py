@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -37,15 +38,43 @@ class Survey:
         self.cached_status = None
         self.status_at = 0.
 
-    def load(self):
-        path = self.root/'map.json'
-        data = json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {
+    def snapshot_paths(self):
+        return {'current': self.root/'map.json', **{
+            hashlib.sha256(p.name.encode()).hexdigest()[:32]: p
+            for p in sorted((self.root/'history').glob('*.json'))[:500]}}
+
+    def snapshots(self):
+        items, unreadable = [], 0
+        for sid, path in self.snapshot_paths().items():
+            try:
+                data = self.read_map(path)
+                if not data or 'features' not in data:
+                    continue
+                items.append({'id': sid, 'map_id': data['id'], 'title': data.get('title', data['id']),
+                              'at': data.get('updated_at') or data.get('created_at'), 'readonly': sid != 'current'})
+            except (OSError, ValueError, KeyError):
+                unreadable += 1
+        return {'items': items, 'unreadable': unreadable}
+
+    def read_map(self, path):
+        if not path.resolve().is_relative_to(self.root) or path.stat().st_size > 12 * 1024 * 1024:
+            raise ValueError('Map outside data root or exceeds budget')
+        return json.loads(path.read_text(encoding='utf-8-sig'))
+
+    def load(self, snapshot='current'):
+        paths = self.snapshot_paths()
+        if snapshot not in paths:
+            raise KeyError('Unknown map snapshot')
+        path = paths[snapshot]
+        data = self.read_map(path) if path.exists() else {
             'schema': 1, 'id': 'awaiting-survey', 'title': '等待环境观察',
             'observations': [], 'features': [], 'scan': {'state': 'waiting'},
         }
         # Review never changes the original observation or unlocks a motion path.
         data['motion_enabled'] = False
         data['coordinate_system'] = 'schematic_relative_bearing_not_metric'
+        data['snapshot_id'] = snapshot
+        data['readonly'] = snapshot != 'current'
         data['review'] = self.review_data(data['id'])
         return data
 
@@ -116,11 +145,11 @@ class Survey:
             self.status_at = time.monotonic()
             return value
 
-    def image(self, name):
+    def image(self, name, snapshot='current'):
         # Even an existing private file is unavailable unless the survey names it.
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*\.(jpg|jpeg|png)', name):
             raise FileNotFoundError(name)
-        names = {o['image'] for o in self.load()['observations']}
+        names = {o['image'] for o in self.load(snapshot)['observations']}
         if name not in names:
             raise FileNotFoundError(name)
         path = (self.root/'images'/name).resolve()

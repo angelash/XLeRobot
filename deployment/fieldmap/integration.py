@@ -5,12 +5,13 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .store import Survey, STATIC
 from .body import profile as body_profile, plan as body_plan
+from .history import History
 
 API = '/api/platform/fieldmap'
 PAGE = '/fieldmap'
@@ -31,9 +32,25 @@ def data_directory(repo, platform_data):
     return Path(platform_data)/'fieldmap'
 
 
-def install(app, *, data_dir, allowed_origins=None):
+def history_configuration(repo):
+    config_path = Path(repo)/'.local-deploy/studio-network.json'
+    config = json.loads(config_path.read_text(encoding='utf-8-sig')) if config_path.exists() else {}
+    fieldtests = Path(config.get('fieldtests_dir', Path(repo).parent/'FieldTests'))
+    if not fieldtests.is_absolute():
+        raise ValueError('fieldtests_dir must be absolute')
+    direction_path = Path(repo)/'.local-deploy/chassis-direction.json'
+    direction = json.loads(direction_path.read_text(encoding='utf-8-sig')) if direction_path.exists() else {}
+    return {'history_evidence_root': Path(repo)/'fabrication/assembly/evidence',
+            'history_fieldtests_root': fieldtests,
+            'history_forward_sign': direction.get('camera_forward_sign') if direction.get('evidence') else None}
+
+
+def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
+            history_fieldtests_root=None, history_forward_sign=None):
     survey = Survey(data_dir)
     app.state.fieldmap = survey
+    history = History(Path(data_dir)/'history', history_evidence_root, history_fieldtests_root, history_forward_sign)
+    app.state.fieldmap_history = history
     router = APIRouter(prefix=API)
 
     async def body(request):
@@ -56,15 +73,21 @@ def install(app, *, data_dir, allowed_origins=None):
             raise HTTPException(422, '请求需为JSON对象')
         return value
 
-    def load():
+    def load(snapshot='current'):
         try:
-            return survey.load()
+            return survey.load(snapshot)
+        except KeyError as exc:
+            raise HTTPException(404, '地图快照不存在') from exc
         except (OSError, ValueError, KeyError) as exc:
             raise HTTPException(503, '观察数据暂时不可读取，原文件保留') from exc
 
     @router.get('/map')
-    def map_data():
-        return load()
+    def map_data(snapshot: str = 'current'):
+        return load(snapshot)
+
+    @router.get('/snapshots')
+    def snapshots():
+        return survey.snapshots()
 
     @router.get('/export')
     def export():
@@ -77,6 +100,44 @@ def install(app, *, data_dir, allowed_origins=None):
     @router.get('/body')
     def robot_body():
         return body_profile()
+
+    @router.get('/history/status')
+    def history_status():
+        return history.status()
+
+    @router.post('/history/refresh')
+    async def history_refresh(request: Request):
+        await body(request)
+        return history.refresh()
+
+    @router.get('/history/runs')
+    def history_runs(start_ms: int, end_ms: int, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=200)):
+        try:
+            return history.runs(start_ms, end_ms, offset, limit)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.get('/history/query')
+    def history_query(start_ms: int, end_ms: int, run_id: str | None = None):
+        try:
+            return history.query(start_ms, end_ms, run_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.get('/history/photos')
+    def history_photos(start_ms: int, end_ms: int, camera: str | None = None, run_id: str | None = None,
+                       offset: int = Query(0, ge=0), limit: int = Query(36, ge=1, le=100), at_ms: int | None = None):
+        try:
+            return history.photos(start_ms, end_ms, camera, run_id, offset, limit, at_ms)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.get('/history/nearest')
+    def history_nearest(start_ms: int, end_ms: int, at_ms: int, run_id: str | None = None):
+        try:
+            return {'cameras': {c: history.photos(start_ms, end_ms, c, run_id, limit=1, at=at_ms)['items'] for c in ('0', '1', '2')}}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @router.post('/body/plan')
     async def robot_body_plan(request: Request):
@@ -119,9 +180,9 @@ def install(app, *, data_dir, allowed_origins=None):
     app.mount(PAGE+'/assets', StaticFiles(directory=STATIC), name='fieldmap-assets')
 
     @app.get(PAGE+'/images/{name}', include_in_schema=False)
-    def image(name: str):
+    def image(name: str, snapshot: str = 'current'):
         try:
-            path = survey.image(name)
+            path = survey.image(name, snapshot)
             if not path.is_file():
                 raise FileNotFoundError(name)
             return FileResponse(path, headers={'X-Content-Type-Options': 'nosniff'})
@@ -129,6 +190,16 @@ def install(app, *, data_dir, allowed_origins=None):
             raise HTTPException(404, '照片不在本次观察中') from None
         except (OSError, ValueError) as exc:
             raise HTTPException(503, '照片证据暂时不可读取') from exc
+
+    @app.get(PAGE+'/history/photos/{photo_id}', include_in_schema=False)
+    def history_image(photo_id: str, thumbnail: bool = False):
+        try:
+            raw, media = history.image(photo_id, thumbnail)
+            return Response(raw, media_type=media, headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=300'})
+        except (FileNotFoundError, KeyError):
+            raise HTTPException(404, '历史照片不存在或原始文件已不在原处') from None
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise HTTPException(503, '历史图片损坏或超过读取预算') from exc
 
     @app.get(PAGE+'/view', include_in_schema=False)
     def view():

@@ -15,6 +15,7 @@ FILES = {
     'examples/jsm/loaders/GLTFLoader.js': 'addons/loaders/GLTFLoader.js',
     'examples/jsm/exporters/GLTFExporter.js': 'addons/exporters/GLTFExporter.js',
     'examples/jsm/utils/BufferGeometryUtils.js': 'addons/utils/BufferGeometryUtils.js',
+    'examples/jsm/controls/OrbitControls.js': 'addons/controls/OrbitControls.js',
     'LICENSE': 'LICENSE',
 }
 

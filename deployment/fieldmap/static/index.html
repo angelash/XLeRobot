@@ -3,30 +3,48 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>空间观察 · XLeRobot Studio</title><link rel="stylesheet" href="/fieldmap/assets/style.css">
-  <script src="/fieldmap/assets/app.js" defer></script>
+  <script type="module" src="/fieldmap/assets/history-ui.js"></script>
 </head>
 <body class="studio-embedded">
 <main>
-  <section class="intro"><div><p class="eyebrow">SURROUNDINGS / FIELD NOTES <span id="surveyNumber">01</span></p><h1>先看清，再出发<span class="accent">。</span></h1><p id="summary" class="summary">正在读取这次环境观察……</p></div><div class="intro-actions"><span id="liveBadge" class="connection">正在连接</span><div class="mode-stamp"><span class="lock-icon">▣</span><div>停车观察<span>动作状态以实时遥测为准</span></div></div><button class="stop" id="stopButton">■ 停止动作</button></div></section>
+  <section class="intro"><div><p class="eyebrow">SPACE / OBSERVATION ARCHIVE <span id="surveyNumber">01</span></p><h1>空间，留有迹<span class="accent">。</span></h1><p id="summary" class="summary">正在读取这次环境观察……</p></div><div class="intro-actions"><span id="liveBadge" class="connection">正在连接</span><div class="mode-stamp"><span class="lock-icon">▣</span><div>停车观察<span>动作状态以实时遥测为准</span></div></div><button class="stop" id="stopButton">■ 停止动作</button></div></section>
   <section class="telemetry" aria-label="机器人实时状态"><div><span class="tiny-dot" id="motorDot"></span><span>电机</span><strong id="motors">— / 16</strong></div><div><span>轮组</span><strong id="wheels">状态待确认</strong></div><div><span>手柄</span><strong id="pad">—</strong></div><div><span>电源</span><strong id="voltage">—</strong></div><div><span>最高温度</span><strong id="temperature">—</strong></div><div class="telemetry-at" id="statusTime">等待遥测</div></section>
   <div id="notice" class="notice" role="status" hidden></div>
+  <section class="archive-controls" aria-label="历史筛选">
+    <div class="archive-heading"><div><p class="eyebrow">REWIND / 空间记忆</p><h2>重看每一步</h2></div><div class="data-switch"><button id="environmentMode" aria-pressed="false">环境快照</button><button id="historyMode" aria-pressed="true">移动历史</button></div><span id="indexStatus" role="status">正在读取历史索引……</span><button id="refreshIndex">更新索引</button></div>
+    <form id="rangeForm" class="range-form"><label>开始时间<input type="datetime-local" id="rangeStart" step="1" required></label><span class="range-separator">→</span><label>结束时间<input type="datetime-local" id="rangeEnd" step="1" required></label><button type="submit" class="range-apply">查看这段</button><div class="range-shortcuts"><button type="button" id="latestRange">最近一轮</button><button type="button" id="todayRange">今天</button><button type="button" id="allRange">全部</button></div><label class="run-filter">运行<select id="runFilter"><option value="">范围内全部运行</option></select></label></form>
+    <div class="archive-bottom"><span id="historyStats">历史回放不发送动作</span><span id="timeZone"></span></div>
+    <p id="historyMessage" class="history-message" role="status"></p>
+    <details class="coverage-details"><summary>索引覆盖与定位说明</summary><p id="coverageText">等待首次索引完成。</p><p>轨迹由编码器积分估计，打滑和缺失记录会影响位置。各段独立起点；环境物品尺寸和高度仍为示意。</p><p>3D操作：左键 / 单指旋转，右键平移，滚轮 / 双指缩放；可切换平面回退。</p></details>
+    <label id="snapshotLabel" class="snapshot-label" hidden>地图快照<select id="snapshotSelect"><option value="current">当前环境</option></select><span>历史快照只读 · 尺度未标定</span></label>
+  </section>
   <section class="workspace">
     <div class="space-panel">
-      <div class="panel-title"><div><span class="section-no">01</span><h2>周围空间</h2><span class="subtle">相对方位示意</span></div><div class="view-switch" role="group" aria-label="地图显示方式"><button id="flatView" aria-pressed="true">平面</button><button id="depthView" aria-pressed="false">立体</button><button id="resetView" title="重置缩放">复位</button></div></div>
-      <div class="map-wrap"><svg id="map" viewBox="0 0 720 590" aria-label="机器人周围的观察与障碍地图" role="img"></svg><div class="map-caption"><span>↑ 初始车头方向</span><span>距离与比例未标定</span></div><div class="zoom-tools"><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomOut" aria-label="缩小地图">−</button></div><div id="mapEmpty" class="empty" hidden>尚未取得可定位的环境观察<br><small>未知区域保持封闭</small></div></div>
-      <div class="legend" aria-label="地图分类"><button data-filter="candidate" aria-pressed="true"><i class="swatch candidate"></i>候选可走 <b id="candidateCount">0</b></button><button data-filter="blocked" aria-pressed="true"><i class="swatch blocked"></i>不可走 <b id="blockedCount">0</b></button><button data-filter="unknown" aria-pressed="true"><i class="swatch unknown"></i>未知 / 遮挡 <b id="unknownCount">0</b></button></div>
+      <div class="panel-title"><div><span class="section-no">01</span><h2 id="spaceTitle">历史轨迹</h2><span class="subtle" id="spaceScale">各段独立起点 · 米</span></div><div class="view-switch" role="group" aria-label="地图显示方式"><button id="flatView" aria-pressed="true">平面</button><button id="depthView" aria-pressed="false">3D</button><button id="resetView" title="重置缩放">复位</button></div></div>
+      <div class="map-wrap"><div id="scene3d" hidden aria-label="可旋转缩放的3D空间"></div><svg id="map" viewBox="0 0 720 590" aria-label="机器人周围的观察与障碍地图" role="img"></svg><div class="map-caption"><span id="mapOrientation">↑ 初始车头方向</span><span id="mapUnits">轮估轨迹 · 会漂移</span></div><div class="zoom-tools"><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomOut" aria-label="缩小地图">−</button></div><div id="mapEmpty" class="empty" hidden>尚未取得可定位的环境观察<br><small>未知区域保持封闭</small></div></div>
+      <div id="environmentLegend" class="legend" aria-label="地图分类"><button data-filter="candidate" aria-pressed="true"><i class="swatch candidate"></i>候选可走 <b id="candidateCount">0</b></button><button data-filter="blocked" aria-pressed="true"><i class="swatch blocked"></i>不可走 <b id="blockedCount">0</b></button><button data-filter="unknown" aria-pressed="true"><i class="swatch unknown"></i>未知 / 遮挡 <b id="unknownCount">0</b></button></div>
+      <div id="trackLegend" class="track-legend"><span><i class="route-line"></i>已记录移动</span><span class="failed-key">虚线：失败 / 部分移动</span><label>轨迹段<select id="episodeSelect"><option value="">全部独立段</option></select></label></div>
       <p class="map-limit" id="mapLimit">绿色仅表示画面里可见的地面；尚未验证车宽、低处障碍和地面高差。</p>
     </div>
     <div class="evidence-panel">
       <div class="panel-title"><div><span class="section-no">02</span><h2>照片依据</h2></div><button class="text-button" id="overlayToggle" aria-pressed="true">隐藏标注</button></div>
+      <div id="cameraTabs" class="camera-tabs" hidden><button data-camera="0" aria-pressed="true">头部</button><button data-camera="1" aria-pressed="false">右腕</button><button data-camera="2" aria-pressed="false">左腕</button></div>
       <div class="photo-meta"><span id="photoName">等待照片</span><span id="photoBearing">—</span></div>
-      <div class="photo-wrap"><svg id="photo" role="img" aria-label="实际相机照片和识别标注" viewBox="0 0 640 480"></svg><div id="photoEmpty" class="empty">本次还没有照片</div></div>
+      <div class="photo-wrap"><img id="historyPhoto" hidden alt="所选时刻的历史相机照片"><svg id="photo" role="img" aria-label="实际相机照片和识别标注" viewBox="0 0 640 480"></svg><div id="photoEmpty" class="empty">本次还没有照片</div></div>
       <div class="photo-footer"><span id="photoTime">—</span><a id="photoLink" target="_blank" rel="noopener" hidden>查看原图 ↗</a></div>
+      <div id="nearestCameras" class="nearest-cameras" hidden></div>
       <div id="observationStrip" class="observation-strip" aria-label="观察视角"></div>
+      <button id="morePhotos" class="more-photos" hidden>更多照片</button>
       <div class="evidence-note" id="photoNote">点击地图中的区域或物品，查看识别依据。</div>
     </div>
   </section>
-  <section class="review-workspace">
+  <section id="timelinePanel" class="timeline-panel" aria-label="历史时间轴">
+    <div class="timeline-toolbar"><div><p class="eyebrow">TIMELINE / 拖动查看</p><output id="cursorTime" aria-live="off">—</output></div><div class="playback-tools"><button id="previousEvent" aria-label="上一个事件">‹</button><button id="playPause" aria-label="播放历史">▶ 播放</button><button id="nextEvent" aria-label="下一个事件">›</button><select id="playSpeed" aria-label="播放倍速"><option value="1">1×</option><option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option></select><button id="timeZoomIn" aria-label="放大时间轴">＋</button><button id="timeZoomOut" aria-label="缩小时间轴">−</button><button id="timeFit">全段</button></div></div>
+    <div id="timeline" class="timeline" tabindex="0" role="slider" aria-label="拖动时间游标；方向键逐事件，Shift拖动平移，滚轮缩放"><svg id="timelineSvg" viewBox="0 0 1000 94" preserveAspectRatio="none" aria-hidden="true"></svg><div id="timeCursor" class="time-cursor"></div></div>
+    <div class="timeline-hint"><span id="windowTimes">—</span><span>拖动游标 · Shift拖动平移 · 滚轮缩放 · ← → 逐事件</span></div>
+    <div class="event-review"><div id="eventDetail" class="event-detail">选择时间查看动作记录</div><div id="eventList" class="event-list" aria-label="动作列表"></div></div>
+  </section>
+  <section id="environmentReview" class="review-workspace">
     <div class="inventory"><div class="panel-title"><div><span class="section-no">03</span><h2>识别与判断</h2><span id="featureTotal" class="subtle"></span></div><span id="reviewCount" class="review-count">待复核</span></div><div id="featureList" class="feature-list"></div></div>
     <aside class="review-panel"><p class="eyebrow">INSPECT / CORRECT</p><h2 id="detailTitle">选择一个区域</h2><p id="detailDescription" class="detail-description">把地图、照片和实际环境对照，检查是否识别正确。</p><div id="detailFacts" class="detail-facts"></div>
       <form id="reviewForm" hidden><label for="reviewKind">你的判断</label><select id="reviewKind"><option value="blocked">不可走 / 有障碍</option><option value="candidate">候选可走 / 仍需测量</option><option value="unknown">未知 / 无法判断</option></select><label for="reviewNote">补充或纠正</label><textarea id="reviewNote" maxlength="1000" rows="3" placeholder="例如：这是桌脚；椅子可以挪开；这里有线缆……"></textarea><label class="checkbox"><input id="reviewConfirmed" type="checkbox">我已对照现场核对这个标记</label><button class="save" id="saveReview" type="submit">保存这条复核</button><p class="form-hint">复核只保存你的意见。页面不发出行驶指令，动作按对话授权逐段执行。</p></form>

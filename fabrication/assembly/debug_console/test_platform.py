@@ -20,9 +20,11 @@ def state():
 
 @pytest.fixture
 def client(tmp_path,monkeypatch):
+    from deployment.fieldmap.history import History
     async def provider():return deepcopy(state())
     service=mod.Workbench(tmp_path,provider)
     monkeypatch.setattr(mod,'service',service)
+    monkeypatch.setattr(mod.app.state,'fieldmap_history',History(tmp_path/'history'))
     with TestClient(mod.app) as c:yield c
 
 
@@ -36,7 +38,7 @@ def test_fieldmap_runs_inside_studio_with_its_navigation_and_private_data(client
     assert client.get('/api/platform/fieldmap/map').json()['id']=='existing-survey'
     assert client.get('/fieldmap/images/frame.jpg').content==b'frame'
     view=client.get('/fieldmap/view')
-    assert view.status_code==200 and '/fieldmap/assets/app.js' in view.text
+    assert view.status_code==200 and '/fieldmap/assets/history-ui.js' in view.text
     assert "frame-ancestors 'self'" in view.headers['content-security-policy']
     script=client.get('/fieldmap/assets/app.js').text
     assert '/api/platform/fieldmap/' in script and '/fieldmap/images/' in script and '8782' not in script

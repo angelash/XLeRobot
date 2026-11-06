@@ -112,7 +112,7 @@ GUIDES=[
 ]
 
 CAPABILITIES=[
- dict(id='fieldmap',title='空间观察与现场复核',group='vision',state='integrated',route='fieldmap',guide='navigation',summary='环视照片、相对方位示意与逐项复核；候选地面待确认，不自动行驶。',sources=['deployment/fieldmap/README_ZH.md','deployment/fieldmap/integration.py']),
+ dict(id='fieldmap',title='空间观察与历史轨迹',group='vision',state='integrated',route='fieldmap',guide='navigation',summary='按时间回放轮估轨迹、三路历史照片与交互3D；环境示意和里程坐标分开，回放不驱动实机。',sources=['deployment/fieldmap/README_ZH.md','docs/autonomy/HISTORY_TRAJECTORY_3D_DESIGN_ZH.md','deployment/fieldmap/integration.py']),
  dict(id='autonomy',title='自主学习与算力协同',group='learning',state='integrated',route='autonomy',guide='vision',summary='工作端算力节点、计算路由回退、双目标定与学习台账；页面不发电机指令。',sources=['docs/autonomy/REQUIREMENTS_DESIGN_ZH.md','docs/autonomy/LEARNING_PROTOCOLS_ZH.md','docs/autonomy/ROBOT_TEST_PLAN_ZH.md','deployment/autonomy/integration.py']),
  dict(id='obstacle',title='头部相机实时避障',group='vision',state='integrated',route='obstacle',guide='navigation',summary='约10帧/秒地面可行区检测，标定后换算车宽走廊净空并送控制服务闸门；过期或不足即停。',sources=['docs/autonomy/OBSTACLE_PERCEPTION_ZH.md','deployment/perception/integration.py','fabrication/assembly/debug_console/obstacle_gate.py']),
  dict(id='grasp',title='腕部视觉快速抓取',group='vision',state='integrated',route='grasp',guide='vision',summary='框选一次后实时跟踪；肩水平按画面对准、近水平贴桌推进、按负载与画面判断接触、只抬肩提起并核对是否夹住，再放回收臂；不调用大模型，动作只经控制服务受限会话。',sources=['docs/autonomy/FAST_GRASP_ZH.md','deployment/grasp/controller.py','fabrication/assembly/debug_console/servo_session.py']),

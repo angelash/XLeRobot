@@ -1,5 +1,22 @@
 # 原地环境观察与网页复核
 
+2026-11-06扩展为**空间观察与历史轨迹**。仍在原8770“空间观察”，默认移动历史；时间范围、运行、独立轨迹段、拖动游标、Shift拖动平移时间窗、滚轮缩放、方向键逐事件和1/5/20/60倍回放同步照片与动作详情。头部/右腕/左腕分别显示最近照片及与游标的正负时间差，照片列表分页，点击照片反向定位时间轴。没有资料时显示缺失，不使用实时相机冒充历史。
+
+“3D”使用本地Three.js 0.180.0透视相机、深度测试和真实立体网格；左键旋转、右键平移、滚轮缩放，WebGL失效可回平面。物品尺寸/高度仍是未测示意，历史轮估是各段自身起点的米制积分，两种视图分别查看，不能解释为已完成房间SLAM或精确重建。环境快照下拉提供旧图只读查询，当前图复核沿用原保存与冲突检查。
+
+历史API统一为`/api/platform/fieldmap/history/{status,runs,query,photos,nearest}`；只有`POST history/refresh`安排增量重扫。范围参数为`start_ms/end_ms`（UTC epoch毫秒），照片ID接口`/fieldmap/history/photos/{id}?thumbnail=true`不接受文件路径。`GET snapshots`和`GET map?snapshot=<id>`查询旧地图。所有回放查询均`motion_enabled=false`，只有原页面显式停止按钮会请求控制服务。
+
+私有索引及缩略图在FieldMap既有目录`history/`下。Studio生命周期启动后台增量索引，读取仓库`fabrication/assembly/evidence`和默认仓库同级`FieldTests`；私有`studio-network.json`可指定绝对`fieldtests_dir`，网页不能改扫描根。原始回执/ZIP均保留不搬迁，损坏文件下轮重试并保留上次成功数据；覆盖说明显示未关联归档及未重复导入的聚合备份。轮位断裂/方向不明/长空档分段，失败部分仍保留。当前方向配置用于旧回执时标明假设，历史时间/物品尺度的限制见[设计与验收](../../docs/autonomy/HISTORY_TRAJECTORY_3D_DESIGN_ZH.md)。索引、运行日志及照片不提交Git。
+
+验证（生成回执和图片，无设备动作）：
+
+```powershell
+.\.venv-debug\Scripts\python.exe -m pytest deployment/fieldmap fabrication/assembly/debug_console/test_platform.py presentation/tests/test_presence.py -q
+.\.venv-debug\Scripts\python.exe deployment/fieldmap/verify_browser.py
+```
+
+后者需开发用Playwright/Chromium，生成的截图和报告存私有`.local-deploy/history-3d-20261106/browser`；不新增生产站点或服务。
+
 2026-11-05新增整车粗略包络与转身扫掠预览，入口仍在原“空间观察”页；`GET /api/platform/fieldmap/body`提供尺寸来源与假设，`POST /api/platform/fieldmap/body/plan`检查先平移再转身的区间扫掠。收臂暂定80×60cm、完整转身充分半径55cm，未实测、不开放动作或自动判净空；当前仅支持已核对收臂姿态。资料冲突、退离后继续转向实测及限制见[车体包络报告](../../docs/autonomy/BODY_ENVELOPE_20261105_ZH.md)。
 
 2026-11-02新增按编码器计数的受监督小段移动；红线范围实测、两次保护停车与多视角补图见[分段观察记录](../onboard/BOUNDARY_SURVEY_ZH.md)。该记录保留未到边界、未后退及温度回报异常的限制，不将地图复核当作自动行驶许可。

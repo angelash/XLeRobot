@@ -284,9 +284,13 @@ service=Workbench()
 async def lifespan(app):
     service.client=httpx.AsyncClient(trust_env=False,timeout=3)
     service.environment=available_environments()
-    yield
-    if service.recording:await service.stop_record()
-    await service.client.aclose()
+    app.state.fieldmap_history.start()
+    try:
+        yield
+    finally:
+        app.state.fieldmap_history.stop()
+        if service.recording:await service.stop_record()
+        await service.client.aclose()
 
 app=FastAPI(title='XLeRobot Studio',lifespan=lifespan)
 app.mount('/assets',StaticFiles(directory=STATIC),name='platform-assets')
@@ -295,8 +299,9 @@ app.mount('/assets',StaticFiles(directory=STATIC),name='platform-assets')
 from presentation.api import install as install_presence
 install_presence(app, data_dir=DATA/'presence', onboard_url='http://127.0.0.1:8781',
                  controller_url=UPSTREAM, allowed_origins=lambda: ALLOWED_ORIGINS)
-from deployment.fieldmap.integration import install as install_fieldmap, data_directory as fieldmap_directory
-install_fieldmap(app, data_dir=fieldmap_directory(REPO, DATA), allowed_origins=lambda: ALLOWED_ORIGINS)
+from deployment.fieldmap.integration import install as install_fieldmap, data_directory as fieldmap_directory, history_configuration
+install_fieldmap(app, data_dir=fieldmap_directory(REPO, DATA), allowed_origins=lambda: ALLOWED_ORIGINS,
+                 **history_configuration(REPO))
 from deployment.autonomy.integration import install as install_autonomy
 install_autonomy(app, data_dir=DATA/'autonomy', evidence_root=REPO/'fabrication/assembly/evidence',
                  allowed_origins=lambda: ALLOWED_ORIGINS)

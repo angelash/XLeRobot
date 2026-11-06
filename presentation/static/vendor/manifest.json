@@ -10,6 +10,7 @@
     "addons/loaders/GLTFLoader.js": "010a8c951743eb55c1e26e1c71e43162c5d49c571909fe8ea02ac7cb88c7a077",
     "addons/exporters/GLTFExporter.js": "f8bfa211684e09589b1dd5114472c555fdfeadb903d1f998dc38f6c2d43734d3",
     "addons/utils/BufferGeometryUtils.js": "a3c7f0ca98f311efc1909cb44268394ddc91ed7e026a2bf57e1e47b7f0c75e4a",
+    "addons/controls/OrbitControls.js": "7181c3ec9e1283e1af930c30ec56fa664fefd491c765d8c6877c20304d2f6ba2",
     "LICENSE": "bfe119ea4fd413f5f7ca3fcd63adb0c4a073ed39daa2fe7d3e6b769e21272601"
   }
 }
