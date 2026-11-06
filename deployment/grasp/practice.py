@@ -17,7 +17,7 @@ import sys
 import time
 
 DEPENDENCIES = ('practice.py', 'local_trials.py', 'flow.py', 'controller.py',
-                'tracker.py', 'arm.py', 'vision.py', 'service.py')
+                'tracker.py', 'arm.py', 'vision.py', 'service.py', 'recovery.py')
 
 
 def load_trial(path):

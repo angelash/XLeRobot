@@ -31,6 +31,7 @@ from .controller import GraspController, GraspFailure
 from .service import HttpExecutor
 from .tracker import TemplateTracker
 from .flow import FeatureContinuity
+from .recovery import hardware_readiness
 
 REFS = {'left': (2211, 955, 2245), 'right': (2245, 901, 2049)}
 CAMERAS = {'left': 2, 'right': 1}
@@ -621,14 +622,12 @@ def preflight():
     servo = request('/api/servo/status')
     grasp = request('/api/platform/grasp/status', port=8770)
     studio = request('/api/platform/status', port=8770)
-    motors = [m for p in state['ports'] for m in p['motors']]
     if (servo['active'] or grasp['operation'] or studio['recording'] or state['agent_run']['running']
             or state['limit_selftest']['running'] or state['controller']['controller'] != 'offline'):
         raise GraspFailure('Other operator/activity owns the robot')
-    if len(motors) != 16 or any(m['voltage'] < 11.5 or not 0 < m['temperature'] < 45 or m['status'] for m in motors):
-        raise GraspFailure('Hardware health not ready')
-    if any(m['goal_velocity'] for m in motors if m['id'] in (9, 10)):
-        raise GraspFailure('Wheel goals not zero')
+    health = hardware_readiness(state)
+    if not health['ready']:
+        raise GraspFailure('Hardware health not ready: '+json.dumps(health,ensure_ascii=False))
     return state
 
 
