@@ -17,6 +17,28 @@ def test_support_recovery_uses_full_events_before_the_failure_raise(tmp_path):
     assert supported_pose(tmp_path/'result.json',result)==support
 
 
+def test_left_black_fixture_cannot_finish_insertion_early_on_image_condition():
+    from types import SimpleNamespace
+    brain=LocalController(None,SimpleNamespace(side='left',appearance='dark'))
+    visual_ready=[360,280,120,190]
+    for distance in (None,0.,1.81,2.79):
+        assert not brain._insertion_complete(visual_ready,distance)
+    assert brain._insertion_complete(visual_ready,2.8)
+    assert brain._insertion_complete([360,180,120,100],3.)
+    assert not brain._insertion_complete([360,180,120,100],2.8)
+
+
+@pytest.mark.parametrize('side,appearance',[('left','light'),('right','dark')])
+def test_other_fixture_profiles_keep_existing_insertion_gate(side,appearance):
+    from types import SimpleNamespace
+    from deployment.grasp.controller import GraspController
+    brain=LocalController(None,SimpleNamespace(side=side,appearance=appearance))
+    original=GraspController(None,None)
+    for box in ([360,280,120,190],[360,180,120,100]):
+        for distance in (None,0.,1.81,2.8,3.):
+            assert brain._insertion_complete(box,distance)==original._insertion_complete(box,distance)
+
+
 def test_offline_fixture_detection_rejects_empty_desk_and_jaw_corner():
     image = np.full((480, 640, 3), 235, np.uint8)
     assert not candidates(image, 'dark')

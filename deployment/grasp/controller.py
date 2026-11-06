@@ -399,7 +399,7 @@ class GraspController:
                 self._event('at_tips', tip_x=round(tip[0], 2), bottom=round(bottom, 1))
                 self._key('at_tips')
             inserted = None if at_tips is None else tip[0] - at_tips
-            if in_jaws(obs['bbox'], c) or (inserted is not None and inserted >= c['insert_cm'] - 0.05):
+            if self._insertion_complete(obs['bbox'], inserted):
                 break
             near = bottom >= c['advance_near_bottom']
             step = c['advance_near_cm'] if near else c['advance_far_cm']
@@ -423,6 +423,9 @@ class GraspController:
                     inserted_cm=None if at_tips is None else round(self._tip()['tip'][0] - at_tips, 2))
         self._key('in_jaws')
         return obs
+
+    def _insertion_complete(self, bbox, inserted):
+        return in_jaws(bbox, self.cfg) or (inserted is not None and inserted >= self.cfg['insert_cm'] - 0.05)
 
     def _make_room(self, obs):
         """The object is still too close after backing the arm off: back the chassis away (v2 R2)."""

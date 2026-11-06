@@ -452,7 +452,22 @@ class LocalController(GraspController):
             self.cfg['approach_pitch'] = min(125., measured if measured<=115 else measured-5)
             self._event('visible_approach_pitch', measured=measured,
                         target=self.cfg['approach_pitch'])
+        self._event('required_insertion', minimum_model_cm=self._minimum_insertion(),
+                    nominal_model_cm=self.cfg['insert_cm'], metric_calibrated=False)
         return super()._approach(obs)
+
+    def _minimum_insertion(self):
+        # The left known black adapter triggered the image gate after only
+        # 1.81 model cm. Preserve the original nominal 3 cm insertion budget;
+        # prevent its image condition from prematurely ending that approach.
+        return 2.8 if (getattr(self.obs,'side',None)=='left' and
+                       getattr(self.obs,'appearance',None)=='dark') else 0.
+
+    def _insertion_complete(self, bbox, inserted):
+        minimum = self._minimum_insertion()
+        if minimum and (inserted is None or inserted < minimum):
+            return False
+        return super()._insertion_complete(bbox, inserted)
 
     def prepare_open(self):
         self._refresh()
