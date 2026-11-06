@@ -6,6 +6,17 @@ from deployment.grasp.local_trials import candidates, SideExecutor, LocalControl
 from deployment.grasp.controller import GraspFailure
 
 
+def test_support_recovery_uses_full_events_before_the_failure_raise(tmp_path):
+    import json
+    from deployment.grasp.local_trials import supported_pose
+    support={'lift':2662,'elbow':2044,'pitch':2120}
+    rows=[{'label':'加压','q':support}]+[{'kind':'pressure_correction'}]*40
+    rows.append({'label':'失败后抬离桌面','q':{'lift':2562,'elbow':2044,'pitch':2120}})
+    result={'controller':{'events':rows[-30:]}}
+    (tmp_path/'events.jsonl').write_text('\n'.join(json.dumps(row,ensure_ascii=False) for row in rows),encoding='utf8')
+    assert supported_pose(tmp_path/'result.json',result)==support
+
+
 def test_offline_fixture_detection_rejects_empty_desk_and_jaw_corner():
     image = np.full((480, 640, 3), 235, np.uint8)
     assert not candidates(image, 'dark')
@@ -101,6 +112,23 @@ def test_pressure_correction_accumulates_goal_without_unbounded_jaw_lead(monkeyp
     monkeypatch.setattr(brain,'_move',move)
     brain._close({})
     assert targets==[1500,1490]
+
+
+def test_pressure_at_travel_floor_is_not_repeated_to_exhaust_budget(monkeypatch):
+    from types import SimpleNamespace
+    from deployment.grasp.controller import GraspController
+    monkeypatch.setattr(GraspController,'_close',lambda *_:None)
+    brain=LocalController(None,SimpleNamespace(appearance='dark'))
+    brain.q={'grip':1477,'grip_goal':1470,'grip_load':120}
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_settled_pressure',brain.pressure)
+    calls=[]
+    def move(value,**kwargs):
+        calls.append(value['left:6']);brain.q['grip_goal']=value['left:6']
+    monkeypatch.setattr(brain,'_move',move)
+    with pytest.raises(GraspFailure,match='baseline insufficient'):
+        brain._close({})
+    assert calls==[1450]
 
 
 def test_release_must_be_confirmed_after_empty_retreat(monkeypatch):

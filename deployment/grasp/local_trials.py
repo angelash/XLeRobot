@@ -44,6 +44,15 @@ def request(path, body=None, port=8765):
         return json.load(r)
 
 
+def supported_pose(previous, result):
+    """Use the complete trace; status keeps only its last 30 events."""
+    trace = Path(previous).with_name('events.jsonl')
+    events = ([json.loads(line) for line in trace.read_text(encoding='utf8').splitlines() if line]
+              if trace.exists() else result.get('controller', {}).get('events', []))
+    pose = next((e['q'] for e in reversed(events) if e.get('label') == '加压'), None)
+    return pose or next((e['q'] for e in events if e.get('label') == '夹爪快速收拢'), None)
+
+
 def candidates(bgr, appearance, head=False):
     """Rectangular body + colour + surrounding clear table, restricted ROI.
 
@@ -508,6 +517,7 @@ class LocalController(GraspController):
         self._event('required_preload', required=required, torque_ceiling=600, raw_floor=1450)
         # The old controller could stop after 220 counts of visual movement,
         # although no pressure existed. Keep a finite measured closing budget.
+        previous_target = None
         for _ in range(10):
             if all(self.baseline[k] >= required[k] for k in required):
                 break
@@ -516,12 +526,13 @@ class LocalController(GraspController):
             # Limit each command to 60 raw ahead of the current jaw position.
             target = max(1450, int(self.q['grip'])-60,
                          int(self.q.get('grip_goal') or self.q['grip'])-30)
-            if target >= self.q['grip']-5:
+            if target >= self.q['grip']-5 or target == previous_target:
                 break
             self._move({'left:6': target}, torque=600, speed=4, label='bounded local pressure correction')
             self._refresh()
             self.baseline = self._settled_pressure()
             self._event('pressure_correction', pressure=self.baseline, target=target)
+            previous_target = target
         if any(self.baseline[k] < required[k] for k in required):
             raise GraspFailure('Local pressure baseline insufficient; no lift')
         self.grasp_pose = dict(self.q)
@@ -674,14 +685,8 @@ def main():
                 old = json.loads(previous.read_text(encoding='utf-8'))
                 if old.get('side') != args.side or old.get('contact'):
                     raise GraspFailure('Recovery requires the same arm with no contact')
-                events = old.get('controller', {}).get('events', [])
-                squeezed = next((e['q'] for e in reversed(events) if e.get('label') == '加压'), None)
-                if squeezed is None:
-                    # A visual refusal may occur during closing, before the
-                    # squeeze event. Use the measured support pose before
-                    # the first closure, never the later failure raise.
-                    squeezed = next((e['q'] for e in events
-                                     if e.get('label') == '夹爪快速收拢'), None)
+                # Never use the later failure raise as a support position.
+                squeezed = supported_pose(previous, old)
                 if not squeezed:
                     raise GraspFailure('No recorded supported grasp pose')
                 ex.start('controlled support release after insufficient pressure')
