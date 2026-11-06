@@ -158,6 +158,36 @@ def test_observation_rejects_old_frames_and_propagates_camera_failure():
         obs.observe(time.monotonic(), timeout=.04)
 
 
+def test_acquisition_uses_complete_consistent_body_across_fragment_flicker(monkeypatch):
+    import time
+    from types import SimpleNamespace
+    from deployment.grasp import local_trials as local
+    im=np.full((480,640,3),200,np.uint8)
+    full=[300,140,40,100]; fragment=[307,200,25,40]
+    sequence=iter([full,full,fragment,fragment,full,fragment,fragment,full,fragment,fragment,fragment,fragment])
+    monkeypatch.setattr(local.time,'sleep',lambda _:None)
+    monkeypatch.setattr(local,'candidates',lambda *_:[{'bbox':next(sequence)}])
+    obs=local.Observer(SimpleNamespace(get=lambda _:(im,b'jpeg',time.time())),'left','light')
+    captured=[]
+    monkeypatch.setattr(obs.tracker,'init',lambda gray,box:captured.append(box))
+    monkeypatch.setattr(obs.flow,'init',lambda *_:None)
+    monkeypatch.setattr(local.threading,'Thread',lambda **_:SimpleNamespace(start=lambda:None))
+    assert obs.locate()==full and captured==[full]
+
+
+def test_three_partial_sides_cannot_replace_only_two_complete_detections(monkeypatch):
+    import time
+    from types import SimpleNamespace
+    from deployment.grasp import local_trials as local
+    im=np.full((480,640,3),200,np.uint8)
+    sequence=iter([[300,140,40,100]]*2+[[307,200,25,40]]*10)
+    monkeypatch.setattr(local.time,'sleep',lambda _:None)
+    monkeypatch.setattr(local,'candidates',lambda *_:[{'bbox':next(sequence)}])
+    obs=local.Observer(SimpleNamespace(get=lambda _:(im,b'jpeg',time.time())),'left','light')
+    with pytest.raises(GraspFailure,match='ambiguous'):
+        obs.locate()
+
+
 def test_continuous_worker_rejects_high_score_shrunken_body(tmp_path):
     import time
     from types import SimpleNamespace
@@ -188,7 +218,7 @@ def test_near_fixture_cannot_start_blind_descent_or_move_chassis(monkeypatch):
 def test_reacquisition_never_moves_at_unknown_low_clearance(monkeypatch):
     from types import SimpleNamespace
     def absent():
-        raise GraspFailure('target absent')
+        raise GraspFailure('Local target ambiguous or absent')
     ex=SimpleNamespace(active=True)
     brain=LocalController(ex,SimpleNamespace(locate=absent))
     monkeypatch.setattr(brain,'_refresh',lambda:None)
@@ -203,12 +233,40 @@ def test_reacquisition_never_moves_at_unknown_low_clearance(monkeypatch):
 def test_reacquisition_stops_when_rear_and_view_budgets_are_exhausted(monkeypatch):
     from types import SimpleNamespace
     def absent():
-        raise GraspFailure('target absent')
+        raise GraspFailure('Local target ambiguous or absent')
     brain=LocalController(SimpleNamespace(active=True),SimpleNamespace(locate=absent))
     monkeypatch.setattr(brain,'_refresh',lambda:None)
     monkeypatch.setattr(brain,'_tip',lambda:{'tip':(12,8),'t3':150})
+    moves=[]
+    monkeypatch.setattr(brain,'_go',lambda *a,**k:moves.append(a))
+    monkeypatch.setattr(brain,'_key',lambda *_:None)
     with pytest.raises(GraspFailure,match='exhausted'):
         brain.acquire()
+    assert len(moves)==4
+
+
+def test_camera_failure_never_triggers_a_search_move(monkeypatch):
+    from types import SimpleNamespace
+    def broken():raise GraspFailure('Stale source frame')
+    brain=LocalController(SimpleNamespace(active=False),SimpleNamespace(locate=broken))
+    with pytest.raises(GraspFailure,match='Stale'):
+        brain.acquire()
+
+
+def test_empty_arm_return_requires_open_low_load_gripper(monkeypatch):
+    brain=LocalController(None,None)
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    calls=[]
+    monkeypatch.setattr(brain,'_go',lambda *a,**k:calls.append(k))
+    monkeypatch.setattr(brain,'_key',lambda *_:None)
+    for grip,load in ((1600,0),(2000,80)):
+        brain.q={'grip':grip,'grip_load':load}
+        with pytest.raises(GraspFailure,match='open unloaded'):
+            brain._home()
+    assert not calls
+    brain.q={'grip':2000,'grip_load':0}
+    brain._home()
+    assert calls==[{'speed':8,'torque':600}]
 
 
 def test_feature_continuity_accepts_rotation_but_rejects_vanished_fixture():

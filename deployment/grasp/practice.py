@@ -25,7 +25,8 @@ def load_trial(path):
     event_path = path.with_name('events.jsonl')
     events = ([json.loads(line) for line in event_path.read_text(encoding='utf8').splitlines() if line]
               if event_path.exists() else result.get('controller', {}).get('events', []))
-    closed = any(e.get('phase') == 'close' for e in events)
+    closed = any(e.get('phase') == 'close' and e.get('kind') == 'step'
+                 and any(k.endswith(':6') for k in e.get('targets', {})) for e in events)
     return {'tag': path.parent.name, 'side': result['side'], 'ok': result.get('ok') is True,
             'entered_closure': closed, 'error': result.get('error'), 'contact': result.get('contact'),
             'started_at': result['started_at'], 'finished_at': result.get('finished_at'),

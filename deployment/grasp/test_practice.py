@@ -17,9 +17,16 @@ def test_count_actual_close_from_complete_events_even_when_status_tail_lost_it(t
     result={'side':'left','ok':False,'started_at':'2026-11-06T17:00:00+08:00',
             'controller':{'events':[{'phase':'failed'}]}}
     (tmp_path/'result.json').write_text(json.dumps(result),encoding='utf8')
-    (tmp_path/'events.jsonl').write_text(json.dumps({'phase':'close','kind':'phase'})+'\n',encoding='utf8')
+    (tmp_path/'events.jsonl').write_text(json.dumps({'phase':'close','kind':'step','targets':{'left:6':1960}})+'\n',encoding='utf8')
     row=load_trial(tmp_path/'result.json')
     assert row['entered_closure'] and not row['ok']
+
+
+def test_close_phase_without_an_executed_jaw_step_does_not_count(tmp_path):
+    (tmp_path/'result.json').write_text(json.dumps({'side':'left','ok':False,
+        'started_at':'2026-11-06T17:00:00+08:00'}),encoding='utf8')
+    (tmp_path/'events.jsonl').write_text(json.dumps({'phase':'close','kind':'phase'})+'\n',encoding='utf8')
+    assert not load_trial(tmp_path/'result.json')['entered_closure']
 
 
 def test_failed_request_ends_epoch_without_an_automatic_second_grasp(tmp_path,monkeypatch):

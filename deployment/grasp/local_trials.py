@@ -68,12 +68,19 @@ def candidates(bgr, appearance, head=False):
                                        cv2.THRESH_BINARY_INV,61,8)
         line_edge=cv2.Canny(cv2.GaussianBlur(gray,(3,3),0),10,30)
         lines=cv2.HoughLinesP(line_edge,1,np.pi/180,threshold=70,minLineLength=140,maxLineGap=20)
+        seam_free=line_edge.copy()
         if lines is not None:
             for x1,y1,x2,y2 in np.asarray(lines).reshape(-1,4):
                 cv2.line(adaptive,(x1,y1),(x2,y2),0,5)
+                cv2.line(seam_free,(x1,y1),(x2,y2),0,5)
         adaptive=cv2.morphologyEx(adaptive,cv2.MORPH_CLOSE,np.ones((3,3),np.uint8))
         more,_=cv2.findContours(adaptive,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
-        contours=tuple(contours)+tuple(more)
+        # Removing a long seam before edge closing separates the full plastic
+        # body from the desk. Adaptive contrast alone can retain just its dark
+        # lower side. All proposals still pass the same fixture/ambiguity gates.
+        seam_free=cv2.morphologyEx(seam_free,cv2.MORPH_CLOSE,np.ones((5,5),np.uint8),iterations=2)
+        bodies,_=cv2.findContours(seam_free,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+        contours=tuple(contours)+tuple(more)+tuple(bodies)
     found = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
@@ -311,19 +318,22 @@ class Observer:
             found = candidates(im, self.appearance)
             self.detections.append({'at': at, 'candidates': found})
             if len(found) == 1:
-                hits.append((found[0]['bbox'], im))
-                hits = hits[-3:]
-                if len(hits) == 3:
-                    centers = np.array([[x+w/2, y+h/2] for (x,y,w,h), _ in hits])
-                    if np.ptp(centers, axis=0).max() <= 8:
-                        break
-            else:
+                hits.append((found[0]['bbox'], im, at))
+            elif len(found) > 1:
                 hits = []
             time.sleep(.12)
+        # Complete bodies and small dark sides may alternate at the desk seam.
+        # Sample the entire bounded window before choosing: three late small
+        # boxes cannot replace a larger body seen in this same stationary view.
+        if hits:
+            largest = max(w*h for (x,y,w,h), _, _ in hits)
+            hits = [h for h in hits if h[0][2]*h[0][3] >= largest*.65][-3:]
         if len(hits) < 3:
             raise GraspFailure('Local target ambiguous or absent; no model fallback')
-        centers = np.array([[x+w/2, y+h/2] for (x, y, w, h), _ in hits])
-        if np.ptp(centers, axis=0).max() > 8:
+        centers = np.array([[x+w/2, y+h/2] for (x, y, w, h), _, _ in hits])
+        sizes = np.array([[w,h] for (x,y,w,h), _, _ in hits])
+        if (np.ptp(centers, axis=0).max() > 8 or
+                (sizes.max(axis=0)/sizes.min(axis=0)).max() > 1.35 or at-hits[-1][2] > .8):
             raise GraspFailure('Local initial detections disagree')
         gray = cv2.cvtColor(hits[-1][1], cv2.COLOR_BGR2GRAY)
         box = hits[-1][0]
@@ -377,9 +387,11 @@ class LocalController(GraspController):
         for n in range(5):
             try:
                 return self.obs.locate()
-            except GraspFailure:
-                if n == 4:
+            except GraspFailure as exc:
+                if not str(exc).startswith(('Local target ambiguous','Local initial detections')):
                     raise
+                if n == 4:
+                    raise GraspFailure('Bounded local view search exhausted: '+str(exc)) from None
                 if not self.ex.active:
                     self.ex.start('bounded local reacquisition at high clearance')
                     self.started = time.monotonic()
@@ -393,10 +405,10 @@ class LocalController(GraspController):
                     # Search both farther and nearer before retreating. The
                     # previous 115->130->150 sequence missed far white bodies.
                     target = arm.ik(scan_x, scan_z, (115,105,130,145)[n], min_bend=22)
-                elif f['t3'] < 147:
-                    target = arm.ik(f['tip'][0], f['tip'][1], min(150, f['t3']+15), min_bend=22)
-                elif f['tip'][0]-2 >= 12:
-                    target = arm.ik(f['tip'][0]-2, f['tip'][1], f['t3'], min_bend=22)
+                elif scan_x >= 12:
+                    # Repeated placement may leave the dark body farther
+                    # ahead. Looking only down/back hides it above the frame.
+                    target = arm.ik(scan_x, scan_z, (130,115,145,105)[n], min_bend=22)
                 else:
                     raise GraspFailure('Local high search exhausted without target')
                 self._go(target, 'local view search', speed=6, torque=450)
@@ -456,7 +468,13 @@ class LocalController(GraspController):
 
     def _home(self):
         self._phase('home', '回到高位本地观察，避免目标被固定指挡住')
-        self._go(arm.ik(18,8,150,min_bend=22), 'local high observation', speed=8, torque=450)
+        self._refresh()
+        if self.q['grip'] < 1950 or abs(self.q.get('grip_load', 0)) > 60:
+            raise GraspFailure('High return requires an open unloaded gripper')
+        # Known empty-arm return after supported release: 45 percent was
+        # insufficient against gravity on both shoulders in inspected free
+        # space. Keep approach at 45 percent and all contact guards intact.
+        self._go(arm.ik(18,8,150,min_bend=22), 'local high observation', speed=8, torque=600)
         self._key('home')
 
     def _close(self, obs):
@@ -588,7 +606,7 @@ def main():
                 ex.start('return empty arm upright then folded')
                 brain.started = time.monotonic()
                 brain._refresh()
-                brain._go(arm.UPRIGHT, 'park upright', speed=12, torque=450)
+                brain._go(arm.UPRIGHT, 'park upright', speed=8, torque=600)
                 real = (1168, 2914, 2246) if args.side == 'left' else (1230, 2868, 2312)
                 normalized = tuple(v-o for v,o in zip(real, [ex.offset[i] for i in (2,3,4)]))
                 initial = tuple(brain.q[k] for k in ('lift','elbow','pitch'))
@@ -711,7 +729,8 @@ def main():
                 result.update(ok=False, observer_error=str(exc))
         result.update(finished_at=datetime.now().astimezone().isoformat(), captures=recorder.captures,
                       frame_receipts=frames.receipts, detections=obs.detections if obs else [])
-        result['entered_closure'] = any(e.get('phase')=='close' for e in recorder.events)
+        result['entered_closure'] = any(e.get('phase')=='close' and e.get('kind')=='step'
+            and any(k.endswith(':6') for k in e.get('targets',{})) for e in recorder.events)
         (root/'result.json').write_text(json.dumps(result, ensure_ascii=False, default=str, indent=2), encoding='utf-8')
         # Existing history importer understands paired control/photo archives.
         # Keep private images and receipt copies on the laptop, outside Git.
