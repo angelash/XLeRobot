@@ -80,9 +80,27 @@ def test_named_smooth_black_fixture_cannot_lift_on_marginal_preload(monkeypatch)
     monkeypatch.setattr(brain,'_move',lambda *a,**kw:None)
     with pytest.raises(GraspFailure,match='baseline insufficient'):
         brain._close({})
-    brain.q.update(grip=1495,grip_goal=1470,grip_load=100)
+    brain.q.update(grip=1500,grip_goal=1455,grip_load=200)
     brain._close({})
-    assert brain.baseline=={'load':100.,'lead':25}
+    assert brain.baseline=={'load':200.,'lead':45}
+
+
+def test_pressure_correction_accumulates_goal_without_unbounded_jaw_lead(monkeypatch):
+    from types import SimpleNamespace
+    from deployment.grasp.controller import GraspController
+    monkeypatch.setattr(GraspController,'_close',lambda *_:None)
+    brain=LocalController(None,SimpleNamespace(appearance='dark'))
+    brain.q={'grip':1550,'grip_goal':1530,'grip_load':80}
+    monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_settled_pressure',brain.pressure)
+    targets=[]
+    def move(value,**kwargs):
+        target=value['left:6'];targets.append(target)
+        assert brain.q['grip']-target<=60 and target>=1450
+        brain.q.update(grip_goal=target,grip_load=200 if len(targets)>1 else 100)
+    monkeypatch.setattr(brain,'_move',move)
+    brain._close({})
+    assert targets==[1500,1490]
 
 
 def test_release_must_be_confirmed_after_empty_retreat(monkeypatch):
