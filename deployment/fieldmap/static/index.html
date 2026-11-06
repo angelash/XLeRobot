@@ -20,6 +20,7 @@
   <section class="workspace">
     <div class="space-panel">
       <div class="panel-title"><div><span class="section-no">01</span><h2 id="spaceTitle">历史轨迹</h2><span class="subtle" id="spaceScale">各段独立起点 · 米</span></div><div class="view-switch" role="group" aria-label="地图显示方式"><button id="flatView" aria-pressed="true">平面</button><button id="depthView" aria-pressed="false">3D</button><button id="resetView" title="重置缩放">复位</button></div></div>
+      <div id="historyLayerBar" class="history-layer-bar"><button id="historyObstacleToggle" aria-pressed="true" aria-controls="map scene3d">隐藏障碍</button><span id="historyObstacleStatus" role="status">所选环境快照 · 障碍为独立示意</span></div>
       <div class="map-wrap"><div id="scene3d" hidden aria-label="可旋转缩放的3D空间"></div><svg id="map" viewBox="0 0 720 590" aria-label="机器人周围的观察与障碍地图" role="img"></svg><div class="map-caption"><span id="mapOrientation">↑ 初始车头方向</span><span id="mapUnits">轮估轨迹 · 会漂移</span></div><div class="zoom-tools"><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomOut" aria-label="缩小地图">−</button></div><div id="mapEmpty" class="empty" hidden>尚未取得可定位的环境观察<br><small>未知区域保持封闭</small></div></div>
       <div id="trackLegend" class="track-legend"><span><i class="route-line"></i>已记录移动</span><span class="failed-key">虚线：失败 / 部分移动</span><label>轨迹段<select id="episodeSelect"><option value="">全部独立段</option></select></label></div>
       <p class="map-limit" id="mapLimit">绿色仅表示画面里可见的地面；尚未验证车宽、低处障碍和地面高差。</p>

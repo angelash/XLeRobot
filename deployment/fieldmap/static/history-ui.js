@@ -1,4 +1,5 @@
 import {environment,extension} from './app.js';
+import {obstacleLayout} from './history-layers.js';
 
 const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
 const html=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
@@ -8,6 +9,7 @@ const clock=ms=>new Date(ms).toLocaleTimeString('zh-CN',{hour12:false});
 const cameraName={'0':'头部','1':'右腕','2':'左腕'};
 const opName={travel:'平移',rotate:'转向',advance:'前进脉冲',drive:'轮组动作',snapshot:'拍照',move:'关节动作',arm:'关节动作',wait:'等待'};
 const S={mode:'history',range:null,window:null,cursor:0,result:null,episode:'',camera:'0',nearest:{},album:[],status:null,playing:false,queryVersion:0,photoVersion:0};
+try{S.obstacles=localStorage.getItem('fieldmap.history.obstacles')!=='hidden';}catch{S.obstacles=true;}
 let scene=null,sceneLoading=false,sceneKey='',view=null,photoTimer,playFrame,photoAbort,albumAbort,queryAbort;
 function message(value){$('historyMessage').textContent=value;}
 function params(extra={}){return new URLSearchParams({start_ms:S.range[0],end_ms:S.range[1],...($('runFilter').value?{run_id:$('runFilter').value}:{}),...extra});}
@@ -137,7 +139,7 @@ setInterval(()=>{if(S.playing)loadNearest();},600);
 function step(direction){pause();const events=S.result?.events||[];const e=direction>0?events.find(e=>e.end_ms>S.cursor+1):[...events].reverse().find(e=>e.end_ms<S.cursor-1);if(e)seek(e.end_ms,{follow:true});}
 function mode(value){
   pause();S.mode=value;photoAbort?.abort();albumAbort?.abort();++S.photoVersion;sceneKey='';
-  const history=value==='history';for(const id of ['rangeForm','historyStats','timelinePanel','trackLegend','cameraTabs','nearestCameras'])$(id).hidden=!history;
+  const history=value==='history';for(const id of ['rangeForm','historyStats','timelinePanel','trackLegend','cameraTabs','nearestCameras','historyLayerBar'])$(id).hidden=!history;
   // Recognition and spatial context stay visible while the main scene replays motion.
   for(const id of ['snapshotLabel','environmentLegend','environmentReview','overlayToggle'])$(id).hidden=false;
   $('contextVisuals').hidden=!history;
@@ -161,25 +163,45 @@ function contextTimeRelation(){
 }
 function flatTrack(){
   const host=$('map');host.replaceChildren();const ts=tracks(),ps=ts.flatMap(t=>t.points);
-  $('mapEmpty').hidden=!!ps.length;$('mapEmpty').textContent=S.result?'这个范围或轨迹段没有可重建的轮估位置':'正在读取历史轨迹……';
-  if(!ps.length)return;
+  const layer=S.obstacles?obstacleLayout(view?.data,view?.kind||(()=>''),view?.hidden||new Set()):null;
+  const split=layer?.items.length>0;
+  $('mapEmpty').hidden=!!ps.length||split;$('mapEmpty').textContent=S.result?'这个范围或轨迹段没有可重建的轮估位置':'正在读取历史轨迹……';
+  if(split)drawHistoryObstacles(host,layer);
+  if(!ps.length){if(split)host.append(svg('text',{x:205,y:290,'text-anchor':'middle',fill:'#a2aea2','font-size':12},S.result?'没有可重建的轮估轨迹':'正在读取轨迹……'));return;}
   const ys=ps.map(p=>p.y_m),xs=ps.map(p=>p.x_m),loY=Math.min(...ys)-.5,hiY=Math.max(...ys)+.5,loX=Math.min(...xs)-.5,hiX=Math.max(...xs)+.5;
-  const scale=Math.min(640/(hiY-loY),470/(hiX-loX))*(view?.zoom||1),cx=(loY+hiY)/2,cy=(loX+hiX)/2;
-  const p2=p=>[360-(p.y_m-cx)*scale,320-(p.x_m-cy)*scale];
+  const scale=Math.min((split?355:640)/(hiY-loY),470/(hiX-loX))*(view?.zoom||1),cx=(loY+hiY)/2,cy=(loX+hiX)/2;
+  const p2=p=>[(split?215:360)-(p.y_m-cx)*scale,320-(p.x_m-cy)*scale];
+  const defs=svg('defs'),clip=svg('clipPath',{id:'history-track-clip'});clip.append(svg('rect',{x:20,y:48,width:split?395:680,height:515}));defs.append(clip);host.append(defs);
+  const route=svg('g',{'clip-path':'url(#history-track-clip)','data-history-route':'true'});host.append(route);
+  if(split)route.append(svg('text',{x:30,y:70,fill:'#b9cda5','font-size':12},'轮估轨迹 / 米'));
   const grid=svg('g',{stroke:'#304032','stroke-width':.8});
   const spacing=Math.max(.1,10**Math.floor(Math.log10(Math.max(hiX-loX,hiY-loY)/8)));
   for(let v=Math.ceil(loX/spacing)*spacing;v<=hiX;v+=spacing){const y=p2({x_m:v,y_m:0})[1];grid.append(svg('line',{x1:25,x2:695,y1:y,y2:y}),svg('text',{x:28,y:y-3,fill:'#82927e','font-size':9},v.toFixed(1)+'m'));}
-  for(let v=Math.ceil(loY/spacing)*spacing;v<=hiY;v+=spacing){const x=p2({x_m:0,y_m:v})[0];grid.append(svg('line',{x1:x,x2:x,y1:50,y2:560}));}host.append(grid);
+  for(let v=Math.ceil(loY/spacing)*spacing;v<=hiY;v+=spacing){const x=p2({x_m:0,y_m:v})[0];grid.append(svg('line',{x1:x,x2:x,y1:50,y2:560}));}route.append(grid);
   ts.forEach((t,i)=>{
     const color=`hsl(${(95+i*68)%360} 44% 67%)`;
     const paths=new Map();for(const p of t.points){if(!paths.has(p.event_id))paths.set(p.event_id,[]);paths.get(p.event_id).push(p);}
     for(const samples of paths.values()){
       const line=svg('polyline',{points:samples.map(p=>p2(p).join(',')).join(' '),fill:'none',stroke:samples[0].status==='failed'?'#f09d83':color,'stroke-width':3,'stroke-linecap':'round','stroke-dasharray':samples[0].status==='failed'?'6 4':'none',tabindex:0,role:'button','aria-label':'选择轨迹时间',class:'track-path'});
-      const choose=()=>{pause();seek(samples.at(-1).ms,{follow:true});};line.addEventListener('click',choose);line.addEventListener('keydown',e=>{if(e.key==='Enter')choose();});host.append(line);
+      const choose=()=>{pause();seek(samples.at(-1).ms,{follow:true});};line.addEventListener('click',choose);line.addEventListener('keydown',e=>{if(e.key==='Enter')choose();});route.append(line);
     }
-    for(const[p,c,name]of [[t.points[0],'#d6f281','起'],[t.points.at(-1),'#f09d83','终']]){const[x,y]=p2(p);host.append(svg('circle',{cx:x,cy:y,r:5,fill:c}),svg('text',{x:x+8,y:y-8,fill:c,'font-size':11},name));}
+    for(const[p,c,name]of [[t.points[0],'#d6f281','起'],[t.points.at(-1),'#f09d83','终']]){const[x,y]=p2(p);route.append(svg('circle',{cx:x,cy:y,r:5,fill:c}),svg('text',{x:x+8,y:y-8,fill:c,'font-size':11},name));}
   });
-  const p=pose();if(p){const[x,y]=p2(p),robot=svg('g',{transform:`translate(${x},${y}) rotate(${-p.yaw_rad*180/Math.PI})`,'aria-label':'游标时刻机器人估计位置'});robot.append(svg('rect',{x:-.3*scale,y:-.4*scale,width:.6*scale,height:.8*scale,rx:4,fill:'#a6bf8636',stroke:'#b8d297','stroke-width':1}),svg('path',{d:'M0 -19 L9 4 L0 -1 L-9 4 Z',fill:'#d6f281'}));host.append(robot);}
+  const p=pose();if(p){const[x,y]=p2(p),robot=svg('g',{transform:`translate(${x},${y}) rotate(${-p.yaw_rad*180/Math.PI})`,'aria-label':'游标时刻机器人估计位置'});robot.append(svg('rect',{x:-.3*scale,y:-.4*scale,width:.6*scale,height:.8*scale,rx:4,fill:'#a6bf8636',stroke:'#b8d297','stroke-width':1}),svg('path',{d:'M0 -19 L9 4 L0 -1 L-9 4 Z',fill:'#d6f281'}));route.append(robot);}
+}
+function drawHistoryObstacles(host,layer){
+  const g=svg('g',{'data-history-obstacles':'true'}),colors={blocked:'#f09d83',candidate:'#8ed9af',unknown:'#969a91'};
+  g.append(svg('rect',{x:431,y:55,width:270,height:495,rx:4,fill:'#18231b',stroke:'#607052','stroke-dasharray':'5 5'}),
+    svg('text',{x:445,y:80,fill:'#d2e1bc','font-size':13},'障碍信息'),svg('text',{x:445,y:102,fill:'#a2b193','font-size':10},'所选快照 · 独立示意 / 未配准'));
+  const p2=p=>{const[x,y]=layer.normalize(p);return[566+x*228,300+y*285];};
+  for(const item of layer.items){
+    const f=item.feature,color=colors[item.kind]||colors.unknown;
+    const group=svg('g',{'data-history-feature':f.id,role:'button',tabindex:0,'aria-label':`${f.name}，${item.kind==='blocked'?'不可走':item.kind==='candidate'?'候选可走':'未知'}`,class:'map-feature'});
+    group.append(svg('polygon',{points:item.polygon.map(p=>p2(p).join(',')).join(' '),fill:color,'fill-opacity':f.shape==='area'?.15:.35,stroke:view.selected===f.id?'#d6f281':color,'stroke-width':view.selected===f.id?2:1,'stroke-dasharray':item.kind==='unknown'?'4 4':'none'}));
+    const[x,y]=p2(item.label);group.append(svg('text',{x,y,'text-anchor':'middle',class:'map-label'},f.short_name||f.name));
+    const choose=()=>environment.selectFeature(f.id);group.addEventListener('click',choose);group.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});g.append(group);
+  }
+  g.append(svg('text',{x:445,y:516,fill:'#a2b193','font-size':10},'点击物品查看原照片与说明'),svg('text',{x:445,y:534,fill:'#a2b193','font-size':10},'不表示机器人与障碍的实际间距'));host.append(g);
 }
 async function ensureScene(){
   if(scene||sceneLoading)return;sceneLoading=true;
@@ -190,17 +212,21 @@ function sceneFailure(reason){message(reason);const old=scene;scene=null;sceneKe
 extension.render=input=>{
   view=input;const is3d=input.depth,history=S.mode==='history';$('map').hidden=is3d;$('scene3d').hidden=!is3d;
   contextTimeRelation();
+  $('historyObstacleToggle').setAttribute('aria-pressed',String(S.obstacles));$('historyObstacleToggle').textContent=S.obstacles?'隐藏障碍':'显示障碍';
+  const count=obstacleLayout(input.data,input.kind,input.hidden).items.length;
+  $('historyObstacleStatus').textContent=S.obstacles?(count?`${count} 项 · 所选快照 / 独立示意，未配准`:'当前快照或分类筛选下没有障碍信息'):'障碍已隐藏 · 轨迹与照片继续回放';
   $('mapLimit').textContent=history?'双轮积分估计，可能打滑漂移。不同段各有独立起点；未与环境快照标定对齐。':input.data?.map_limit||'环境几何与物品高度为示意，距离未测量。';
   if(!is3d){if(history){flatTrack();return true;}return false;}
   $('mapEmpty').hidden=true;
   if(!scene){ensureScene();return true;}
-  const key=[S.mode,S.queryVersion,S.episode,input.selected,Array.from(input.hidden).join(','),input.data?.snapshot_id].join('|');
-  if(key!==sceneKey){sceneKey=key;scene.update({...input,mode:S.mode,tracks:tracks(),pose:pose()});}
+  const key=[S.mode,S.queryVersion,S.episode,S.obstacles,input.selected,Array.from(input.hidden).join(','),input.data?.snapshot_id,input.data?.review?.revision].join('|');
+  if(key!==sceneKey){sceneKey=key;scene.update({...input,mode:S.mode,tracks:tracks(),pose:pose(),showObstacles:S.obstacles});}
   else scene.pose(pose());scene.size();return true;
 };
 extension.photo=()=>S.mode==='history';extension.strip=()=>S.mode==='history';
 extension.reset=()=>{scene?.reset();};extension.scale=f=>{if(view?.depth){scene?.scale(f);return true;}return false;};
 $('environmentMode').addEventListener('click',()=>mode('environment'));$('historyMode').addEventListener('click',()=>mode('history'));
+$('historyObstacleToggle').addEventListener('click',()=>{S.obstacles=!S.obstacles;try{localStorage.setItem('fieldmap.history.obstacles',S.obstacles?'shown':'hidden');}catch{}sceneKey='';environment.drawMap();if(view?.depth)scene?.reset();});
 $('rangeForm').addEventListener('submit',e=>{e.preventDefault();const lo=new Date($('rangeStart').value).getTime(),hi=new Date($('rangeEnd').value).getTime();if(!Number.isFinite(lo)||!Number.isFinite(hi)||lo>=hi){message('结束时间需要晚于开始时间。');return;}range(lo,hi);});
 $('runFilter').addEventListener('change',()=>loadRange({runs:false}));
 $('episodeSelect').addEventListener('change',()=>{S.episode=$('episodeSelect').value;sceneKey='';environment.drawMap();if(S.episode){const t=tracks()[0];if(S.cursor<t.start_ms||S.cursor>t.end_ms)seek(t.start_ms,{follow:true});}scene?.reset();});

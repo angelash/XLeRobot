@@ -106,6 +106,21 @@ def main():
                 expect(page.locator('#candidateCount')).to_have_text('1')
                 expect(page.locator('#blockedCount')).to_have_text('1')
                 expect(page.locator('#unknownCount')).to_have_text('1')
+                expect(page.locator('#historyObstacleToggle')).to_have_attribute('aria-pressed', 'true')
+                expect(page.locator('#map [data-history-feature]')).to_have_count(3)
+                expect(page.locator('#historyObstacleStatus')).to_contain_text('独立示意')
+                # Main history viewport has clickable obstacles; toggling them
+                # leaves the cursor, source context and odometry data untouched.
+                main_cursor=page.locator('#timeline').get_attribute('aria-valuenow')
+                page.locator('#map [data-history-feature="desk"]').click()
+                expect(page.locator('#detailTitle')).to_have_text('示例桌子')
+                assert page.locator('#timeline').get_attribute('aria-valuenow')==main_cursor
+                page.locator('#historyObstacleToggle').click()
+                expect(page.locator('#map [data-history-feature]')).to_have_count(0)
+                expect(page.locator('#map .track-path')).to_have_count(1)
+                expect(page.locator('#contextMap [data-feature]')).to_have_count(3)
+                page.locator('#historyObstacleToggle').click()
+                expect(page.locator('#map [data-history-feature]')).to_have_count(3)
                 # Pointer scrub, visible cursor and exact photo offsets.
                 page.locator('#timeline').scroll_into_view_if_needed(); box = page.locator('#timeline').bounding_box()
                 page.mouse.move(box['x']+box['width']*.25, box['y']+42); page.mouse.down()
@@ -129,9 +144,11 @@ def main():
                 assert page.locator('#timeline').get_attribute('aria-valuenow') == cursor
                 page.locator('[data-filter="blocked"]').click()
                 expect(page.locator('#contextMap [data-feature="desk"]')).to_have_count(0)
+                expect(page.locator('#map [data-history-feature="desk"]')).to_have_count(0)
                 expect(page.locator('#contextPhoto .photo-overlay')).to_have_count(0)
                 page.locator('[data-filter="blocked"]').click()
                 expect(page.locator('#contextMap [data-feature="desk"]')).to_have_count(1)
+                expect(page.locator('#map [data-history-feature="desk"]')).to_have_count(1)
                 page.locator('#overlayToggle').click();expect(page.locator('#contextPhoto .photo-overlay')).to_have_count(0)
                 page.locator('#overlayToggle').click();expect(page.locator('#contextPhoto .photo-overlay')).to_have_count(1)
                 old=page.locator('#snapshotSelect option').nth(1).get_attribute('value');page.locator('#snapshotSelect').select_option(old)
@@ -149,6 +166,17 @@ def main():
                 page.locator('.history-event.failed').click();expect(page.locator('#eventDetail')).to_contain_text('generated contact stop')
                 # A real canvas rendered with perspective/depth meshes, orbit, zoom, pan.
                 page.locator('#depthView').click();canvas=page.locator('#scene3d canvas');expect(canvas).to_be_visible(timeout=15000)
+                expect(page.locator('#scene3d')).to_have_attribute('data-history-obstacle-count','3')
+                canvas.scroll_into_view_if_needed();page.wait_for_timeout(150)
+                with_obstacles=hashlib.sha256(canvas.screenshot()).hexdigest()
+                position=page.locator('#timeline').get_attribute('aria-valuenow')
+                page.locator('#historyObstacleToggle').click()
+                expect(page.locator('#scene3d')).to_have_attribute('data-history-obstacle-count','0')
+                canvas.scroll_into_view_if_needed();page.wait_for_timeout(150)
+                assert hashlib.sha256(canvas.screenshot()).hexdigest()!=with_obstacles
+                assert page.locator('#timeline').get_attribute('aria-valuenow')==position
+                page.locator('#historyObstacleToggle').click()
+                expect(page.locator('#scene3d')).to_have_attribute('data-history-obstacle-count','3')
                 expect(page.locator('#contextVisuals')).to_be_visible();expect(page.locator('#environmentReview')).to_be_visible()
                 canvas.scroll_into_view_if_needed();page.wait_for_timeout(200)
                 hash_before=hashlib.sha256(canvas.screenshot()).hexdigest();b=canvas.bounding_box()
@@ -171,6 +199,14 @@ def main():
                 page.set_viewport_size({'width':390,'height':844})
                 page.screenshot(path=str(out/'02-mobile.png'),full_page=True)
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                # The preference survives reload and still applies in 2D.
+                page.locator('#historyObstacleToggle').click()
+                page.reload(wait_until='networkidle')
+                expect(page.locator('#historyObstacleToggle')).to_have_attribute('aria-pressed','false')
+                expect(page.locator('#map [data-history-feature]')).to_have_count(0)
+                expect(page.locator('#contextMap [data-feature]')).to_have_count(3)
+                page.locator('#historyObstacleToggle').click()
+                expect(page.locator('#map [data-history-feature]')).to_have_count(3)
                 # Empty range, absent image, backend query failure leave visible states.
                 page.locator('#rangeStart').fill('2027-01-01T00:00');page.locator('#rangeEnd').fill('2027-01-01T01:00');page.locator('#rangeForm button[type=submit]').click()
                 expect(page.locator('#historyMessage')).to_contain_text('没有动作记录')
@@ -179,6 +215,7 @@ def main():
                 report.update(orbit_changed=True, time_pan_changed=True, keyboard_playback=True, snapshot_readonly=True,
                               photo_seek=True, stale_photo_response_ignored=True, webgl_loss_fallback=True, mobile_overflow=False,
                               obstacle_context_during_playback=True, independent_recognition_photo=True, old_review_note_visible=True)
+                report.update(main_history_obstacles_2d=True,main_history_obstacles_3d=True,obstacle_visibility_persisted=True)
                 browser.close()
             assert not report['errors'], report['errors']
             assert not report['motion_commands'], report['motion_commands']
