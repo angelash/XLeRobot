@@ -29,6 +29,15 @@ def test_head_roi_rejects_background_equipment():
     assert len(candidates(image, 'dark', head=True)) == 1
 
 
+def test_known_black_body_rejects_low_contrast_arm_patches():
+    im=np.full((480,640,3),185,np.uint8)
+    cv2.rectangle(im,(215,210),(265,260),(125,125,125),-1)
+    assert not candidates(im,'dark')
+    cv2.rectangle(im,(335,290),(370,355),(65,65,65),-1)
+    hits=candidates(im,'dark')
+    assert len(hits)==1 and hits[0]['bbox'][0]>320
+
+
 def test_right_reference_mapping_preserves_pressure_and_refuses_other_arm(monkeypatch):
     ex = SideExecutor('right')
     entries = []
@@ -78,6 +87,7 @@ def test_pressure_correction_has_a_finite_budget_and_never_lifts_empty(monkeypat
     brain = LocalController(None, None)
     brain.q = {'grip': 1700, 'grip_goal': 1700, 'grip_load': 0}
     monkeypatch.setattr(brain, '_refresh', lambda: None)
+    monkeypatch.setattr(brain, '_settled_pressure', brain.pressure)
     commanded = []
     def move(targets, **kwargs):
         commanded.append((targets, kwargs))
@@ -304,8 +314,37 @@ def test_closing_drift_does_not_replace_original_verification_window(monkeypatch
     def shrink(*_):brain.grip_box=[400,430,30,40]
     monkeypatch.setattr(GraspController,'_close',shrink)
     monkeypatch.setattr(brain,'_refresh',lambda:None)
+    monkeypatch.setattr(brain,'_settled_pressure',brain.pressure)
     brain._close({'bbox':[320,250,120,150]})
     assert brain.grip_box==[320,250,120,150]
+
+
+def test_pressure_baseline_waits_for_motion_to_settle_and_uses_median(monkeypatch):
+    now=[0.]
+    def sleep(seconds):now[0]+=seconds
+    brain=LocalController(None,None,clock=lambda:now[0],sleep=sleep)
+    values=iter([(1660,110),(1650,90),(1642,66),(1641,65),(1642,67),(1641,66),(1642,65)])
+    def refresh():
+        position,load=next(values)
+        brain.q.update(grip=position,grip_goal=1625,grip_load=load)
+    monkeypatch.setattr(brain,'_refresh',refresh)
+    assert brain._settled_pressure()=={'load':66.,'lead':17.}
+    assert now[0] >= .89
+    assert brain.events[-1]['kind']=='settled_pressure'
+    assert len(brain.events[-1]['samples'])==5
+
+
+def test_unstable_pressure_fails_within_bound_without_commanding_more_force(monkeypatch):
+    now=[0.]
+    def sleep(seconds):now[0]+=seconds
+    brain=LocalController(None,None,clock=lambda:now[0],sleep=sleep)
+    def refresh():
+        load=40 if round(now[0]/.15)%2 else 110
+        brain.q.update(grip=1640,grip_goal=1620,grip_load=load)
+    monkeypatch.setattr(brain,'_refresh',refresh)
+    with pytest.raises(GraspFailure,match='stable pressure'):
+        brain._settled_pressure()
+    assert 2.5<=now[0]<2.7 and brain.events[-1]['kind']=='unstable_pressure'
 
 
 def test_white_fixture_next_to_a_desk_seam_and_shadow_is_still_distinct():

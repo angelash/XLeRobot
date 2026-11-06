@@ -52,3 +52,18 @@ def test_failed_request_ends_epoch_without_an_automatic_second_grasp(tmp_path,mo
     assert saved['counts']['actual_closures']==0 and saved['counts']['requests']==1
     assert saved['status']=='ended' and not (root/'practice.lock').exists()
     assert saved['protocol']['appearance']=='dark'
+
+
+def test_persistent_arm_hold_prevents_new_trials_after_physical_failures(tmp_path,monkeypatch):
+    from deployment.grasp import practice
+    import sys
+    root=tmp_path/'practice';root.mkdir()
+    (root/'ARM_HOLDS.json').write_text(json.dumps({'right':'shoulder timeout then contact; inspect'}),encoding='utf8')
+    def forbidden(*a,**kw):raise AssertionError('held arm must not run a subprocess')
+    monkeypatch.setattr(practice.subprocess,'run',forbidden)
+    monkeypatch.setattr(sys,'argv',['practice','--root',str(root),'--side','right',
+                                  '--epoch','right-hold','--confirmed'])
+    practice.main()
+    saved=json.loads((root/'right-progress.json').read_text('utf8'))
+    assert saved['counts']['requests']==0 and saved['reason'].startswith('arm held')
+    assert not (root/'practice.lock').exists()

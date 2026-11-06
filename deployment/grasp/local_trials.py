@@ -93,7 +93,7 @@ def candidates(bgr, appearance, head=False):
         elif not (65 < x and x+w < 560 and (110 if appearance=='light' else 150) < y and y+h < 405):
             continue
         fill = cv2.contourArea(contour)/area
-        if fill < (.35 if appearance == 'light' else .42):
+        if fill < (.35 if appearance == 'light' else .55):
             continue
         crop = gray[y:y+h, x:x+w]
         mean = float(crop.mean())
@@ -109,10 +109,10 @@ def candidates(bgr, appearance, head=False):
         mask[y-b:y-b+h, x-a:x-a+w] = 0
         surroundings = ring[mask.astype(bool)]
         light_fraction = float((surroundings > 155).mean())
-        if light_fraction < (.65 if head else .50):
+        if light_fraction < (.75 if appearance == 'dark' else (.65 if head else .50)):
             continue
         contrast = float(surroundings.mean()-mean)
-        if appearance == 'dark' and contrast < 35:
+        if appearance == 'dark' and contrast < 70:
             continue
         if appearance == 'light' and not 7 < contrast < 85:
             continue
@@ -493,7 +493,7 @@ class LocalController(GraspController):
         if anchor is not None:
             self.grip_box = anchor
         self._refresh()
-        self.baseline = self.pressure()
+        self.baseline = self._settled_pressure()
         # The old controller could stop after 220 counts of visual movement,
         # although no pressure existed. Keep a finite measured closing budget.
         for _ in range(10):
@@ -504,7 +504,7 @@ class LocalController(GraspController):
                 break
             self._move({'left:6': target}, torque=600, speed=4, label='bounded local pressure correction')
             self._refresh()
-            self.baseline = self.pressure()
+            self.baseline = self._settled_pressure()
             self._event('pressure_correction', pressure=self.baseline, target=target)
         if self.baseline['load'] < 60 or self.baseline['lead'] < 15:
             raise GraspFailure('Local pressure baseline insufficient; no lift')
@@ -513,6 +513,28 @@ class LocalController(GraspController):
     def pressure(self):
         return {'load': float(self.q.get('grip_load') or 0),
                 'lead': self.q['grip']-self.q.get('grip_goal', self.q['grip'])}
+
+    def _settled_pressure(self):
+        """Measure steady preload without changing the goal or torque."""
+        recent = deque(maxlen=5)
+        deadline = self.clock()+2.5
+        while self.clock() < deadline:
+            self._stop_check()
+            self._refresh()
+            p = self.pressure()
+            recent.append({'t':self.clock(), 'position':self.q['grip'], **p})
+            if len(recent)==5 and recent[-1]['t']-recent[0]['t'] >= .55:
+                values={key:[row[key] for row in recent] for key in ('position','load','lead')}
+                if (all(math.isfinite(v) for seq in values.values() for v in seq)
+                        and max(values['position'])-min(values['position']) <= 5
+                        and max(values['load'])-min(values['load']) <= 25
+                        and max(values['lead'])-min(values['lead']) <= 6):
+                    pressure={k:float(np.median(values[k])) for k in ('load','lead')}
+                    self._event('settled_pressure', pressure=pressure, samples=list(recent))
+                    return pressure
+            self.sleep(.15)
+        self._event('unstable_pressure', samples=list(recent))
+        raise GraspFailure('No stable pressure baseline; no lift')
 
     def _verify_held(self, before, after, pose_before, window=None):
         verdict = super()._verify_held(before, after, pose_before, window)

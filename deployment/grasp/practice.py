@@ -91,6 +91,12 @@ def main():
     reason = 'request limit'
     try:
         for n in range(args.limit):
+            holds = root/'ARM_HOLDS.json'
+            if holds.exists():
+                held = json.loads(holds.read_text(encoding='utf8')).get(args.side)
+                if held:
+                    reason = 'arm held for inspection: '+str(held)
+                    break
             if counts(rows, args.side, args.target)['count_target_reached']:
                 reason = 'count target reached'; break
             if (root/'STOP').exists():
