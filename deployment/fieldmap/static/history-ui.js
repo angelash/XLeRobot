@@ -58,6 +58,7 @@ function seek(ms,{photos=true,follow=false}={}){
   if(!S.range)return;S.cursor=Math.max(S.range[0],Math.min(S.range[1],ms));
   if(follow&&S.window&&(S.cursor<S.window[0]||S.cursor>S.window[1])){const span=S.window[1]-S.window[0];S.window=clampWindow(S.cursor-span*.15,S.cursor+span*.85);}
   drawTimeline();detail();if(S.mode==='history')environment.drawMap();
+  contextTimeRelation();
   if(photos){photoAbort?.abort();++S.photoVersion;clearTimeout(photoTimer);photoTimer=setTimeout(loadNearest,130);}
 }
 function showPhoto(p){
@@ -137,7 +138,10 @@ function step(direction){pause();const events=S.result?.events||[];const e=direc
 function mode(value){
   pause();S.mode=value;photoAbort?.abort();albumAbort?.abort();++S.photoVersion;sceneKey='';
   const history=value==='history';for(const id of ['rangeForm','historyStats','timelinePanel','trackLegend','cameraTabs','nearestCameras'])$(id).hidden=!history;
-  for(const id of ['snapshotLabel','environmentLegend','environmentReview','overlayToggle'])$(id).hidden=history;
+  // Recognition and spatial context stay visible while the main scene replays motion.
+  for(const id of ['snapshotLabel','environmentLegend','environmentReview','overlayToggle'])$(id).hidden=false;
+  $('contextVisuals').hidden=!history;
+  $('mainPhotoTitle').textContent=history?'历史相机照片':'环境识别照片';
   $('historyMode').setAttribute('aria-pressed',history);$('environmentMode').setAttribute('aria-pressed',!history);
   $('spaceTitle').textContent=history?'历史轨迹':'周围空间';$('spaceScale').textContent=history?'各段独立起点 · 米':'相对方位示意';
   $('mapUnits').textContent=history?'轮估轨迹 · 会漂移':'比例和物品高度未测量';
@@ -145,6 +149,15 @@ function mode(value){
   $('photo').hidden=history;$('historyPhoto').hidden=!history;$('morePhotos').hidden=true;
   if(history){loadNearest();loadAlbum();}else{environment.drawStrip();environment.drawPhoto();}
   environment.drawMap();
+  contextTimeRelation();
+}
+function contextTimeRelation(){
+  if(!environment.data)return;
+  const times=(environment.data.observations||[]).map(o=>new Date(o.captured_at).valueOf()).filter(Number.isFinite);
+  const base='所选环境快照，与轮估轨迹未配准';
+  if(S.mode!=='history'||!S.range||!times.length){$('contextTimeRelation').textContent=base;return;}
+  const closest=times.reduce((a,b)=>Math.abs(a-S.cursor)<Math.abs(b-S.cursor)?a:b),seconds=(closest-S.cursor)/1000;
+  $('contextTimeRelation').textContent=`${base}；最近依据距游标 ${seconds>=0?'+':''}${seconds.toFixed(1)} s，不代表游标当时障碍状态`;
 }
 function flatTrack(){
   const host=$('map');host.replaceChildren();const ts=tracks(),ps=ts.flatMap(t=>t.points);
@@ -176,6 +189,7 @@ async function ensureScene(){
 function sceneFailure(reason){message(reason);const old=scene;scene=null;sceneKey='';if(old){old.disposing=true;old.dispose();}$('flatView').click();}
 extension.render=input=>{
   view=input;const is3d=input.depth,history=S.mode==='history';$('map').hidden=is3d;$('scene3d').hidden=!is3d;
+  contextTimeRelation();
   $('mapLimit').textContent=history?'双轮积分估计，可能打滑漂移。不同段各有独立起点；未与环境快照标定对齐。':input.data?.map_limit||'环境几何与物品高度为示意，距离未测量。';
   if(!is3d){if(history){flatTrack();return true;}return false;}
   $('mapEmpty').hidden=true;
