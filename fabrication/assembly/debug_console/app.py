@@ -354,6 +354,7 @@ class ServoStartCommand(BaseModel):
     label: str = ''
     confirmed: bool = False
     lease_s: float = 4.0
+    stationary_base: bool = False
 
 
 class ServoStepCommand(BaseModel):
@@ -403,7 +404,7 @@ def servo_start(payload: ServoStartCommand):
     try:
         if isinstance(runtime, PreviewRuntime):
             raise ValueError('隔离预览不操作实机')
-        return servo().start(payload.label, payload.confirmed, payload.lease_s)
+        return servo().start(payload.label, payload.confirmed, payload.lease_s, payload.stationary_base)
     except Exception as exc:
         runtime.log('servo', '抓取会话未开始：'+str(exc))
         raise HTTPException(409, str(exc)) from exc

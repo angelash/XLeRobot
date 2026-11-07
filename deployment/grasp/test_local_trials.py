@@ -6,6 +6,19 @@ from deployment.grasp.local_trials import candidates, SideExecutor, LocalControl
 from deployment.grasp.controller import GraspFailure
 
 
+def test_local_executor_refuses_old_controller_that_ignores_stationary_flag(monkeypatch):
+    ex=SideExecutor('left');calls=[]
+    def post(path,body,**kwargs):
+        calls.append((path,body))
+        return {'session_id':'old-controller'} if path.endswith('/session') else {}
+    monkeypatch.setattr(ex.inner,'_post',post)
+    monkeypatch.setattr(ex.inner.http,'post',lambda url,**kwargs:calls.append((url,kwargs['json'])))
+    with pytest.raises(GraspFailure,match='stationary-base'):
+        ex.start('requires verified parked wheels')
+    assert calls[0][1]['stationary_base'] is True
+    assert calls[-1][0].endswith('/stop') and not ex.active
+
+
 def test_right_workspace_requires_folded_idle_gripper_and_separated_pan():
     from deployment.grasp.local_trials import require_right_workspace
     import copy

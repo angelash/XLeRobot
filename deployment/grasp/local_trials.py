@@ -31,7 +31,7 @@ from .controller import GraspController, GraspFailure
 from .service import HttpExecutor
 from .tracker import TemplateTracker
 from .flow import FeatureContinuity
-from .recovery import hardware_readiness
+from .recovery import hardware_readiness, wheel_observation, collect_parked_history
 
 REFS = {'left': (2211, 955, 2245), 'right': (2245, 901, 2049)}
 CAMERAS = {'left': 2, 'right': 1}
@@ -230,7 +230,7 @@ class Frames:
 class SideExecutor:
     """Reuse the verified planar kernel, with each arm's separate raw references."""
     def __init__(self, side):
-        self.side, self.inner = side, HttpExecutor('http://127.0.0.1:8765')
+        self.side, self.inner = side, HttpExecutor('http://127.0.0.1:8765', stationary_base=True)
         self.offset = {i: v-a for i, v, a in zip((2, 3, 4), REFS[side], REFS['left'])}
         self.contact = None
 
@@ -684,7 +684,11 @@ def preflight():
     if (servo['active'] or grasp['operation'] or studio['recording'] or state['agent_run']['running']
             or state['limit_selftest']['running'] or state['controller']['controller'] != 'offline'):
         raise GraspFailure('Other operator/activity owns the robot')
-    health = hardware_readiness(state)
+    history=[]
+    wheels=wheel_observation(state)['wheels']
+    if len(wheels)==2 and all(m.get('torque')==0 for m in wheels.values()):
+        state,history=collect_parked_history(state,lambda:request('/api/status'))
+    health = hardware_readiness(state,parked_history=history)
     if not health['ready']:
         raise GraspFailure('Hardware health not ready: '+json.dumps(health,ensure_ascii=False))
     return state

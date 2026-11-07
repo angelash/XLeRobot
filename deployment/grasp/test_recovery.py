@@ -10,6 +10,47 @@ NOW = 1793977687.
 CAMERAS = {camera:{'fresh':True} for camera in (0,1,2)}
 
 
+def parked_history():
+    from deployment.grasp.recovery import wheel_observation
+    rows=[]
+    for n,at in enumerate((NOW-.8,NOW-.4,NOW)):
+        s=healthy();s['updated_at']=datetime.fromtimestamp(at,timezone.utc).isoformat()
+        for m in s['ports'][1]['motors'][-2:]:
+            m.update(torque=0,speed=(0,50,32818)[n],position=1500+n%2)
+        rows.append(wheel_observation(s))
+    return s,rows
+
+
+def test_parked_wheels_require_full_window_and_never_claim_all_torque():
+    state,history=parked_history()
+    assert not hardware_readiness(state,NOW)['ready']
+    result=hardware_readiness(state,NOW,history)
+    assert result['ready'] and result['stationary_base_verified'] and result['all_arm_torque']
+    assert not result['all_torque'] and result['torque_off']==['COM4:9','COM4:10']
+    assert assess(state,side='left',cameras=CAMERAS,now=NOW,parked_history=history)['next_step']=='recover_scene_autonomously'
+
+
+@pytest.mark.parametrize('field,value',[('torque',1),('goal_velocity',10),('speed',100),
+                                      ('position',1505),('status',32),('mode',0),
+                                      ('temperature',0),('voltage',10.)])
+def test_parked_window_rejects_powered_hunting_drift_and_hardware_faults(field,value):
+    from deployment.grasp.recovery import parked_wheels
+    state,history=parked_history();history[0]['wheels'][10][field]=value
+    assert not parked_wheels(history,NOW)
+    assert not hardware_readiness(state,NOW,history)['ready']
+
+
+def test_old_or_repeated_source_timestamps_cannot_supply_parking_evidence():
+    from deployment.grasp.recovery import parked_wheels
+    state,history=parked_history()
+    assert not parked_wheels(history[:2],NOW)
+    assert not hardware_readiness(state,NOW+3,history)['ready']
+    history[0]['at']=history[1]['at']
+    assert not parked_wheels(history,NOW)
+    _,history=parked_history();history[-1]['at']-=.01
+    assert not hardware_readiness(state,NOW,history)['ready']
+
+
 def healthy():
     return {'updated_at':datetime.fromtimestamp(NOW,timezone.utc).isoformat(),
             'controller':{'controller':'offline'},

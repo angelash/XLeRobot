@@ -114,11 +114,12 @@ class CameraFeed:
 
 class HttpExecutor:
     """The controller's /api/servo contract; refusals surface as GraspFailure."""
-    def __init__(self, controller, client=None):
+    def __init__(self, controller, client=None, stationary_base=False):
         self.url = controller
         self.http = client or httpx.Client(trust_env=False, timeout=5)
         self.session_id = None
         self.active = False
+        self.stationary_base = stationary_base
 
     def _post(self, path, body, timeout=8.0):
         try:
@@ -133,8 +134,14 @@ class HttpExecutor:
         return r.json()
 
     def start(self, label=''):
-        data = self._post('/api/servo/session', {'label': label, 'confirmed': True, 'lease_s': 4.0}, timeout=20)
+        body={'label': label, 'confirmed': True, 'lease_s': 4.0}
+        if self.stationary_base:body['stationary_base']=True
+        data = self._post('/api/servo/session', body, timeout=20)
         self.session_id, self.active = data['session_id'], True
+        if self.stationary_base and not (data.get('stationary_base') is True
+                                        and (data.get('wheel_park') or {}).get('verified') is True):
+            self.stop('Controller did not verify stationary-base policy')
+            raise GraspFailure('Controller did not verify stationary-base policy; no arm motion')
         return self.session_id
 
     def step(self, targets, torque=None, speed=12.0, label=''):

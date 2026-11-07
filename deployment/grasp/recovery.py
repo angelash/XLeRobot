@@ -21,7 +21,56 @@ def number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def hardware_readiness(state, now=None):
+def wheel_observation(state):
+    try:
+        at = datetime.fromisoformat(state['updated_at']).timestamp()
+        wheels = {m['id']:m for p in state['ports'] if p['port']=='COM4'
+                  for m in p['motors'] if m['id'] in (9,10)}
+        return {'at':at,'wheels':wheels}
+    except (KeyError, TypeError, ValueError):
+        return {'at':None,'wheels':{}}
+
+
+def parked_wheels(rows, now=None):
+    """Require an observed torque-off zero-goal window, never a single good read."""
+    if not isinstance(rows,list) or len(rows)<3:
+        return False
+    try:
+        times=[r['at'] for r in rows]
+        if (not all(number(t) for t in times) or any(b<=a for a,b in zip(times,times[1:]))
+                or not .6<=times[-1]-times[0]<=2.5
+                or (now is not None and not -.2<=now-times[-1]<=2.)):
+            return False
+        for i in (9,10):
+            values=[r['wheels'][i] for r in rows]
+            if not all(m['torque']==0 and m['goal_velocity']==0 and m['mode']==1
+                       and m['status']==0 and type(m['speed']) is int
+                       and number(m['voltage']) and 11.5<=m['voltage']<=12.6
+                       and number(m['temperature']) and 0<m['temperature']<45
+                       and 0<=m['speed']<=65535 and (m['speed']&0x7fff)<=50
+                       and type(m['position']) is int and 0<=m['position']<=4095 for m in values):
+                return False
+            origin=values[0]['position']
+            deltas=[(m['position']-origin+2048)%4096-2048 for m in values]
+            if max(deltas)-min(deltas)>2:
+                return False
+        return True
+    except (KeyError, TypeError):
+        return False
+
+
+def collect_parked_history(state, fetch_next, clock=time.monotonic, wait=time.sleep):
+    rows=[];deadline=clock()+2.5
+    while True:
+        row=wheel_observation(state)
+        if not number(row['at']):return state,rows
+        if not rows or row['at']>rows[-1]['at']:rows.append(row)
+        if (len(rows)>=3 and rows[-1]['at']-rows[0]['at']>=.6) or clock()>=deadline:
+            return state,rows
+        wait(.12);state=fetch_next()
+
+
+def hardware_readiness(state, now=None, parked_history=None):
     """Exact topology and fresh telemetry; an empty list is never ready."""
     now = time.time() if now is None else now
     issues, motors = [], {}
@@ -54,6 +103,8 @@ def hardware_readiness(state, now=None):
     if missing:
         issues.append('missing_motor_readback')
     torque_off = []
+    observation=wheel_observation(state)
+    parked=(parked_wheels(parked_history,now) and parked_history[-1]==observation)
     for (port, i), motor in motors.items():
         name = f'{port}:{i}'
         wheel = port=='COM4' and i in (9, 10)
@@ -73,13 +124,15 @@ def hardware_readiness(state, now=None):
             issues.append('temperature_not_ready:'+name)
         if motor.get('torque') != 1:
             torque_off.append(name)
-        if wheel and (motor.get('speed') != 0 or motor.get('goal_velocity') != 0):
+        if wheel and not parked and (motor.get('speed') != 0 or motor.get('goal_velocity') != 0):
             issues.append('wheels_not_stopped:'+name)
     complete = len(motors)==16 and not missing
     all_torque = complete and not torque_off
-    return {'ready':not issues and all_torque, 'telemetry_ready':not issues,
+    all_arm_torque=complete and not any(k not in ('COM4:9','COM4:10') for k in torque_off)
+    return {'ready':not issues and (all_torque or (parked and all_arm_torque)), 'telemetry_ready':not issues,
             'online_confirmed':len(motors), 'expected':16, 'missing':missing,
             'all_torque':all_torque, 'torque_off':torque_off, 'snapshot_age_s':age,
+            'all_arm_torque':all_arm_torque,'stationary_base_verified':bool(parked),
             'issues':list(dict.fromkeys(issues)),
             'scope':'observed readback only; absent records do not identify a power fault'}
 
@@ -99,10 +152,10 @@ def hold_kind(value):
     return 'physical'
 
 
-def assess(state, *, side, holds=None, servo=None, cameras=None, now=None):
+def assess(state, *, side, holds=None, servo=None, cameras=None, now=None, parked_history=None):
     if side not in ('left','right'):
         raise ValueError('Unknown arm')
-    hardware = hardware_readiness(state, now)
+    hardware = hardware_readiness(state, now, parked_history)
     controller = state.get('controller') or {}
     busy = (bool((servo or {}).get('active')) or bool((servo or {}).get('busy'))
             or bool((state.get('agent_run') or {}).get('running'))
@@ -123,7 +176,7 @@ def assess(state, *, side, holds=None, servo=None, cameras=None, now=None):
             next_step, reason = 'refresh_hardware_observation', 'The motor inventory is not from a current timestamp'
         else:
             next_step, reason = 'inspect_hardware_fault', 'Inspect voltage, temperature, modes and status without rewriting configuration'
-    elif not hardware['all_torque']:
+    elif not hardware['ready']:
         next_step, reason = 'prepare_hold_at_current_position', 'Lock fresh current poses with zero speed before enabling torque'
     elif any(not (cameras or {}).get(c,{}).get('fresh') for c in (0,1,2)):
         next_step, reason = 'restore_shared_camera_observation', 'All three current shared camera views are required'
@@ -157,6 +210,12 @@ def main():
             else:servo=value
         except Exception as exc:
             errors[name]=type(exc).__name__+': '+str(exc)
+    park_history=[]
+    wheels=wheel_observation(state)['wheels']
+    if len(wheels)==2 and all(m.get('torque')==0 for m in wheels.values()):
+        try:
+            state,park_history=collect_parked_history(state,lambda:fetch('http://127.0.0.1:8765/api/status'))
+        except Exception as exc:errors['parked_history']=str(exc)
     cameras={}
     for camera in (0,1,2):
         try:
@@ -176,8 +235,9 @@ def main():
             errors['holds']=str(exc)
             holds={s:{'kind':'physical','reason':'Unreadable hold ledger'} for s in ('left','right')}
     report={'at':datetime.now().astimezone().isoformat(),'state':state,'servo':servo,
+            'wheel_park_history':park_history,
             'cameras':cameras,'holds':holds,'errors':errors,'motor_commands':0,
-            'arms':{s:assess(state,side=s,holds=holds,servo=servo,cameras=cameras) for s in ('left','right')}}
+            'arms':{s:assess(state,side=s,holds=holds,servo=servo,cameras=cameras,parked_history=park_history) for s in ('left','right')}}
     (output/'assessment.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
     print(json.dumps({'output':str(output),'motor_commands':0,
                       'arms':{s:{k:r[k] for k in ('next_step','hold_kind','hardware','manual_scene_reset_required')} for s,r in report['arms'].items()}}))

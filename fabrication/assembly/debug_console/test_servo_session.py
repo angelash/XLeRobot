@@ -46,6 +46,58 @@ def test_steps_move_within_limits_and_a_squeeze_survives_later_steps(runtime, se
     assert (servo.dir/'steps.jsonl').read_text(encoding='utf-8').count('\n') == 3 and (servo.dir/'result.json').is_file()
 
 
+def test_stationary_session_keeps_arms_held_parks_wheels_and_refuses_base(runtime,servo):
+    sid=servo.start('stationary',True,stationary_base=True)['session_id']
+    assert servo.snapshot()['stationary_base'] and servo.snapshot()['wheel_park']['verified']
+    for i in (9,10):
+        assert reg(runtime,'COM4',i)[40]==0 and word(reg(runtime,'COM4',i),46)==0
+    servo.step(sid,{'left:2':2100},torque=450,speed_deg=12)
+    with pytest.raises(ValueError,match='静止底盘会话禁止'):
+        servo.base(sid,-.05,'explicit task movement')
+    servo.end(sid)
+    assert reg(runtime,'COM3',2)[40]==1
+    assert all(reg(runtime,'COM4',i)[40]==0 for i in (9,10))
+    assert (servo.dir/'wheel-park.json').is_file()
+
+
+def test_stationary_drift_or_unexpected_wheel_torque_stops_session(runtime,servo):
+    servo.start('stationary drift',True,stationary_base=True)
+    r=reg(runtime,'COM4',10);p=word(r,56)+3;r[56]=p&255;r[57]=p>>8
+    assert '编码器移动' in servo.watchdog_tick() and not servo.active
+    servo.start('unexpected torque',True,stationary_base=True)
+    reg(runtime,'COM4',9)[40]=1
+    assert '状态变化' in servo.watchdog_tick() and not servo.active
+    assert all(reg(runtime,'COM4',i)[40]==0 for i in (9,10))
+
+
+def test_stationary_parking_attempts_both_wheels_after_one_write_failure(runtime,servo,monkeypatch):
+    from fabrication.assembly.debug_console import servo_session
+    original=servo_session.write_register;calls=[]
+    def fail_one(port,i,address,value,size):
+        calls.append((i,address))
+        if i==9 and address==46:raise OSError('lost zero acknowledgement')
+        return original(port,i,address,value,size)
+    monkeypatch.setattr(servo_session,'write_register',fail_one)
+    with pytest.raises(ValueError,match='停车写入失败'):
+        servo.start('failed parking',True,stationary_base=True)
+    assert (10,46) in calls and (9,40) in calls and (10,40) in calls
+    assert not servo.active and not runtime.limit_test.running
+
+
+def test_stationary_wheel_temperature_glitch_uses_new_same_motor_read(runtime,servo,monkeypatch):
+    servo.start('stationary temperature',True,stationary_base=True)
+    original=servo.lt._read;injected=[]
+    def once(port,i):
+        value=original(port,i)
+        if (port,i)==('COM4',10) and not injected:
+            injected.append(True);value=list(value);value[63]=92
+        return value
+    monkeypatch.setattr(servo.lt,'_read',once)
+    assert servo.watchdog_tick() is None and servo.active
+    assert (servo.dir/'wheel-temperature-checks.jsonl').is_file()
+    servo.end(servo.session_id)
+
+
 def test_refusals_leave_the_robot_untouched(runtime, servo, monkeypatch):
     from fabrication.assembly.debug_console import servo_session
     monkeypatch.setattr(servo_session, 'MAX_STEP_S', 5.0)
@@ -156,6 +208,10 @@ def test_the_controller_api(runtime, servo, monkeypatch):
     assert client.post('/api/agent/run', json={'steps': [{'op': 'wait'}], 'confirmed': True}).status_code == 409
     assert not client.post('/api/servo/stop', json={}).json()['active']
     assert client.post('/api/servo/end', json={'session_id': sid}).status_code == 409
+    parked=client.post('/api/servo/session',json={'label':'stationary api','confirmed':True,'stationary_base':True}).json()
+    assert parked['stationary_base'] and parked['wheel_park']['verified']
+    assert all(reg(runtime,'COM4',i)[40]==0 for i in (9,10))
+    client.post('/api/servo/stop',json={})
 
 
 AUTH = '2026-11-03 用户：目前机器人向后移动10-20厘米完全没问题'

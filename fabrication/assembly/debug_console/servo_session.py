@@ -21,7 +21,7 @@ from pathlib import Path
 
 from .control_runtime import now
 from .limit_selftest import Aborted, Blocked
-from .torque_control import word
+from .torque_control import word, write_register
 from .whole_calibration import atomic_json
 from .temperature_guard import POLICY_VERSION, confirm_temperature, normal_temperature
 
@@ -71,13 +71,15 @@ class ServoSession:
         self.last = None
         self.contacts = deque(maxlen=20)
         self._thread = None
+        self.stationary_base = False
+        self.wheel_park = None
 
     @property
     def lt(self):
         return self.runtime.limit_test
 
     # ---- lifecycle ---------------------------------------------------------
-    def start(self, label='', confirmed=False, lease_s=4.0):
+    def start(self, label='', confirmed=False, lease_s=4.0, stationary_base=False):
         r, lt = self.runtime, self.lt
         with self.state_lock, r.io:
             if self.active:
@@ -99,6 +101,8 @@ class ServoSession:
             blocked = [b for b in preparation.get('blocked', []) if not (b['port'] == 'COM4' and b['id'] in (9, 10))]
             if blocked:
                 raise ValueError('关节未就绪：' + '，'.join(f"{b['port']}:{b['id']} {b['reason']}" for b in blocked))
+            self.stationary_base = stationary_base is True
+            self.wheel_park = self._park_wheels() if self.stationary_base else None
             lt.running = True; lt.abort_reason = None; lt.error = None; lt.current = 'servo'; lt.live = {}
             lt.plan = []; lt.results = {}; lt.torque_backup = {}; lt.limit_backup = {}; lt.finalized = set()
             lt.arm_origin = {}; lt.events.clear(); lt.started_at = now(); lt.finished_at = None
@@ -112,6 +116,7 @@ class ServoSession:
             self.started = self.last_call = self.clock(); self.started_at = now(); self.finished_at = None
             atomic_json(self.dir/'session.json', {'label': self.label, 'session_id': self.session_id, 'started_at': self.started_at,
                                                   'lease_s': self.lease_s})
+            if self.wheel_park:atomic_json(self.dir/'wheel-park.json',self.wheel_park)
             lt._log(f'抓取会话开始：{self.label or self.session_id}')
         if self.watchdog:
             self._thread = threading.Thread(target=self._watch, daemon=True, name='servo-session-watchdog')
@@ -149,6 +154,7 @@ class ServoSession:
             try:
                 lt._cleanup()
             finally:
+                if self.stationary_base:self._zero_wheels()
                 lt.running = False; lt.current = None; lt.finished_at = now()
                 self.active = False; self.ended_reason = reason; self.finished_at = now()
             try:
@@ -183,6 +189,11 @@ class ServoSession:
             reason = '会话超过最长时间'
             self.stop(reason)
             return reason
+        if self.stationary_base:
+            hazard=self._parked_hazard()
+            if hazard:
+                self.stop(hazard)
+                return hazard
         if not busy and idle > self.lease_s and self.step_lock.acquire(blocking=False):
             try:
                 reason = f'租约超时：抓取端{idle:.1f}秒未发送'
@@ -193,6 +204,64 @@ class ServoSession:
         return None
 
     # ---- motion ------------------------------------------------------------
+    def _zero_wheels(self):
+        failures=[]
+        with self.runtime.io:
+            for address,value,size in ((46,0,2),(40,0,1)):
+                for i in (9,10):
+                    try:write_register(self.runtime.session.ports['COM4'],i,address,value,size)
+                    except Exception as exc:failures.append(f'{i}:{exc}')
+        if failures:self.lt._log('静止底盘停车写入异常：'+'; '.join(failures))
+        return failures
+
+    def _wheel_row(self):
+        row={'at':time.monotonic(),'wheels':{}}
+        for i in (9,10):
+            reg=self.lt._read('COM4',i)
+            reg,check=confirm_temperature(reg,lambda:self.lt._read('COM4',i),45,
+                other_ok=lambda r:r[40]==0 and r[33]==1 and not r[65] and 11.5<=r[62]/10<=12.6)
+            row['wheels'][i]={'position':word(reg,56),'speed':word(reg,58),
+                             'goal_velocity':word(reg,46),'torque':reg[40],
+                             'mode':reg[33],'status':reg[65],
+                             'voltage':reg[62]/10,'temperature':reg[63]}
+            if check:
+                row['wheels'][i]['temperature_check']=check
+                if self.active and self.dir:
+                    with (self.dir/'wheel-temperature-checks.jsonl').open('a',encoding='utf8') as f:
+                        f.write(json.dumps({'at':now(),'motor':i,'check':check},ensure_ascii=False)+'\n')
+        return row
+
+    def _park_wheels(self):
+        from deployment.grasp.recovery import parked_wheels
+        if self._zero_wheels():raise ValueError('静止底盘停车写入失败，禁止手臂动作')
+        rows=[];deadline=time.monotonic()+2.5
+        while time.monotonic()<deadline:
+            rows.append(self._wheel_row())
+            if parked_wheels(rows):
+                return {'verified':True,'policy':'torque-off-encoder-window-v1','rows':rows}
+            time.sleep(.08)
+        raise ValueError('静止底盘未取得600ms编码器稳定证据，禁止手臂动作')
+
+    def _parked_hazard(self):
+        reason=None;row=None
+        try:
+            row=self._wheel_row()
+            for i,m in row['wheels'].items():
+                if (m['torque']!=0 or m['mode']!=1 or m['goal_velocity']!=0 or m['status']
+                        or (m['speed']&0x7fff)>50 or not normal_temperature(m['temperature'],45)
+                        or not 11.5<=m['voltage']<=12.6):
+                    reason=f'静止底盘轮{i}状态变化，停止手臂';break
+                origin=self.wheel_park['rows'][0]['wheels'][i]['position']
+                if abs((m['position']-origin+2048)%4096-2048)>2:
+                    reason=f'静止底盘轮{i}编码器移动，停止手臂';break
+        except Exception as exc:reason='静止底盘回读失败：'+str(exc)
+        if reason and self.dir:
+            try:
+                with (self.dir/'wheel-guard.jsonl').open('a',encoding='utf8') as f:
+                    f.write(json.dumps({'at':now(),'reason':reason,'row':row},ensure_ascii=False)+'\n')
+            except OSError:pass
+        return reason
+
     def _reverse_used(self):
         try:
             data = json.loads((self.root/'base-authorizations.json').read_text(encoding='utf-8'))
@@ -245,6 +314,7 @@ class ServoSession:
         """One chassis leg inside the session (wheels only, arms held): reverse inside the budget, or a
         forward leg back toward the start, at most FORWARD_LIMIT_M past it."""
         self._check(session_id)
+        if self.stationary_base:raise ValueError('静止底盘会话禁止行驶；移动需另开明确的行驶会话')
         if (isinstance(distance_m, bool) or not isinstance(distance_m, (int, float)) or not math.isfinite(distance_m)
                 or not 0.005 <= abs(distance_m) <= BASE_LEG_M + 1e-9):
             raise ValueError(f'底盘每段只接受0.5–{BASE_LEG_M*100:g}cm（后退取负值）')
@@ -328,6 +398,11 @@ class ServoSession:
 
     def step(self, session_id, targets, torque=None, speed_deg=12, label=''):
         self._check(session_id)
+        if self.stationary_base:
+            hazard=self._parked_hazard()
+            if hazard:
+                self.stop(hazard)
+                raise ValueError(hazard)
         if not isinstance(targets, dict) or not targets or len(targets) > 8:
             raise ValueError('需要1–8个关节目标')
         if not self.step_lock.acquire(blocking=False):
@@ -398,6 +473,11 @@ class ServoSession:
 
     def hold(self, session_id):
         self._check(session_id)
+        if self.stationary_base:
+            hazard=self._parked_hazard()
+            if hazard:
+                self.stop(hazard)
+                raise ValueError(hazard)
         with self.state_lock:
             self.last_call = self.clock()
         return {'session_id': self.session_id, 'active': self.active, 'joints': self.telemetry()}
@@ -452,6 +532,8 @@ class ServoSession:
             if last:
                 last.pop('joints', None)
             return {'active': self.active, 'busy': self.busy, 'session_id': self.session_id if self.active else None,
+                    'stationary_base':self.stationary_base,
+                    'wheel_park':{'verified':bool(self.wheel_park),'policy':'torque-off-encoder-window-v1'},
                     'temperature_policy': POLICY_VERSION,
                     'label': self.label, 'steps': self.steps, 'lease_s': self.lease_s,
                     'idle_s': round(self.clock() - self.last_call, 2) if self.active and self.last_call else None,
