@@ -7,6 +7,7 @@ import json
 import subprocess
 import time
 import os
+import threading
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -312,10 +313,16 @@ def calibration_read():
         if runtime.controller['armed']:raise HTTPException(409,'先松开LB')
         return runtime.capture_profile()
 
+camera_health_lock = threading.Lock()
+
+
 def set_camera(camera,state,frames=None):
-    with runtime.io:
-        runtime.camera_health[camera]['state']=state
-        if frames is not None:runtime.camera_health[camera]['frames']=frames
+    # Serial preparation may hold runtime.io for seconds. Camera publication
+    # must continue during that time so safety observers receive fresh frames.
+    with camera_health_lock:
+        current={**runtime.camera_health[camera],'state':state}
+        if frames is not None:current['frames']=frames
+        runtime.camera_health[camera]=current
 
 from .camera_snapshot import CameraSnapshots
 camera_snapshots = CameraSnapshots()
