@@ -345,10 +345,9 @@ class Observer:
                                 and state.get('scale',0)>=.65 and agreement):
                             state.update(ok=True,bbox=a,center=continuity['center'],
                                          why='Distributed reversible features confirm changing body')
-                        if state['ok'] and state.get('score',0)>=.85 and agreement and n%5==0:
-                            self.flow.init(gray,box)
-                    elif state['ok'] and state.get('score',0)>=.85 and n%5==0:
-                        self.flow.init(gray,box)
+                    # A high NCC score is not independent identity evidence.
+                    # Only explicit acquisition/closing transitions seed flow;
+                    # a lost chain stays lost until another verified acquisition.
                     state['continuity']=continuity
                     state.update(gray=gray, captured_at=at, sampled_at=time.monotonic())
                     self.samples.append(state)
@@ -554,7 +553,7 @@ class LocalController(GraspController):
         floor = validated_grip_floor(getattr(self.obs, 'side', None),
                                      getattr(self.obs, 'appearance', None),
                                      self.cfg.get('local_grip_floor', 1450))
-        self.preload_refused = False
+        self.preload_refused = True
         anchor = list(obs['bbox']) if obs.get('bbox') else None
         if hasattr(self.obs, 'reanchor'):
             x,y,w,h=anchor

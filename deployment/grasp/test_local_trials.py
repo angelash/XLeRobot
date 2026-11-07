@@ -514,6 +514,36 @@ def test_closing_anchor_cannot_revive_failed_or_partial_target():
     assert observer.tracker.state()['bbox']==pytest.approx([300,250,80,90],abs=2)
 
 
+@pytest.mark.parametrize('flow_ok', [False, True])
+def test_high_ncc_cannot_reseed_or_revive_independent_identity(tmp_path, flow_ok):
+    import time
+    from types import SimpleNamespace
+    from deployment.grasp.local_trials import Observer
+    im = np.full((480,640,3),200,np.uint8)
+    observer = Observer(SimpleNamespace(root=tmp_path,get=lambda _:(im,b'jpeg',time.time())), 'left','dark')
+    def update(_):
+        observer.stop.set()
+        return {'ok':True,'score':.99,'scale':1.,'bbox':[300,250,80,90]}
+    observer.tracker.update = update
+    observer.flow.update = lambda _: {'ok':flow_ok,'bbox':[300,250,80,90],'center':[340,295]}
+    observer.flow.init = lambda *_: pytest.fail('NCC cannot become independent identity evidence')
+    observer._track()
+    assert observer.failure is None
+
+
+def test_tracking_failure_during_closing_does_not_lift_an_unverified_grasp(monkeypatch):
+    from deployment.grasp.controller import GraspController
+    def lost(*_):
+        raise GraspFailure('Lost object during closing')
+    monkeypatch.setattr(GraspController,'_close',lost)
+    brain = LocalController(None,None)
+    with pytest.raises(GraspFailure,match='Lost object'):
+        brain._close({})
+    monkeypatch.setattr(GraspController,'_safe_raise',lambda *_:pytest.fail('Unverified grasp lifted'))
+    brain._safe_raise()
+    assert brain.events[-1]['kind']=='preload_refused_hold'
+
+
 def test_closing_drift_does_not_replace_original_verification_window(monkeypatch):
     from deployment.grasp.controller import GraspController
     brain=LocalController(None,None)
