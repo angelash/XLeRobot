@@ -37,6 +37,19 @@ REFS = {'left': (2211, 955, 2245), 'right': (2245, 901, 2049)}
 CAMERAS = {'left': 2, 'right': 1}
 
 
+def validated_grip_floor(side, appearance, value=1450):
+    """Finite engineering candidates, inside the observed jaw device limits.
+
+    Lower travel is explicit and restricted to the known left black adapter;
+    torque, jaw lead, contact stops and success evidence remain unchanged.
+    """
+    if type(value) is not int or value not in (1450, 1420, 1400):
+        raise ValueError('Experimental jaw floor must be 1450, 1420 or 1400')
+    if value != 1450 and (side, appearance) != ('left', 'dark'):
+        raise ValueError('Extra jaw travel is restricted to the known left dark fixture')
+    return value
+
+
 def request(path, body=None, port=8765):
     raw = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(f'http://127.0.0.1:{port}'+path, data=raw,
@@ -510,6 +523,10 @@ class LocalController(GraspController):
         self._key('home')
 
     def _close(self, obs):
+        floor = validated_grip_floor(getattr(self.obs, 'side', None),
+                                     getattr(self.obs, 'appearance', None),
+                                     self.cfg.get('local_grip_floor', 1450))
+        self.preload_refused = False
         anchor = list(obs['bbox']) if obs.get('bbox') else None
         if hasattr(self.obs, 'reanchor'):
             x,y,w,h=anchor
@@ -520,27 +537,29 @@ class LocalController(GraspController):
             self.obs.reanchor({**obs,'bbox':anchor})
             self._event('closing_anchor', bbox=anchor)
         super()._close(obs)
+        self.preload_refused = True
         # Closing fingers can partly hide/rotate the body. A smaller NCC box
         # must not silently move the lift-verification window onto the desk.
         if anchor is not None:
             self.grip_box = anchor
         self._refresh()
         self.baseline = self._settled_pressure()
+        self._key('settled-preload')
         # This is a named smooth, rigid unplugged adapter, not a colour-to-force
         # model. Two left-arm trials lost pressure after a marginal 60/15 grip.
         # Demand more measured preload within the same torque/travel budget.
         required = {'load':180, 'lead':40} if getattr(self.obs,'appearance',None)=='dark' else {'load':60,'lead':15}
-        self._event('required_preload', required=required, torque_ceiling=600, raw_floor=1450)
+        self._event('required_preload', required=required, torque_ceiling=600, raw_floor=floor)
         # The old controller could stop after 220 counts of visual movement,
         # although no pressure existed. Keep a finite measured closing budget.
         previous_target = None
-        for _ in range(10):
+        for n in range(10):
             if all(self.baseline[k] >= required[k] for k in required):
                 break
             # Accumulate the requested compression, not the gravity/deadband
             # shortfall. Actual-minus-30 can never create lead above 30.
             # Limit each command to 60 raw ahead of the current jaw position.
-            target = max(1450, int(self.q['grip'])-60,
+            target = max(floor, int(self.q['grip'])-60,
                          int(self.q.get('grip_goal') or self.q['grip'])-30)
             if target >= self.q['grip']-5 or target == previous_target:
                 break
@@ -548,10 +567,22 @@ class LocalController(GraspController):
             self._refresh()
             self.baseline = self._settled_pressure()
             self._event('pressure_correction', pressure=self.baseline, target=target)
+            self._key(f'preload-correction-{n+1:02d}')
             previous_target = target
         if any(self.baseline[k] < required[k] for k in required):
+            self.preload_refused = True
             raise GraspFailure('Local pressure baseline insufficient; no lift')
         self.grasp_pose = dict(self.q)
+        self.preload_refused = False
+
+    def _safe_raise(self):
+        if getattr(self, 'preload_refused', False):
+            # The object is still supported. Do not turn a rejected pressure
+            # check into an unverified pickup through generic error cleanup.
+            self._event('preload_refused_hold', motion_commands=0,
+                        reason='Keep the recorded supported pose for release recovery')
+            return
+        return super()._safe_raise()
 
     def pressure(self):
         return {'load': float(self.q.get('grip_load') or 0),
@@ -637,16 +668,23 @@ def main():
     parser.add_argument('--side', choices=('left', 'right'), required=True)
     parser.add_argument('--appearance', choices=('light', 'dark'),
                         help='Named unplugged fixture; defaults to light left / dark right')
+    parser.add_argument('--grip-floor', type=int, default=1450,
+                        help='Explicit left dark fixture travel candidate: 1450, 1420 or 1400')
     parser.add_argument('--root', required=True)
     parser.add_argument('--confirmed', action='store_true')
     parser.add_argument('--previous')
     args = parser.parse_args()
+    appearance = args.appearance or ('light' if args.side == 'left' else 'dark')
+    try:
+        floor = validated_grip_floor(args.side, appearance, args.grip_floor)
+    except ValueError as exc:
+        parser.error(str(exc))
     root = Path(args.root)
     root.mkdir(parents=True, exist_ok=False)
     frames = Frames(root)
     recorder = Recorder(frames)
-    appearance = args.appearance or ('light' if args.side == 'left' else 'dark')
     result = {'ok': False, 'side': args.side, 'appearance': appearance, 'action': args.action, 'llm_calls': 0,
+              'experimental_grip_floor': floor,
               'policy_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'source': 'local_opencv_and_bounded_planar_controller', 'started_at': datetime.now().astimezone().isoformat()}
     ex = obs = None
@@ -664,7 +702,8 @@ def main():
             config = {'max_attempts': 1, 'hold_s': 3., 'end_pose': 'survey',
                       'survey_pitch': 115. if appearance=='light' else 130.,
                       'approach_pitch': 105. if appearance=='light' else 125.,
-                      'squeeze_torque': 600, 'reverse_authorization': '', 'approach_torque': 450}
+                      'squeeze_torque': 600, 'reverse_authorization': '', 'approach_torque': 450,
+                      'local_grip_floor': floor}
             brain = LocalController(ex, obs, recorder, config)
             if args.action == 'survey':
                 result.update(brain.run_survey())

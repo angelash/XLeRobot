@@ -6,6 +6,58 @@ from deployment.grasp.local_trials import candidates, SideExecutor, LocalControl
 from deployment.grasp.controller import GraspFailure
 
 
+def test_extra_jaw_travel_requires_explicit_known_fixture_and_bounded_value():
+    from deployment.grasp.local_trials import validated_grip_floor
+    assert validated_grip_floor('right', 'light') == 1450
+    assert validated_grip_floor('left', 'dark', 1420) == 1420
+    assert validated_grip_floor('left', 'dark', 1400) == 1400
+    for side, appearance, value in [('right', 'dark', 1420), ('left', 'light', 1400),
+                                    ('left', 'dark', 1399), ('left', 'dark', True)]:
+        with pytest.raises(ValueError):
+            validated_grip_floor(side, appearance, value)
+
+
+def test_explicit_travel_candidate_keeps_torque_lead_and_photographic_evidence(monkeypatch):
+    from types import SimpleNamespace
+    from deployment.grasp.controller import GraspController
+    monkeypatch.setattr(GraspController, '_close', lambda *_: None)
+    brain = LocalController(None, SimpleNamespace(side='left', appearance='dark'),
+                            config={'local_grip_floor': 1420})
+    brain.q = {'grip':1473, 'grip_goal':1450, 'grip_load':104}
+    monkeypatch.setattr(brain, '_refresh', lambda: None)
+    monkeypatch.setattr(brain, '_settled_pressure', brain.pressure)
+    photos, commands = [], []
+    monkeypatch.setattr(brain, '_key', photos.append)
+    def move(targets, **kw):
+        target = targets['left:6']
+        assert target >= 1420 and brain.q['grip']-target <= 60 and kw['torque'] == 600
+        commands.append(target)
+        brain.q.update(grip=1460, grip_goal=target, grip_load=200)
+    monkeypatch.setattr(brain, '_move', move)
+    brain._close({})
+    assert commands == [1420] and brain.baseline == {'load':200., 'lead':40.}
+    assert photos == ['settled-preload', 'preload-correction-01']
+
+
+def test_rejected_preload_keeps_supported_pose_without_generic_failure_lift(monkeypatch):
+    from types import SimpleNamespace
+    from deployment.grasp.controller import GraspController
+    monkeypatch.setattr(GraspController, '_close', lambda *_: None)
+    brain = LocalController(None, SimpleNamespace(appearance='dark'))
+    brain.q = {'grip':1450, 'grip_goal':1450, 'grip_load':20}
+    monkeypatch.setattr(brain, '_refresh', lambda: None)
+    monkeypatch.setattr(brain, '_settled_pressure', brain.pressure)
+    with pytest.raises(GraspFailure, match='baseline insufficient'):
+        brain._close({})
+    raises = []
+    monkeypatch.setattr(GraspController, '_safe_raise', lambda *_: raises.append('raise'))
+    brain._safe_raise()
+    assert not raises and brain.events[-1]['kind'] == 'preload_refused_hold'
+    brain.preload_refused = False
+    brain._safe_raise()
+    assert raises == ['raise']
+
+
 def test_support_recovery_uses_full_events_before_the_failure_raise(tmp_path):
     import json
     from deployment.grasp.local_trials import supported_pose
