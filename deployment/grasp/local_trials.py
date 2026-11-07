@@ -35,6 +35,29 @@ from .recovery import hardware_readiness
 
 REFS = {'left': (2211, 955, 2245), 'right': (2245, 901, 2049)}
 CAMERAS = {'left': 2, 'right': 1}
+RIGHT_PAN_BOUNDS = (1800, 2250)
+
+
+def require_right_workspace(state):
+    """Restrict resumed right trials to the separated, folded-idle-arm corridor.
+
+    Raw conditions describe this observed setup, not a calibrated collision
+    model. Original inner crossing paths remain unavailable to this skill.
+    """
+    motors = {(p['port'], m['id']): m for p in state.get('ports', []) for m in p['motors']}
+    try:
+        right_pan = motors['COM3', 1]['position']
+        left = {i: motors['COM4', i] for i in range(1, 7)}
+        if not RIGHT_PAN_BOUNDS[0] <= right_pan <= RIGHT_PAN_BOUNDS[1]:
+            raise ValueError('right shoulder pan is outside the separated workspace')
+        if not (left[1]['position'] <= 1750 and left[2]['position'] <= 1350
+                and left[3]['position'] >= 2800 and 2146 <= left[4]['position'] <= 2346
+                and left[6]['position'] <= 1400 and (abs(left[6]['load_raw']) & 1023) < 60):
+            raise ValueError('left idle gripper and camera are not in the cleared folded pose')
+    except (KeyError, TypeError) as exc:
+        raise GraspFailure('Right workspace has incomplete readback') from exc
+    except ValueError as exc:
+        raise GraspFailure('Right workspace guard: '+str(exc)) from exc
 
 
 def validated_grip_floor(side, appearance, value=1450):
@@ -231,11 +254,16 @@ class SideExecutor:
         return out
 
     def start(self, label=''):
+        if self.side == 'right':
+            require_right_workspace(preflight())
         return self.inner.start('local-'+self.side+': '+label)
 
     def step(self, targets, torque=None, speed=12., label=''):
         if any(not k.startswith('left:') for k in targets):
             raise GraspFailure('Trial executor accepts only its assigned arm')
+        if (self.side == 'right' and 'left:1' in targets
+                and not RIGHT_PAN_BOUNDS[0] <= targets['left:1'] <= RIGHT_PAN_BOUNDS[1]):
+            raise GraspFailure('Right workspace guard refuses an inner crossing pan target')
         real = {self.side+':'+k.split(':')[1]: v+self.offset.get(int(k.split(':')[1]), 0) for k, v in targets.items()}
         return self.normalize(self.inner.step(real, torque, speed, label))
 
@@ -685,6 +713,7 @@ def main():
     recorder = Recorder(frames)
     result = {'ok': False, 'side': args.side, 'appearance': appearance, 'action': args.action, 'llm_calls': 0,
               'experimental_grip_floor': floor,
+              'right_pan_bounds': list(RIGHT_PAN_BOUNDS) if args.side == 'right' else None,
               'policy_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'source': 'local_opencv_and_bounded_planar_controller', 'started_at': datetime.now().astimezone().isoformat()}
     ex = obs = None

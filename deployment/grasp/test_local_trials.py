@@ -6,6 +6,48 @@ from deployment.grasp.local_trials import candidates, SideExecutor, LocalControl
 from deployment.grasp.controller import GraspFailure
 
 
+def test_right_workspace_requires_folded_idle_gripper_and_separated_pan():
+    from deployment.grasp.local_trials import require_right_workspace
+    import copy
+    state = {'ports': [{'port':'COM3', 'motors':[{'id':1, 'position':2020}]},
+                       {'port':'COM4', 'motors':[{'id':i, 'position':p, 'load_raw':0}
+                         for i,p in enumerate((1709,1179,2913,2246,2132,1340),1)]}]}
+    require_right_workspace(state)
+    for index, position in [(0,1920),(1,2000),(2,2100),(3,2800),(5,1550)]:
+        bad = copy.deepcopy(state);bad['ports'][1]['motors'][index]['position']=position
+        with pytest.raises(GraspFailure,match='workspace guard'):
+            require_right_workspace(bad)
+    bad = copy.deepcopy(state);bad['ports'][0]['motors'][0]['position']=1393
+    with pytest.raises(GraspFailure,match='workspace guard'):
+        require_right_workspace(bad)
+    bad = copy.deepcopy(state);bad['ports'][1]['motors'][-1]['load_raw']=1100
+    with pytest.raises(GraspFailure,match='workspace guard'):
+        require_right_workspace(bad)
+    with pytest.raises(GraspFailure,match='incomplete readback'):
+        require_right_workspace({'ports':[]})
+
+
+def test_right_trial_cannot_reenter_old_inner_pan_even_when_device_limit_allows(monkeypatch):
+    ex = SideExecutor('right')
+    sent = []
+    monkeypatch.setattr(ex.inner,'step',lambda *args:sent.append(args) or {})
+    with pytest.raises(GraspFailure,match='workspace guard'):
+        ex.step({'left:1':1393},torque=450,speed=5)
+    assert not sent
+    ex.step({'left:1':2020},torque=450,speed=5)
+    assert sent[0][0]=={'right:1':2020}
+
+
+def test_right_clearance_is_checked_before_every_new_servo_session(monkeypatch):
+    from deployment.grasp import local_trials
+    ex = SideExecutor('right');calls=[]
+    monkeypatch.setattr(local_trials,'preflight',lambda:{'ports':[]})
+    monkeypatch.setattr(ex.inner,'start',lambda *_:calls.append('started'))
+    with pytest.raises(GraspFailure,match='incomplete readback'):
+        ex.start('right clearance check')
+    assert not calls
+
+
 def test_extra_jaw_travel_requires_explicit_known_fixture_and_bounded_value():
     from deployment.grasp.local_trials import validated_grip_floor
     assert validated_grip_floor('right', 'light') == 1450
