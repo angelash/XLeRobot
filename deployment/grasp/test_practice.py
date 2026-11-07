@@ -1,6 +1,36 @@
 import json
+from pathlib import Path
 
 from deployment.grasp.practice import counts, load_trial
+
+
+def test_nested_trial_archives_publish_at_supported_depth_with_exact_readback(tmp_path):
+    from deployment.grasp.practice import publish_history_archives
+    import zipfile,hashlib
+    root=tmp_path/'campaign';trial=root/'trials'/'left-test-001';trial.mkdir(parents=True)
+    for suffix in ('.zip','-control.zip'):
+        with zipfile.ZipFile(trial.parent/(trial.name+suffix),'w') as z:
+            z.writestr('example.json','{"generated_test_data":true}')
+    rows=publish_history_archives(trial,root)
+    assert len(rows)==2
+    for row in rows:
+        p=Path(row['path'])
+        assert p.read_bytes()==(trial.parent/p.name).read_bytes()
+        assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
+    assert publish_history_archives(trial,root)==rows
+    assert not list(root.glob('*.tmp'))
+
+
+def test_publication_preserves_unknown_archive_and_rejects_outside_trial(tmp_path):
+    from deployment.grasp.practice import publish_history_archives
+    import pytest
+    root=tmp_path/'campaign';trial=root/'trials'/'left-test';trial.mkdir(parents=True)
+    (trial.parent/'left-test.zip').write_bytes(b'new generated archive')
+    known=root/'left-test.zip';known.write_bytes(b'existing unrelated archive')
+    with pytest.raises(FileExistsError):publish_history_archives(trial,root)
+    assert known.read_bytes()==b'existing unrelated archive'
+    with pytest.raises(ValueError):publish_history_archives(tmp_path/'outside',root)
+    assert not list(root.glob('*.tmp'))
 
 
 def test_search_refusals_and_other_arm_never_inflate_actual_closing_count():

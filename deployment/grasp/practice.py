@@ -15,9 +15,41 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import uuid
 
 DEPENDENCIES = ('practice.py', 'local_trials.py', 'flow.py', 'controller.py',
                 'tracker.py', 'arm.py', 'vision.py', 'service.py', 'recovery.py')
+
+
+def publish_history_archives(trial, root):
+    """Publish completed paired archives at the Studio index's existing depth.
+
+    A trial remains in trials/<tag>; the canonical photos/control ZIPs live at
+    the campaign root. Existing different files are never overwritten.
+    """
+    trial, root = Path(trial).resolve(), Path(root).resolve()
+    if not trial.is_relative_to(root) or trial == root:
+        raise ValueError('Trial archive outside campaign')
+    rows=[]
+    for suffix in ('.zip','-control.zip'):
+        source=trial.parent/(trial.name+suffix)
+        if not source.exists():continue
+        data=source.read_bytes();digest=hashlib.sha256(data).hexdigest()
+        dest=root/source.name
+        if source==dest:continue
+        temporary=root/(source.name+'.'+uuid.uuid4().hex+'.tmp')
+        try:
+            temporary.write_bytes(data)
+            try:os.link(temporary,dest)
+            except FileExistsError:
+                if hashlib.sha256(dest.read_bytes()).hexdigest()!=digest:
+                    raise FileExistsError('Different existing Studio archive: '+str(dest))
+            if hashlib.sha256(dest.read_bytes()).hexdigest()!=digest:
+                raise OSError('Studio archive readback mismatch')
+        finally:
+            temporary.unlink(missing_ok=True)
+        rows.append({'path':str(dest),'sha256':digest,'bytes':len(data)})
+    return rows
 
 
 def load_trial(path):
@@ -131,6 +163,12 @@ def main():
             row = load_trial(dest/'result.json')
             row['wall_seconds'] = round(time.monotonic()-began, 2)
             rows.append(row)
+            try:
+                row['history_archives']=publish_history_archives(dest,root)
+            except (OSError,ValueError) as exc:
+                reason='Studio archive publication failed; evidence retained: '+str(exc)
+                row['history_publication_error']=str(exc)
+                break
             report = {'protocol':protocol, 'elapsed_s':round(time.monotonic()-started, 1),
                       'counts':counts(rows, args.side, args.target), 'rows':rows,
                       'last':row, 'status':'running'}
