@@ -1,0 +1,141 @@
+{
+  "schema": "robot-retrospective-grasp-summary-v1",
+  "as_of": "2026-11-07T12:36:08+08:00",
+  "source_commit": "ed84a89fa59a2a9009d38d81deedaf75e9753290",
+  "scope": "hundred-grasp campaign only; earlier local-dual campaign, fixed C/F/G groups, empty-jaw calibration and recoveries excluded",
+  "evidence": {
+    "archive_sha256": "0f8bf78828720143e2ec8f068b96cd014d7ab9e1a0c2f2640195753bca468087",
+    "archive_payloads": 6262,
+    "archive_payload_bytes": 120671988,
+    "archive_bytes": 97065606,
+    "verification": "workstation download and per-payload length/SHA verification completed before this retrospective",
+    "derivation": "select all action=pick results; closure requires a recorded close-phase gripper step in full events; use the recorded empty controller event list for the single startup exception with no event file; direct outcome from final error",
+    "event_file_coverage": {
+      "result_records": 40,
+      "complete_event_files": 39,
+      "startup_type_exception_without_event_file": 1,
+      "handling": "the one startup exception has an empty recorded controller event list and no closure; retained as software_exception"
+    }
+  },
+  "all_trials_reported_llm_calls_zero": true,
+  "outcome_kind": "local program outcomes, not independently adjudicated physical success",
+  "counts": {
+    "left": {
+      "requests": 26,
+      "actual_closures": 14,
+      "preclosure_refusals": 12,
+      "program_passes": 2,
+      "target_closures": 100,
+      "remaining_closures": 86
+    },
+    "right": {
+      "requests": 14,
+      "actual_closures": 10,
+      "preclosure_refusals": 4,
+      "program_passes": 8,
+      "target_closures": 100,
+      "remaining_closures": 90
+    }
+  },
+  "totals": {
+    "requests": 40,
+    "actual_closures": 24,
+    "preclosure_refusals": 16,
+    "program_passes": 10,
+    "program_nonpasses": 30,
+    "request_weighted_mixed_program_pass_fraction": 0.25,
+    "closure_conditioned_mixed_program_pass_fraction": 0.4166666666666667,
+    "physical_success_probability": null
+  },
+  "source_variation": {
+    "distinct_local_trials_file_sha256": 24,
+    "not_equivalent_to": "number of complete dependency sets or independently evaluated algorithms"
+  },
+  "timing": {
+    "sum_result_finished_minus_started_s": 2547.159,
+    "median_request_s": 68.583,
+    "median_program_pass_request_s": 90.042,
+    "excluded": "sum of pick result finished-started only; excludes compilation, archive finalization, diagnosis, recovery, tests, deployment and powered-off gaps",
+    "calendar_time_attribution": "not available"
+  },
+  "mutually_exclusive_direct_outcomes": [
+    {
+      "category": "tracking_integrity",
+      "requests": 7,
+      "actual_closures": 4,
+      "records_with_contact": 0
+    },
+    {
+      "category": "program_pass",
+      "requests": 10,
+      "actual_closures": 10,
+      "records_with_contact": 0
+    },
+    {
+      "category": "preload_refused",
+      "requests": 4,
+      "actual_closures": 4,
+      "records_with_contact": 0
+    },
+    {
+      "category": "acquisition_or_redetection",
+      "requests": 9,
+      "actual_closures": 1,
+      "records_with_contact": 0
+    },
+    {
+      "category": "software_exception",
+      "requests": 1,
+      "actual_closures": 0,
+      "records_with_contact": 0
+    },
+    {
+      "category": "lift_unconfirmed",
+      "requests": 3,
+      "actual_closures": 3,
+      "records_with_contact": 0
+    },
+    {
+      "category": "stale_frame",
+      "requests": 2,
+      "actual_closures": 0,
+      "records_with_contact": 0
+    },
+    {
+      "category": "contact_primary",
+      "requests": 1,
+      "actual_closures": 1,
+      "records_with_contact": 1
+    },
+    {
+      "category": "alignment_budget",
+      "requests": 1,
+      "actual_closures": 0,
+      "records_with_contact": 0
+    },
+    {
+      "category": "control_http500",
+      "requests": 1,
+      "actual_closures": 1,
+      "records_with_contact": 0
+    },
+    {
+      "category": "insertion_budget",
+      "requests": 1,
+      "actual_closures": 0,
+      "records_with_contact": 1
+    }
+  ],
+  "crosscutting_observations": {
+    "results_with_contact": 2,
+    "last_12_left_requests_nonpass": true,
+    "root_cause_taxonomy": "not established; direct outcomes may share upstream causes"
+  },
+  "limitations": [
+    "Mixed code, appearance and scene conditions: ratios do not estimate one fixed physical policy.",
+    "Some nonpasses are uncertainty or refusal, not proof that a physical pickup failed.",
+    "Images were not all independently relabelled in this retrospective.",
+    "Earlier fixed 10/10 group is valid only in its recorded supervised setting and is not included here.",
+    "No robot motion, new capture, model training or guard changes performed for this report."
+  ]
+}
