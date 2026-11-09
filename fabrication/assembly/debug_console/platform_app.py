@@ -288,6 +288,7 @@ async def lifespan(app):
     try:
         yield
     finally:
+        await asyncio.to_thread(app.state.phone_vision.close)
         app.state.fieldmap_history.stop()
         if service.recording:await service.stop_record()
         await service.client.aclose()
@@ -311,6 +312,8 @@ install_perception(app, data_dir=DATA/'perception', allowed_origins=lambda: ALLO
 from deployment.grasp.integration import install as install_grasp
 install_grasp(app, data_dir=DATA/'grasp', allowed_origins=lambda: ALLOWED_ORIGINS, controller=UPSTREAM,
               fabric_provider=lambda: getattr(app.state, 'autonomy', {}).get('fabric'))
+from deployment.phone_vision.integration import install as install_phone_vision
+install_phone_vision(app, repo=REPO, data_dir=DATA/'phone-vision', allowed_origins=lambda: ALLOWED_ORIGINS)
 
 @app.middleware('http')
 async def local_only(request,call_next):

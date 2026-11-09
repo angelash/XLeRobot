@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>手机视觉 · XLeRobot Studio</title><link rel="stylesheet" href="/phone-vision/assets/style.css"><script src="/phone-vision/assets/app.js" defer></script></head>
+<body><main>
+<header class="intro"><div><p class="eyebrow">PHONE VISION / USB</p><h1>让手机成为新的视角。</h1><p class="summary">连接手机，启用采集。在这里检查彩色画面、近景深度与连接状态，再进入固定机位测试。</p></div><div class="host"><span>当前采集电脑</span><strong id="host">正在读取</strong><small>手机的数据线需要接在这台电脑上</small></div></header>
+<p id="notice" class="notice" role="status" hidden></p>
+<section class="device" aria-labelledby="iphone-title">
+  <header class="device-head"><div><span class="number">01</span><div><p class="eyebrow">FRONT / TRUEDEPTH</p><h2 id="iphone-title">iPhone 12 <span>彩色与深度</span></h2></div></div><div class="controls"><span id="iphone-state" class="state">未启用</span><button data-device="iphone" data-action="start">启用测试</button><button data-device="iphone" data-action="stop" class="quiet">停止</button></div></header>
+  <div class="feeds"><figure><div class="viewport portrait"><img id="iphone-rgb" alt="iPhone 前置彩色画面" hidden><p id="iphone-rgb-empty">启用后显示前置画面</p></div><figcaption>彩色画面 <span>原始方向</span></figcaption></figure><figure><div class="viewport portrait depth"><img id="iphone-depth" alt="TrueDepth 深度图，点击查看像素深度原值" hidden><p id="iphone-depth-empty">开始采集后显示深度</p></div><figcaption>深度预览 <span>0.2—1.5 米 · 黑色为无数值区域</span></figcaption></figure></div>
+  <div class="telemetry"><p id="iphone-reason">请接上 USB 并打开 Record3D。</p><dl id="iphone-facts"></dl></div>
+  <div class="depth-readout" id="depth-readout" role="status">点击深度画面查看像素深度原值；距离精度尚待标定。</div>
+  <details><summary>iPhone 如何开始</summary><ol><li>用 Lightning 数据线连接上方显示的采集电脑，解锁并信任这台电脑。</li><li>打开 Record3D，选择前置 TrueDepth，开启 USB Streaming mode。</li><li>在手机上点开始采集，再点本页“启用测试”；保持 App 前台。</li></ol><p>深度显示会截断颜色范围。数值为正不代表测距准确；本次数据若没有置信度图，会如实显示。</p></details>
+</section>
+<section class="device" aria-labelledby="android-title">
+  <header class="device-head"><div><span class="number">02</span><div><p class="eyebrow">REAR / RGB</p><h2 id="android-title">红米 K60 至尊版 <span>辅助视角</span></h2></div></div><div class="controls"><span id="android-state" class="state">未启用</span><button data-device="android" data-action="start">启用测试</button><button data-device="android" data-action="stop" class="quiet">停止</button></div></header>
+  <figure><div class="viewport landscape"><img id="android-rgb" alt="红米后置彩色画面" hidden><p id="android-rgb-empty">接上手机，启用后查看后置画面</p></div><figcaption>后置主摄 <span>彩色视频 · 不提供数值深度</span></figcaption></figure>
+  <div class="telemetry"><p id="android-reason">请接上 USB 并接受调试授权。</p><dl id="android-facts"></dl></div>
+  <details><summary>安卓如何开始</summary><ol><li>使用可传数据的 USB-C 线连接采集电脑，开启开发者选项中的 USB 调试。</li><li>解锁手机，接受这台电脑的调试授权，再点本页“启用测试”。</li><li>采集会直接调用后置相机；相机被其他 App 占用时，先关闭那个 App。</li></ol></details>
+</section>
+<footer><strong>先验证视角，再验证测距。</strong><p>采集仅用于视觉测试，不会驱动机器人。机位、内参和距离误差尚待标定；手机断开或画面超过 1 秒没有更新时，旧画面会被隐藏。启用后会在断线时尝试恢复，点“停止”即可结束。</p></footer>
+</main></body></html>

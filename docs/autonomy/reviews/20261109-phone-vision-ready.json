@@ -1,0 +1,77 @@
+{
+  "date": "2026-11-09",
+  "scope": "Studio phone vision integration and offline car kit; not car deployment",
+  "automated_checks": 48,
+  "studio_page_checks": "passed",
+  "ui": {
+    "checks": {
+      "studio_navigation_and_real_android_preview": true,
+      "stop_hides_old_frame": true,
+      "restart_has_new_session": true,
+      "mobile_no_horizontal_overflow": true,
+      "generated_depth_pixel_click": true,
+      "generated_depth_click_after_resize": true,
+      "no_page_errors": true
+    },
+    "page_errors": [],
+    "synthetic_scope": [
+      "iphone_click_only"
+    ],
+    "real_scope": [
+      "android_preview_stop_restart",
+      "Studio_navigation_mobile_layout"
+    ]
+  },
+  "real_worker_recovery": {
+    "real_worker_interrupt_hidden": true,
+    "recovered_with_new_session": true,
+    "old_session_forward_removed": true,
+    "scope": "Exact task-owned Android worker only; no ADB/controller restart"
+  },
+  "offline_install_checks": {
+    "installer_no_restart": true,
+    "installer_no_motion": true,
+    "generated_private_data_unchanged": true,
+    "portable_configuration_created": true,
+    "all_sources_read_back": true,
+    "local_edit_refused": true
+  },
+  "archive": {
+    "bytes": 147296711,
+    "sha256": "4ad174b88e9aa4fc62580290acf1f84a66358b607da089b67d103e89b4548a04",
+    "payload_files": 1370,
+    "payload_bytes": 337029179,
+    "independent_zip_readback": true,
+    "python_signature": {
+      "status": "Valid",
+      "signer": "CN=Python Software Foundation, O=Python Software Foundation, L=Beaverton, S=Oregon, C=US"
+    },
+    "apple_usb_driver": {
+      "source": "https://www.apple.com/itunes/download/win64",
+      "package": "AppleMobileDeviceSupport64.msi",
+      "signature": {
+        "status": "Valid",
+        "signer": "CN=Apple Inc., O=Apple Inc., L=Cupertino, S=California, C=US"
+      },
+      "installed": false
+    },
+    "car_deployed": false
+  },
+  "live_hardware": [
+    "Android USB RGB through Studio and portable CPython 3.11"
+  ],
+  "generated_only": [
+    "iPhone worker end-to-end packet test",
+    "iPhone browser depth click",
+    "installer private-data sentinel"
+  ],
+  "pending": [
+    "car runtime installation",
+    "car Apple USB driver and Session0 access",
+    "simultaneous phone thermal/load verification",
+    "fixed camera and metric calibration"
+  ],
+  "robot_commands": 0,
+  "source_images_published": false,
+  "car_deployed": false
+}

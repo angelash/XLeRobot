@@ -74,6 +74,17 @@ def test_obstacle_page_is_a_studio_module_without_motion_routes(client):
     assert mod.app.state.perception.running is False
 
 
+def test_phone_vision_shares_studio_and_does_not_start_capture_on_boot(client):
+    assert 'id="phones-page"' in client.get('/').text
+    script=client.get('/assets/studio.js').text
+    assert "['phones','手机视觉'" in script and "phones:'/phone-vision/view'" in script
+    assert any(c['id']=='phone-vision' and c['route']=='phones' for c in client.get('/api/platform/catalog').json()['capabilities'])
+    status=client.get('/api/platform/phone-vision/status').json()
+    assert not status['motion_enabled'] and all(not d['enabled'] for d in status['devices'].values())
+    assert client.get('/phone-vision/view').status_code==200
+    assert client.post('/api/platform/phone-vision/iphone/start',json={},headers={'Origin':'https://outside.example'}).status_code==403
+
+
 def test_grasp_page_is_a_studio_module_and_motion_stays_in_the_controller(client):
     assert 'id="grasp-page"' in client.get('/').text
     script=client.get('/assets/studio.js').text
@@ -118,7 +129,7 @@ def test_invalid_lan_origin_never_expands_workbench_access(tmp_path,origin):
 
 def test_catalog_resolves_all_sources_and_media(client):
     c=client.get('/api/platform/catalog').json()
-    assert len(c['capabilities'])==24 and len(c['guides'])==14
+    assert len(c['capabilities'])==25 and len(c['guides'])==14
     assert all(p in c['source_ids'] for x in GUIDES+CAPABILITIES for p in x['sources'])
     for id in c['media']:assert client.get(c['media'][id]).status_code==200
     assert client.get('/api/platform/sources/'+c['sources'][0]['id']).json()['content']

@@ -112,6 +112,7 @@ GUIDES=[
 ]
 
 CAPABILITIES=[
+ dict(id='phone-vision',title='手机彩色与深度测试',group='vision',state='integrated',route='phones',guide='vision',summary='USB接入安卓后摄与iPhone前置TrueDepth，预览、像素深度原值、断流隐藏和重连；度量标定待完成，不触发动作。',sources=['deployment/phone_vision/README_ZH.md','deployment/phone_vision/integration.py']),
  dict(id='fieldmap',title='空间观察与历史轨迹',group='vision',state='integrated',route='fieldmap',guide='navigation',summary='按时间回放轮估轨迹、三路历史照片与交互3D；环境示意和里程坐标分开，回放不驱动实机。',sources=['deployment/fieldmap/README_ZH.md','docs/autonomy/HISTORY_TRAJECTORY_3D_DESIGN_ZH.md','deployment/fieldmap/integration.py']),
  dict(id='autonomy',title='自主学习与算力协同',group='learning',state='integrated',route='autonomy',guide='vision',summary='工作端算力节点、计算路由回退、双目标定与学习台账；页面不发电机指令。',sources=['docs/autonomy/REQUIREMENTS_DESIGN_ZH.md','docs/autonomy/LEARNING_PROTOCOLS_ZH.md','docs/autonomy/ROBOT_TEST_PLAN_ZH.md','deployment/autonomy/integration.py']),
  dict(id='obstacle',title='头部相机实时避障',group='vision',state='integrated',route='obstacle',guide='navigation',summary='约10帧/秒地面可行区检测，标定后换算车宽走廊净空并送控制服务闸门；过期或不足即停。',sources=['docs/autonomy/OBSTACLE_PERCEPTION_ZH.md','deployment/perception/integration.py','fabrication/assembly/debug_console/obstacle_gate.py']),

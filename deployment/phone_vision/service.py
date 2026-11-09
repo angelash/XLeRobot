@@ -1,0 +1,257 @@
+"""Studio-owned phone acquisition with isolated workers and expiring frames."""
+from __future__ import annotations
+from collections import deque
+from dataclasses import dataclass
+import json
+import math
+from pathlib import Path
+import queue
+import socket
+import struct
+import subprocess
+import threading
+import time
+import uuid
+
+from .protocol import read_message
+
+DEVICES=('iphone','android')
+FRESH_SECONDS=1.0
+
+
+@dataclass(frozen=True)
+class Frame:
+    session: str
+    sequence: int
+    received: float
+    meta: dict
+    rgb: bytes
+    depth: bytes
+    raw: bytes
+
+
+class PhoneVision:
+    def __init__(self,repo,data_dir,*,clock=time.monotonic,launcher=subprocess.Popen):
+        self.repo=Path(repo)
+        self.root=Path(data_dir)
+        self.clock=clock
+        self.launcher=launcher
+        self.lock=threading.RLock()
+        self.config_path=self.repo/'.local-deploy/phone-vision.json'
+        self.workers={}
+        self.states={device:{'enabled':False,'phase':'disabled','reason':'启用后等待手机连接',
+                             'session':None,'attempts':0,'frames':deque(maxlen=4)} for device in DEVICES}
+
+    def config(self):
+        default=self.repo/'.local-deploy/phone-vision-kit'
+        cfg={'python':str(default/'python/python.exe'),'adb':str(default/'tools/platform-tools/adb.exe'),
+             'server':str(default/'tools/scrcpy-server'),'camera_id':'0'}
+        if self.config_path.is_file():
+            value=json.loads(self.config_path.read_text(encoding='utf-8-sig'))
+            if not isinstance(value,dict):raise ValueError('Invalid phone vision configuration')
+            for key in cfg:
+                if key in value:
+                    if not isinstance(value[key],str) or not value[key]:raise ValueError('Invalid phone vision tool path')
+                    cfg[key]=value[key]
+        return cfg
+
+    def status(self):
+        try:
+            cfg=self.config()
+            readiness={'worker_python':Path(cfg['python']).is_file(),
+                       'android_tools':Path(cfg['adb']).is_file() and Path(cfg['server']).is_file()}
+        except (OSError,ValueError):
+            readiness={'worker_python':False,'android_tools':False}
+        with self.lock:
+            devices={}
+            for device,state in self.states.items():
+                frames=state['frames'];frame=frames[-1] if frames else None
+                age=max(0,self.clock()-frame.received) if frame else None
+                available=bool(state['enabled'] and state['phase']=='live' and frame and age<=FRESH_SECONDS)
+                phase=state['phase']
+                reason=state['reason']
+                stopping=not state['enabled'] and device in self.workers
+                if stopping:
+                    phase='stopping';reason='正在退出采集会话，请稍候'
+                if frame and phase=='live' and not available:
+                    phase='stale';reason='画面已过期，正在等待新的采集帧'
+                devices[device]={'enabled':state['enabled'],'phase':phase,'reason':reason,
+                                 'attempts':state['attempts'],'session':state['session'],
+                                 'stopping':stopping,
+                                 'sequence':frame.sequence if frame else None,'age_ms':round(age*1000,1) if age is not None else None,
+                                 'frame_available':available,'meta':frame.meta if available else None}
+            return {'host':socket.gethostname(),'devices':devices,'readiness':readiness,
+                    'freshness_limit_ms':int(FRESH_SECONDS*1000),'motion_enabled':False,'calibrated':False}
+
+    def start(self,device):
+        if device not in DEVICES:raise ValueError('Unknown phone')
+        cfg=self.config()
+        if not Path(cfg['python']).is_file():raise ValueError('手机采集环境未安装，请运行车载安装包')
+        if device=='android' and not all(Path(cfg[key]).is_file() for key in ('adb','server')):
+            raise ValueError('安卓采集工具未安装，请运行车载安装包')
+        with self.lock:
+            if device in self.workers:
+                if self.states[device]['enabled']:return self.status()
+                raise ValueError('上一采集会话正在退出，请稍后启用')
+            stop=threading.Event()
+            state=self.states[device]
+            state.update(enabled=True,phase='starting',reason='正在连接手机',attempts=0,session=None)
+            state['frames'].clear()
+            thread=threading.Thread(target=self._supervise,args=(device,cfg,stop),daemon=True,name='phone-'+device)
+            self.workers[device]={'stop':stop,'thread':thread,'process':None}
+            thread.start()
+        return self.status()
+
+    def stop(self,device):
+        if device not in DEVICES:raise ValueError('Unknown phone')
+        with self.lock:
+            state=self.states[device]
+            state.update(enabled=False,phase='disabled',reason='已停止采集',session=None)
+            state['frames'].clear()
+            worker=self.workers.get(device)
+            if worker:worker['stop'].set()
+        return self.status()
+
+    def close(self):
+        for device in DEVICES:self.stop(device)
+        with self.lock:threads=[value['thread'] for value in self.workers.values()]
+        for thread in threads:thread.join(timeout=18)
+
+    def _publish(self,device,session,message,received=None):
+        meta,rgb,depth,raw=message
+        with self.lock:
+            state=self.states[device]
+            if not state['enabled'] or state['session']!=session:return
+            if meta['kind']=='status':
+                phase=meta.get('phase','waiting')
+                if phase not in ('starting','waiting','error'):phase='waiting'
+                state.update(phase=phase,reason=str(meta.get('reason','等待手机'))[:180])
+                if phase!='starting':state['frames'].clear()
+                return
+            sequence=meta.get('sequence')
+            if type(sequence)!=int or sequence<=0:raise ValueError('Invalid frame sequence')
+            if state['frames'] and sequence<=state['frames'][-1].sequence:
+                raise ValueError('Repeated phone frame sequence')
+            if device=='iphone' and (not raw or meta.get('camera_type')!=0):
+                raise ValueError('TrueDepth camera data required')
+            received=self.clock() if received is None else received
+            acquired=meta.get('host_acquired_monotonic',received)
+            if not isinstance(acquired,(int,float)) or not math.isfinite(acquired) or acquired>received+.1:
+                raise ValueError('Invalid phone acquisition clock')
+            received=min(received,acquired)
+            if self.clock()-received>FRESH_SECONDS:
+                state['frames'].clear()
+                state.update(phase='stale',reason='接收积压已过期，等待新的画面')
+                return
+            state['frames'].append(Frame(session,sequence,received,meta,rgb,depth,raw))
+            state.update(phase='live',reason='正在接收彩色与深度' if device=='iphone' else '正在接收后置彩色画面')
+
+    def frame(self,device,session=None,sequence=None):
+        if device not in DEVICES:raise ValueError('Unknown phone')
+        with self.lock:
+            state=self.states[device]
+            if not state['enabled'] or state['phase']!='live':raise LookupError('手机画面未就绪')
+            frame=next((f for f in reversed(state['frames']) if (session is None or f.session==session) and
+                        (sequence is None or f.sequence==sequence)),None)
+            if frame is None or self.clock()-frame.received>FRESH_SECONDS:
+                raise LookupError('画面已过期或已进入新会话，请刷新')
+            return frame
+
+    def depth_at(self,device,x,y,session,sequence):
+        frame=self.frame(device,session,sequence)
+        if not frame.raw:raise ValueError('该相机不提供数值深度')
+        width,height=frame.meta['width'],frame.meta['height']
+        if not 0<=x<width or not 0<=y<height:raise ValueError('像素坐标超出画面')
+        value=struct.unpack_from('<f',frame.raw,(y*width+x)*4)[0]
+        valid=math.isfinite(value) and value>0
+        return {'session':frame.session,'sequence':frame.sequence,'x':x,'y':y,'depth_m':value if valid else None,
+                'numeric_valid':valid,'calibrated':False,'confidence_available':frame.meta.get('confidence_available',False),
+                'note':'深度原值，尚未做距离误差与机器人坐标标定'}
+
+    def _cleanup_android(self,cfg,session):
+        """Recover only this session's ADB resources if a native worker died."""
+        scid=f'{int(session[:8],16)&0x7fffffff:08x}'
+        target='localabstract:scrcpy_'+scid
+        def adb(*args):
+            return subprocess.run([cfg['adb'],*args],capture_output=True,timeout=4,
+                                  creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        try:
+            output=adb('forward','--list').stdout.decode('utf-8','replace')
+            for line in output.splitlines():
+                row=line.split()
+                if len(row)==3 and row[2]==target and row[1].startswith('tcp:'):
+                    adb('-s',row[0],'forward','--remove',row[1])
+                    adb('-s',row[0],'shell','rm','/data/local/tmp/xlerobot-phone-'+scid+'.jar')
+        except (OSError,subprocess.SubprocessError):pass
+
+    def _supervise(self,device,cfg,stop):
+        attempt=0
+        try:
+            self.root.mkdir(parents=True,exist_ok=True)
+            while not stop.is_set():
+                attempt+=1;session=uuid.uuid4().hex
+                with self.lock:
+                    state=self.states[device]
+                    state.update(session=session,attempts=attempt,phase='starting',reason='正在连接手机')
+                    state['frames'].clear()
+                logfile=self.root/(device+'-worker.log')
+                if logfile.exists() and logfile.stat().st_size>1_000_000:
+                    logfile.replace(logfile.with_suffix('.previous.log'))
+                args=[cfg['python'],str(Path(__file__).with_name('worker.py')),'--device',device,'--session',session]
+                if device=='android':args+=['--adb',cfg['adb'],'--server',cfg['server'],'--camera-id',cfg['camera_id']]
+                process=None
+                try:
+                    with logfile.open('ab') as log:
+                        process=self.launcher(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=log,
+                                              creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),bufsize=0)
+                        with self.lock:self.workers[device]['process']=process
+                        messages=queue.Queue(maxsize=2)
+                        def put(value,out=messages):
+                            try:out.put_nowait(value)
+                            except queue.Full:
+                                try:out.get_nowait()
+                                except queue.Empty:pass
+                                try:out.put_nowait(value)
+                                except queue.Full:pass
+                        def read(proc=process,emit=put):
+                            try:
+                                while True:
+                                    packet=read_message(proc.stdout)
+                                    emit((self.clock(),packet))
+                            except Exception as exc:emit(exc)
+                        reader=threading.Thread(target=read,daemon=True,name='phone-pipe-'+device)
+                        reader.start();last_packet=self.clock()
+                        while not stop.is_set():
+                            try:message=messages.get(timeout=.25)
+                            except queue.Empty:
+                                if self.clock()-last_packet>30:raise TimeoutError('Phone worker unresponsive')
+                                continue
+                            if isinstance(message,Exception):raise message
+                            received,message=message
+                            last_packet=received
+                            self._publish(device,session,message,received)
+                except Exception as exc:
+                    with logfile.open('ab') as diagnostic:
+                        diagnostic.write(('\nStudio pipe: '+type(exc).__name__+': '+str(exc)+'\n').encode('utf-8','replace'))
+                    with self.lock:
+                        if not stop.is_set():
+                            self.states[device].update(phase='waiting',reason='连接中断，正在重试；请检查手机授权和采集状态')
+                            self.states[device]['frames'].clear()
+                finally:
+                    if process:
+                        try:
+                            process.stdin.write(b'stop\n');process.stdin.flush()
+                        except (BrokenPipeError,OSError,ValueError):pass
+                        try:process.wait(timeout=13)
+                        except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3)
+                        for pipe in (process.stdin,process.stdout):
+                            if pipe:pipe.close()
+                    if device=='android':self._cleanup_android(cfg,session)
+                    with self.lock:
+                        if device in self.workers:self.workers[device]['process']=None
+                if not stop.is_set():stop.wait(min(2*attempt,10))
+        finally:
+            with self.lock:
+                self.states[device]['frames'].clear()
+                self.states[device].update(enabled=False,phase='disabled',session=None,reason='已停止采集')
+                self.workers.pop(device,None)
