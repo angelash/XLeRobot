@@ -33,10 +33,16 @@ python -m deployment.phone_vision.iphone_usb `
 
 `latest-rgbd-private.npz` 是原数组快照；几何配准、内参适用分辨率、有效距离、误差和绝对时间同步需要另外标定。此探针不会把数值深度直接交给控制器。
 
+探针在每次帧回调中复制 RGB／深度／置信度数组，避免主线程分别读取时混入不同包；只保存首帧和末帧快照，减少持续压缩对接收的影响。输出包含回调频率、间隔、实际读帧数、深度数组变化数量、内参及有限正深度像素比例。`valid_depth_received` 只表示收到了有限且大于零的数值，不能解释为置信度或测距精度通过；置信度为空时明确保留空形状，不生成替代分数。
+
+2026-11-09 手机准备后的独立复测已收到前置 TrueDepth、480×640 的 RGB 与 float32 深度：60 秒内1800次回调、约30fps，详见[实测报告续测](../../docs/autonomy/PHONE_VISION_TEST_20261109_ZH.md#7-iphone-准备后的续测真实-rgb-d-已通过)。仅保持 App 在前台且开启 USB 模式仍可能零帧，需要在手机上实际点开始采集。
+
 ## 验证与实测记录
 
 ```powershell
-python -m pytest deployment/phone_vision/test_android_usb.py -q
+python -m pytest deployment/phone_vision/test_android_usb.py deployment/phone_vision/test_iphone_usb.py -q
 ```
 
 协议检查使用生成字节，覆盖 scrcpy 5 的 session／config／keyframe 标志、分段读取、非法包长和中途断流。2026-11-09 实测见[落地报告](../../docs/autonomy/PHONE_VISION_TEST_20261109_ZH.md)。工具、虚拟环境、设备标识、原始画面和日志仅放忽略的本地目录，不提交公开仓库。
+
+深度检查额外覆盖空数组、零／负／NaN／Inf 排除和分位数；全部使用生成数据，不打开手机或相机。
