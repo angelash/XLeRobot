@@ -1,0 +1,48 @@
+{
+  "reverse_legs": 20,
+  "reverse_m_estimate": 0.9898091567823465,
+  "forward_legs": 2,
+  "forward_m_estimate": 0.07602677231399117,
+  "cumulative_translation_m_estimate": 1.0658359290963377,
+  "turn_pulses_started": 49,
+  "turn_pulses_completed": 44,
+  "turn_pulses_failed": 5,
+  "left_aisle_entered": false,
+  "exact_pose_valid": false,
+  "user_observations": [
+    "没有接触，轮子都落地",
+    "没看具体过程，但看着身体转身算明显"
+  ],
+  "schema": 1,
+  "date": "2026-11-09",
+  "evidence_type": "physical_execution_and_user_feedback",
+  "source": "finite_onboard_executor_with_assistant_image_review",
+  "local_autonomous_acceptance": false,
+  "contact_confirmed": false,
+  "wheel_slip_confirmed": false,
+  "training_performed": false,
+  "old_grasp_campaign_modified": false,
+  "software": {
+    "tests_local": 21,
+    "tests_laptop": 21,
+    "reverse_limit_m": 1,
+    "default_reverse_limit_m": 0.2,
+    "leg_limit_m": 0.05,
+    "consumed_reverse_m": 1,
+    "anchor_reset": false,
+    "cross_date_ledger_fixed": true
+  },
+  "map": {
+    "id": "field-20261109-relocated",
+    "observations": 80,
+    "features": 9,
+    "new_image_http_verified": 42,
+    "metric_pose_valid": false
+  },
+  "checkpoint": {
+    "files": 1596,
+    "bytes": 46379127,
+    "sha256": "be9d06b38787b355ce1cacf0aa155f6af60ab3f5cbf5ef293da43d268248c51a",
+    "ledger_consumption_preserved": true
+  }
+}

@@ -353,7 +353,7 @@ from .servo_session import ServoSession
 def servo():
     session = getattr(runtime, 'servo', None)
     if session is None or session.runtime is not runtime:
-        session = runtime.servo = ServoSession(runtime, LOG_DIR/'servo-sessions')
+        session = runtime.servo = ServoSession(runtime, LOG_DIR/'servo-sessions', authorization_root=LOG_DIR.parent)
     return session
 
 
@@ -394,6 +394,8 @@ class ReverseGrantCommand(BaseModel):
     authorization: str
     distance_m: float
     confirmed: bool = False
+    previous_distance_m: float | None = None
+    extension_authorization: str = ''
 
 
 @app.post('/api/servo/base-authorization')
@@ -401,7 +403,8 @@ def servo_base_authorization(payload: ReverseGrantCommand):
     try:
         if isinstance(runtime, PreviewRuntime):
             raise ValueError('隔离预览不登记实机授权')
-        return servo().grant_reverse(payload.authorization, payload.distance_m, payload.confirmed)
+        return servo().grant_reverse(payload.authorization, payload.distance_m, payload.confirmed,
+                                     payload.previous_distance_m, payload.extension_authorization)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 

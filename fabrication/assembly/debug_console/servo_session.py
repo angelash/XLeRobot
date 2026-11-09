@@ -40,7 +40,7 @@ ARM_IDS = range(1, 7)
 # (rotation_scan contact stop). Nothing behind the robot is seen by a camera.
 BASE_LEG_M = 0.05
 REVERSE_BUDGET_M = 0.20
-MAX_GRANTED_REVERSE_M = 0.50
+MAX_GRANTED_REVERSE_M = 1.00  # explicit 2026-11-09 user allowance; default remains20cm
 # 2026-11-03 later instruction: inside the authorised range the chassis may move both ways in small
 # legs. Net position relative to where the user placed the robot stays inside
 # [-REVERSE_BUDGET_M, +FORWARD_LIMIT_M] (the desk is just ahead of the start, so not past it); a
@@ -49,9 +49,10 @@ FORWARD_LIMIT_M = 0.0
 
 
 class ServoSession:
-    def __init__(self, runtime, root, clock=time.monotonic, watchdog=True):
+    def __init__(self, runtime, root, clock=time.monotonic, watchdog=True, authorization_root=None):
         self.runtime = runtime
         self.root = Path(root)
+        self.authorization_root = Path(authorization_root) if authorization_root is not None else self.root
         self.clock = clock
         self.watchdog = watchdog
         self.step_lock = threading.Lock()
@@ -263,11 +264,34 @@ class ServoSession:
         return reason
 
     def _reverse_used(self):
+        path = self.authorization_root/'base-authorizations.json'
+        paths = [path]
+        if not path.exists() and self.authorization_root != self.root:
+            # Historical logs used startup-date folders. Bootstrap the durable
+            # ledger without discarding older consumed travel on a day change.
+            paths = sorted(self.authorization_root.glob('????-??-??/servo-sessions/base-authorizations.json'))
+        merged = {}
         try:
-            data = json.loads((self.root/'base-authorizations.json').read_text(encoding='utf-8'))
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            return {}
+            for source in paths:
+                if not source.exists():continue
+                data = json.loads(source.read_text(encoding='utf-8'))
+                if not isinstance(data, dict) or any(not isinstance(r,dict) for r in data.values()):
+                    raise ValueError('授权台账格式无效，不能按空额度继续')
+                def remaining(row):
+                    values=[row.get(k,default) for k,default in (
+                        ('granted_m',REVERSE_BUDGET_M),('used_m',0.),('forward_m',0.),('forward_correction_m',0.))]
+                    if any(type(v) not in (int,float) or not math.isfinite(v) or v<0 for v in values):
+                        raise ValueError('授权台账数值无效')
+                    grant,used,forward,correction=values
+                    return grant+forward-max(0.,used-correction)
+                for auth,row in data.items():
+                    balance=remaining(row)
+                    # Conflicting legacy dates retain the smallest allowance;
+                    # the original records stay intact for later review.
+                    if auth not in merged or balance<=remaining(merged[auth]):merged[auth]=row
+            return merged
+        except (OSError, ValueError) as exc:
+            raise ValueError('后退授权台账读取失败，保持停止：'+str(exc)) from exc
 
     def reverse_budget(self, authorization):
         row = self._reverse_used().get(str(authorization or '').strip(), {})
@@ -283,18 +307,26 @@ class ServoSession:
                 'left_m': round(max(0.0, granted + net), 4), 'net_m': round(net, 4),
                 'forward_left_m': round(max(0.0, FORWARD_LIMIT_M - net), 4)}
 
-    def grant_reverse(self, authorization, distance_m, confirmed=False):
-        """Record one explicit, immutable grant; never reset its consumed travel.
+    def grant_reverse(self, authorization, distance_m, confirmed=False,
+                      previous_distance_m=None, extension_authorization=''):
+        """Record an explicit grant; extending it retains all consumed travel.
 
         The supervisor binds the user's words to the current physical start.
         Translation remains in <=5 cm legs. Turning does not make the budget
         a map: after a turn, re-establish the original heading before travel.
+        An increase requires the exact prior grant and new authorization text.
         """
         auth = str(authorization or '').strip()
         if confirmed is not True or len(auth) < 8:
             raise ValueError('需要用户授权原文及当前起点确认')
         if type(distance_m) not in (int, float) or not math.isfinite(distance_m) or not .05 <= distance_m <= MAX_GRANTED_REVERSE_M:
-            raise ValueError('后退授权需为5–50cm')
+            raise ValueError('后退授权需为5–100cm')
+        extending = previous_distance_m is not None
+        if extending and (type(previous_distance_m) not in (int, float)
+                          or not math.isfinite(previous_distance_m)
+                          or not isinstance(extension_authorization, str)
+                          or len(extension_authorization.strip()) < 8):
+            raise ValueError('扩展额度需提供原额度和用户追加授权原文')
         with self.state_lock, self.runtime.io:
             if self.active or self.lt.running or self.runtime.controller['controller'] == 'online':
                 raise ValueError('动作或接管中不能登记后退授权')
@@ -302,12 +334,21 @@ class ServoSession:
             row = used.get(auth, {})
             if not isinstance(row, dict):
                 raise ValueError('已有授权记录无效，需要先核验')
-            if auth in used and row.get('granted_m', REVERSE_BUDGET_M) != distance_m:
+            prior = row.get('granted_m', REVERSE_BUDGET_M)
+            if extending:
+                # Compare the old value and retain every consumed leg: never
+                # create another anchor to renew a spent physical allowance.
+                if auth not in used or prior != previous_distance_m or distance_m <= prior:
+                    raise ValueError('原额度已变化、授权不存在或新额度未增加')
+                row.setdefault('extensions', []).append({'at': now(), 'previous_m': prior,
+                    'granted_m': float(distance_m), 'authorization': extension_authorization.strip()[:1000]})
+            elif auth in used and prior != distance_m:
                 raise ValueError('已有授权额度不能修改或重置')
             row.update(granted_m=float(distance_m), grant_at=row.get('grant_at') or now(),
                        boundary='current_start_and_original_heading', authorization=auth[:1000])
             used[auth] = row
-            atomic_json(self.root/'base-authorizations.json', used)
+            self.authorization_root.mkdir(parents=True,exist_ok=True)
+            atomic_json(self.authorization_root/'base-authorizations.json', used)
             return self.reverse_budget(auth)
 
     def base(self, session_id, distance_m, authorization='', max_raw=160, label='', forward_clear=False):
@@ -365,7 +406,8 @@ class ServoSession:
                 row['last_at'] = now()
                 used[auth] = row
                 try:
-                    atomic_json(self.root/'base-authorizations.json', used)
+                    self.authorization_root.mkdir(parents=True,exist_ok=True)
+                    atomic_json(self.authorization_root/'base-authorizations.json', used)
                 except OSError:
                     pass
             contact = None
