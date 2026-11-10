@@ -55,6 +55,22 @@ python -m deployment.phone_vision.iphone_usb `
 
 探针在每次帧回调中复制 RGB／深度／置信度数组，避免主线程分别读取时混入不同包；只保存首帧和末帧快照，减少持续压缩对接收的影响。输出包含回调频率、间隔、实际读帧数、深度数组变化数量、内参及有限正深度像素比例。`valid_depth_received` 只表示收到了有限且大于零的数值，不能解释为置信度或测距精度通过；置信度为空时明确保留空形状，不生成替代分数。
 
+## iPhone Record3D Wi-Fi
+
+私有配置选择 `iphone_transport="wifi"`、`iphone_origin="http://<手机局域网IPv4>"`，并用 `iphone_python` 指向带aiortc1.14.0及既有PyAV16.0.1的隔离采集Python。接收端只向明确的局域网地址请求Record3D `/metadata`、`/getOffer`与`/answer`，WebRTC不设置公共STUN／TURN，不接收音频。
+
+Record3D Wi-Fi将深度编码成视频左半的色相，右半为彩色；接收器按发布者示例的 `depth_m=3*hue` 还原。这是有损视频近似深度，**不是USB原始浮点传感器数组**；meta、像素查询、原始数组下载响应头和UI均明确 `depth_source=record3d_hue_video`／`sensor_raw_depth=false`，置信度不补造。帧分辨率动态变化时同步缩放内参，旧会话／重复／过期和积压保护沿用。
+
+原8770页面提供启停和深度预览。手机须保持Record3D Wi-Fi采集与网络互通；重新启用可能需要多次握手，本轮一次恢复约35秒，未声明无感秒连。当前Wi-Fi API元信息不提供可独立核验的镜头类型，接收端保留unknown，不把此链路标成已验证原始TrueDepth或测距精度。
+
+## 安卓原生ARCore验证
+
+安装服务后用[本地ARCore采集端](android_ar/README_ZH.md)做原生Session／真实深度验证。它与普通RGB后视分开记录，并通过同一已授权ADB链路输出有边界的原子RGB-D／置信度／位姿包。光照不足或手机未初始化运动时，保留跟踪暂停及无深度状态，不以支持查询true代替实际采集成功。
+
+原8770手机页可切换彩色后视与ARCore模式。CPU彩色和深度画幅可能不同，接收器用SDK导出的 `TEXTURE_NORMALIZED → IMAGE_PIXELS` 变换裁剪并同步更新内参；K60本台实测640×480彩色对应640×360中间区域、160×90深度。缺少映射或陌生反射／旋转时拒绝配准，不拉伸全图。画面旋转后深度、像素查询和内参一起变换。
+
+自动深度与CPU彩色的Android Image时间戳分开记录；原始深度可能只是旧估计按当前位姿重投影，其时间戳重复不能算新测量。深度落后超过800ms时仅提供新鲜RGB，隐藏深度并拒绝其数组／像素接口；源龄仍含深度帧差，不能由新RGB刷新旧深度。ARCore原始置信度仅对应raw depth，不冒充自动深度置信度。采集子进程瞬断保留手机AR会话，明确停止或切换模式才释放本App相机。
+
 2026-11-09 手机准备后的独立复测已收到前置 TrueDepth、480×640 的 RGB 与 float32 深度：60 秒内1800次回调、约30fps，详见[实测报告续测](../../docs/autonomy/PHONE_VISION_TEST_20261109_ZH.md#7-iphone-准备后的续测真实-rgb-d-已通过)。仅保持 App 在前台且开启 USB 模式仍可能零帧，需要在手机上实际点开始采集。
 
 ## 验证与实测记录

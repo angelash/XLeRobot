@@ -48,14 +48,15 @@ class PhoneVision:
         default=self.repo/'.local-deploy/phone-vision-kit'
         cfg={'python':str(default/'python/python.exe'),'adb':str(default/'tools/platform-tools/adb.exe'),
              'server':str(default/'tools/scrcpy-server'),'camera_id':'0',
-             'android_transport':'usb','android_endpoint':'','android_role':'observer','android_rotation':'0',
-             'android_cameras':[{'id':'0','label':'后置主摄'}]}
+             'android_transport':'usb','android_endpoint':'','android_role':'observer','android_rotation':'0','android_mode':'camera',
+             'android_cameras':[{'id':'0','label':'后置主摄'}],
+             'iphone_transport':'usb','iphone_origin':'','iphone_python':''}
         if self.config_path.is_file():
             value=json.loads(self.config_path.read_text(encoding='utf-8-sig'))
             if not isinstance(value,dict):raise ValueError('Invalid phone vision configuration')
             for key in cfg:
                 if key in value:
-                    if key!='android_cameras' and (not isinstance(value[key],str) or (not value[key] and key!='android_endpoint')):raise ValueError('Invalid phone vision configuration')
+                    if key!='android_cameras' and (not isinstance(value[key],str) or (not value[key] and key not in ('android_endpoint','iphone_origin','iphone_python'))):raise ValueError('Invalid phone vision configuration')
                     cfg[key]=value[key]
         choices=cfg['android_cameras']
         if not isinstance(choices,list) or not 1<=len(choices)<=16:raise ValueError('Invalid camera choices')
@@ -68,11 +69,16 @@ class PhoneVision:
             if not isinstance(label,str) or not 1<=len(label)<=60:raise ValueError('Invalid camera label')
             ids.add(camera)
         if cfg['android_rotation'] not in ('0','90','180','270'):raise ValueError('Invalid camera rotation')
+        if cfg['android_mode'] not in ('camera','arcore'):raise ValueError('Invalid Android mode')
         if cfg['android_transport'] not in ('usb','wifi') or cfg['android_role'] not in ('observer','rear'):
             raise ValueError('Invalid Android camera configuration')
         if cfg['android_transport']=='wifi':
             from .android_network import wifi_endpoint
             wifi_endpoint(cfg['android_endpoint'])
+        if cfg['iphone_transport'] not in ('usb','wifi'):raise ValueError('Invalid iPhone transport')
+        if cfg['iphone_transport']=='wifi':
+            from .iphone_wifi import origin
+            cfg['iphone_origin']=origin(cfg['iphone_origin'])
         return cfg
 
     def status(self):
@@ -80,6 +86,7 @@ class PhoneVision:
         try:
             cfg=self.config()
             readiness={'worker_python':Path(cfg['python']).is_file(),
+                       'iphone_worker_python':Path(cfg['iphone_python'] or cfg['python']).is_file(),
                        'android_tools':Path(cfg['adb']).is_file() and Path(cfg['server']).is_file()}
         except (OSError,ValueError):
             readiness={'worker_python':False,'android_tools':False}
@@ -97,9 +104,9 @@ class PhoneVision:
                 if frame and phase=='live' and not available:
                     phase='stale';reason='画面已过期，正在等待新的采集帧'
                 devices[device]={'enabled':state['enabled'],'phase':phase,'reason':reason,
-                                 'transport':cfg.get('android_transport','usb') if device=='android' else 'usb',
+                                 'transport':cfg.get('android_transport','usb') if device=='android' else cfg.get('iphone_transport','usb'),
                                  'role':cfg.get('android_role','observer') if device=='android' else 'depth',
-                                 **({'camera_id':cfg.get('camera_id','0'),'rotation_deg':int(cfg.get('android_rotation','0')),
+                                 **({'camera_id':cfg.get('camera_id','0'),'rotation_deg':int(cfg.get('android_rotation','0')),'mode':cfg.get('android_mode','camera'),
                                      'camera_choices':cfg.get('android_cameras',[])} if device=='android' else {}),
                                  'attempts':state['attempts'],'session':state['session'],
                                  'stopping':stopping,
@@ -111,7 +118,8 @@ class PhoneVision:
     def start(self,device,*,_settings=False):
         if device not in DEVICES:raise ValueError('Unknown phone')
         cfg=self.config()
-        if not Path(cfg['python']).is_file():raise ValueError('手机采集环境未安装，请运行车载安装包')
+        executable=(cfg['iphone_python'] or cfg['python']) if device=='iphone' else cfg['python']
+        if not Path(executable).is_file():raise ValueError('手机采集环境未安装，请运行车载安装包')
         if device=='android' and not all(Path(cfg[key]).is_file() for key in ('adb','server')):
             raise ValueError('安卓采集工具未安装，请运行车载安装包')
         with self.lock:
@@ -139,8 +147,11 @@ class PhoneVision:
             if worker:worker['stop'].set()
         return self.status()
 
-    def configure_android(self,camera_id,rotation_deg):
+    def configure_android(self,camera_id,rotation_deg,mode=None):
         cfg=self.config()
+        mode=cfg['android_mode'] if mode is None else mode
+        if mode not in ('camera','arcore'):raise ValueError('采集模式无效')
+        if mode=='arcore':camera_id='0'
         if camera_id not in [choice['id'] for choice in cfg['android_cameras']]:raise ValueError('只能选择已配置并验证的镜头')
         if type(rotation_deg)!=int or rotation_deg not in (0,90,180,270):raise ValueError('画面方向只能是0、90、180或270度')
         if not self.settings_lock.acquire(blocking=False):raise ValueError('镜头正在切换，请稍候')
@@ -158,7 +169,7 @@ class PhoneVision:
             current=self.config_path.read_bytes() if self.config_path.exists() else None
             if current!=old:raise ValueError('配置已被其他操作更新，请刷新')
             value=json.loads(old.decode('utf-8-sig')) if old else {}
-            value.update(camera_id=camera_id,android_rotation=str(rotation_deg))
+            value.update(camera_id=camera_id,android_rotation=str(rotation_deg),android_mode=mode)
             updated=json.dumps(value,ensure_ascii=False,indent=2).encode('utf-8')
             self.config_path.parent.mkdir(parents=True,exist_ok=True)
             if old is not None:
@@ -200,8 +211,9 @@ class PhoneVision:
             if type(sequence)!=int or sequence<=0:raise ValueError('Invalid frame sequence')
             if state['frames'] and sequence<=state['frames'][-1].sequence:
                 raise ValueError('Repeated phone frame sequence')
-            if device=='iphone' and (not raw or meta.get('camera_type')!=0):
-                raise ValueError('TrueDepth camera data required')
+            if device=='iphone':
+                wifi=meta.get('transport')=='wifi' and meta.get('depth_source')=='record3d_hue_video' and meta.get('sensor_raw_depth') is False
+                if not raw or (not wifi and meta.get('camera_type')!=0):raise ValueError('TrueDepth or explicitly encoded Wi-Fi depth required')
             received=self.clock() if received is None else received
             acquired=meta.get('host_acquired_monotonic',received)
             if not isinstance(acquired,(int,float)) or not math.isfinite(acquired) or acquired>received+.1:
@@ -212,7 +224,9 @@ class PhoneVision:
                 state.update(phase='stale',reason='接收积压已过期，等待新的画面')
                 return
             state['frames'].append(Frame(session,sequence,received,meta,rgb,depth,raw))
-            state.update(phase='live',reason='正在接收彩色与深度' if device=='iphone' else '正在接收后置彩色画面')
+            reason='正在接收彩色与深度' if device=='iphone' or meta.get('rgbd') else '正在接收后置彩色画面'
+            if meta.get('android_mode')=='arcore' and not meta.get('rgbd'):reason=meta.get('depth_unavailable_reason','彩色已连接，等待新的 ARCore 深度')
+            state.update(phase='live',reason=reason)
 
     def frame(self,device,session=None,sequence=None):
         if device not in DEVICES:raise ValueError('Unknown phone')
@@ -232,24 +246,32 @@ class PhoneVision:
         if not 0<=x<width or not 0<=y<height:raise ValueError('像素坐标超出画面')
         value=struct.unpack_from('<f',frame.raw,(y*width+x)*4)[0]
         valid=math.isfinite(value) and value>0
+        encoded=frame.meta.get('depth_source')=='record3d_hue_video'
+        arcore=frame.meta.get('android_mode')=='arcore'
         return {'session':frame.session,'sequence':frame.sequence,'x':x,'y':y,'depth_m':value if valid else None,
                 'numeric_valid':valid,'calibrated':False,'confidence_available':frame.meta.get('confidence_available',False),
-                'note':'深度原值，尚未做距离误差与机器人坐标标定'}
+                'sensor_raw_depth':frame.meta.get('sensor_raw_depth',not encoded),'depth_source':frame.meta.get('depth_source','usb_float_depth'),
+                'note':'ARCore算法深度，尚未做距离误差与机器人坐标标定' if arcore else 'Wi-Fi有损色相编码还原的近似深度，未做距离误差标定' if encoded else '深度原值，尚未做距离误差与机器人坐标标定'}
 
-    def _cleanup_android(self,cfg,session):
+    def _cleanup_android(self,cfg,session,*,release_camera=True):
         """Recover only this session's ADB resources if a native worker died."""
         scid=f'{int(session[:8],16)&0x7fffffff:08x}'
         target='localabstract:scrcpy_'+scid
+        ar_target='localabstract:xlerobot_ar_'+scid
         def adb(*args):
             return subprocess.run([cfg['adb'],*args],capture_output=True,timeout=4,
                                   creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         try:
+            if cfg.get('android_mode')=='arcore':
+                if release_camera:
+                    target_args=['-s',cfg['android_endpoint']] if cfg.get('android_transport')=='wifi' else ['-d']
+                    adb(*target_args,'shell','am','force-stop','org.xlerobot.arvision')
             output=adb('forward','--list').stdout.decode('utf-8','replace')
             for line in output.splitlines():
                 row=line.split()
-                if len(row)==3 and row[2]==target and row[1].startswith('tcp:'):
+                if len(row)==3 and row[2] in (target,ar_target) and row[1].startswith('tcp:'):
                     adb('-s',row[0],'forward','--remove',row[1])
-                    adb('-s',row[0],'shell','rm','/data/local/tmp/xlerobot-phone-'+scid+'.jar')
+                    if row[2]==target:adb('-s',row[0],'shell','rm','/data/local/tmp/xlerobot-phone-'+scid+'.jar')
         except (OSError,subprocess.SubprocessError):pass
 
     def _supervise(self,device,cfg,stop):
@@ -265,10 +287,13 @@ class PhoneVision:
                 logfile=self.root/(device+'-worker.log')
                 if logfile.exists() and logfile.stat().st_size>1_000_000:
                     logfile.replace(logfile.with_suffix('.previous.log'))
-                args=[cfg['python'],str(Path(__file__).with_name('worker.py')),'--device',device,'--session',session]
+                executable=(cfg['iphone_python'] or cfg['python']) if device=='iphone' else cfg['python']
+                args=[executable,str(Path(__file__).with_name('worker.py')),'--device',device,'--session',session]
+                if device=='iphone':args+=['--iphone-transport',cfg['iphone_transport'],'--iphone-origin',cfg['iphone_origin']]
                 if device=='android':args+=['--adb',cfg['adb'],'--server',cfg['server'],'--camera-id',cfg['camera_id'],
                                            '--android-transport',cfg['android_transport'],'--android-endpoint',cfg['android_endpoint'],
                                            '--android-role',cfg['android_role'],'--android-rotation',cfg['android_rotation']]
+                if device=='android':args+=['--android-mode',cfg['android_mode']]
                 process=None
                 try:
                     with logfile.open('ab') as log:
@@ -317,7 +342,7 @@ class PhoneVision:
                         except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3)
                         for pipe in (process.stdin,process.stdout):
                             if pipe:pipe.close()
-                    if device=='android':self._cleanup_android(cfg,session)
+                    if device=='android':self._cleanup_android(cfg,session,release_camera=stop.is_set())
                     with self.lock:
                         if device in self.workers:self.workers[device]['process']=None
                 if not stop.is_set():stop.wait(min(2*attempt,10))

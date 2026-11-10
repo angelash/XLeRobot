@@ -46,6 +46,46 @@ def test_raw_depth_preserves_numeric_values_and_fresh_session_contract(prepared)
     assert client.get(path).status_code==409
 
 
+def test_wifi_decoded_depth_is_explicitly_distinct_from_original_usb_sensor_data(prepared):
+    service,clock,client=prepared
+    meta,rgb,preview,raw=message(2)
+    meta.update(camera_type=None,transport='wifi',depth_source='record3d_hue_video',sensor_raw_depth=False)
+    service._publish('iphone','first',(meta,rgb,preview,raw))
+    value=client.get('/api/platform/phone-vision/iphone/depth?session=first&seq=2&x=0&y=0').json()
+    assert not value['sensor_raw_depth'] and value['depth_source']=='record3d_hue_video' and '近似' in value['note']
+    response=client.get('/api/platform/phone-vision/iphone/depth.raw?session=first&seq=2')
+    assert response.headers['X-Depth-Semantics']=='record3d_hue_video'
+
+
+def test_arcore_rgb_fallback_never_serves_old_depth(prepared):
+    service,clock,client=prepared
+    service.states['android'].update(enabled=True,session='android',phase='starting')
+    meta,rgb,preview,raw=message()
+    meta.update(android_mode='arcore',depth_source='arcore_depth_mm',sensor_raw_depth=False)
+    service._publish('android','android',(meta,rgb,preview,raw))
+    assert client.get('/api/platform/phone-vision/android/depth.raw?session=android&seq=1').status_code==200
+    meta=dict(meta,sequence=2,rgbd=False,depth_unavailable_reason='彩色已连接；深度已过期')
+    service._publish('android','android',(meta,rgb,b'',b''))
+    assert client.get('/api/platform/phone-vision/android/frame.jpg?session=android&seq=2').status_code==200
+    assert client.get('/api/platform/phone-vision/android/depth.raw?session=android&seq=2').status_code==422
+    assert '过期' in service.status()['devices']['android']['reason']
+
+
+def test_transient_arcore_receiver_failure_preserves_native_session(tmp_path,monkeypatch):
+    calls=[]
+    class Result:
+        stdout=b''
+    def run(args,**kwargs):calls.append(args);return Result()
+    monkeypatch.setattr('deployment.phone_vision.service.subprocess.run',run)
+    service=PhoneVision(tmp_path,tmp_path/'data')
+    cfg={'adb':'adb.exe','android_mode':'arcore','android_transport':'usb'}
+    service._cleanup_android(cfg,'0123456789abcdef0123456789abcdef',release_camera=False)
+    assert calls==[['adb.exe','forward','--list']]
+    calls.clear()
+    service._cleanup_android(cfg,'0123456789abcdef0123456789abcdef',release_camera=True)
+    assert calls==[['adb.exe','-d','shell','am','force-stop','org.xlerobot.arvision'],['adb.exe','forward','--list']]
+
+
 def test_old_frame_is_hidden_and_both_image_and_depth_refused(prepared):
     service,clock,client=prepared
     assert client.get('/api/platform/phone-vision/status').json()['devices']['iphone']['frame_available']

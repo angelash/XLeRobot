@@ -86,7 +86,10 @@ def install(kit,robot_root):
              'android_endpoint':existing.get('android_endpoint',''),
              'android_role':existing.get('android_role','observer'),
              'android_rotation':existing.get('android_rotation','0'),
-             'android_cameras':existing.get('android_cameras',[{'id':'0','label':'后置主摄'}])}
+             'android_mode':existing.get('android_mode','camera'),
+             'android_cameras':existing.get('android_cameras',[{'id':'0','label':'后置主摄'}]),
+             'iphone_transport':existing.get('iphone_transport','usb'),
+             'iphone_origin':existing.get('iphone_origin',''),'iphone_python':existing.get('iphone_python','')}
         temporary=config_path.with_suffix('.pending')
         temporary.write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(config_path)
     receipt={'installed_at':now,'robot_root':str(robot_root),'backup':str(backup),'source_files':installed,

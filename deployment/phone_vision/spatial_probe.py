@@ -41,6 +41,8 @@ def geometry(raw,meta,*,stride=4,near=.15,far=1.5):
              'units':'reported_depth_meters','coordinates':'camera_x_right_y_down_z_forward',
              'calibrated':False,'robot_transform':None,'confidence_available':bool(meta.get('confidence_available')),
              'rgb_depth_registration_verified':False}
+    summary['depth_source']=meta.get('depth_source','usb_float_depth')
+    summary['sensor_raw_depth']=meta.get('sensor_raw_depth',True)
     return points,summary
 
 

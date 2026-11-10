@@ -52,8 +52,8 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     async def configure_android(request:Request):
         value=await body(request)
         try:
-            if set(value)!={'camera_id','rotation_deg'}:raise ValueError('只接受镜头和画面方向')
-            return await run_in_threadpool(service.configure_android,value['camera_id'],value['rotation_deg'])
+            if not {'camera_id','rotation_deg'}<=set(value) or set(value)-{'camera_id','rotation_deg','mode'}:raise ValueError('只接受镜头、画面方向和采集模式')
+            return await run_in_threadpool(service.configure_android,value['camera_id'],value['rotation_deg'],value.get('mode'))
         except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
 
     @router.get('/{device}/frame.jpg')
@@ -82,6 +82,7 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
             return Response(value.raw,media_type='application/octet-stream',headers={
                 'Cache-Control':'no-store','X-Phone-Session':value.session,
                 'X-Phone-Sequence':str(value.sequence),'X-Depth-Format':'float32-le-meters',
+                'X-Depth-Semantics':value.meta.get('depth_source','usb-float-depth'),
                 'X-Depth-Width':str(value.meta['width']),'X-Depth-Height':str(value.meta['height'])})
         except LookupError as exc:raise HTTPException(409,str(exc)) from None
         except ValueError as exc:raise HTTPException(422,str(exc)) from None

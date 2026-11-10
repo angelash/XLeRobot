@@ -36,7 +36,10 @@ def main():
     parser.add_argument('--android-transport',choices=('usb','wifi'),default='usb')
     parser.add_argument('--android-endpoint',default='')
     parser.add_argument('--android-role',choices=('observer','rear'),default='observer')
+    parser.add_argument('--android-mode',choices=('camera','arcore'),default='camera')
     parser.add_argument('--android-rotation',choices=('0','90','180','270'),default='0')
+    parser.add_argument('--iphone-transport',choices=('usb','wifi'),default='usb')
+    parser.add_argument('--iphone-origin',default='')
     parser.add_argument('--session')
     parser.add_argument('--check',action='store_true')
     args=parser.parse_args()
@@ -46,7 +49,7 @@ def main():
     # Complete native imports before a background pipe reader is started.
     # Windows CRT/DLL startup and blocked stdin must not race during import.
     import cv2,numpy
-    if args.device=='iphone':import record3d
+    if args.device=='iphone' and args.iphone_transport=='usb':import record3d
     else:import av
     # Keep native library printf output out of the framed binary pipe.
     wire=os.fdopen(os.dup(sys.stdout.fileno()),'wb',buffering=0)
@@ -73,14 +76,26 @@ def main():
         write_message(wire,{'kind':'status','phase':phase,'reason':reason})
     status('starting','正在检查手机连接')
     try:
-        if args.device=='iphone':iphone(wire,stop,status)
+        if args.device=='iphone' and args.iphone_transport=='wifi':
+            import asyncio
+            from deployment.phone_vision.iphone_wifi import receive
+            asyncio.run(receive(args.iphone_origin,stop,lambda *values:write_message(wire,*values),status))
+        elif args.device=='iphone':iphone(wire,stop,status)
+        elif args.android_mode=='arcore':
+            from deployment.phone_vision.arcore_stream import stream
+            stream(args,wire,stop,status)
         else:android(args,wire,stop,status)
     except (BrokenPipeError,EOFError):
         return
     except Exception as exc:
         # Do not copy device identifiers or app logs into the browser.
         print(type(exc).__name__+': '+str(exc),file=sys.stderr,flush=True)
-        status('waiting','连接未就绪或已中断，请检查 USB 连接与手机授权')
+        if args.device=='iphone' and args.iphone_transport=='wifi':
+            reason='Record3D Wi-Fi 连接中断，正在重试；请保持 App 前台并开始采集'
+        elif args.device=='android' and args.android_transport=='wifi':
+            reason='安卓 Wi-Fi 连接中断，正在重试；请检查热点与手机授权'
+        else:reason='连接未就绪或已中断，请检查 USB 连接与手机授权'
+        status('waiting',reason)
         raise SystemExit(2)
 
 
