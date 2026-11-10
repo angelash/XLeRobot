@@ -60,3 +60,9 @@ Record3D手机端提供HTTP信令和WebRTC视频：读取 `/metadata`、`/getOff
 私有证据位于工作端忽略目录 `.local-deploy/ar-wifi-20261110/`，关键回执：`installed-assets-v8.json`、`arcore-physical-success-check/result.json`、`car-iphone-wifi/result.json`、`iphone-restart-second.json`、`iphone-current-stability.json`、`iphone-spatial.txt`、`ar-latency.txt`、`alignment-car-tests.txt`、`stream-car-tests.txt`、`studio-dual-first/result.json`、`studio-dual-stream/result.json`、`stream-logs.txt`。原图、数组、个人内容、地址、APK、密钥与日志不入公开Git。
 
 后续必须在手机权限与采集恢复后，验最终持续通道的真帧、数值／置信度质量、双机同时工作、启停／镜头释放、断流恢复；再做固定安装、已知距离对照与机器人外参。未通过这些步骤前不把新深度交给自动抓取或底盘避障，也不宣称空间建图完成。
+
+## 当晚停测与明日准备
+
+用户随后明确两台手机已锁屏，要求笔记本休眠、工程和资料备齐明天再测。21:52已停止两机采集和自动重试，各机器人任务均非活动；当前电机遥测0，未宣称重新取得停车证明。手机保持锁屏，不继续启动采集或索要当前测试条件。
+
+[明日测试顺序](PHONE_NEXT_TEST_20261111_ZH.md)已准备并同步车载，11份私有材料共196,989,920字节逐项核对SHA、生成NEXT_TEST_KIT.json；现有安装和便携环境保留，明天无需重新寻找安装文件。21:56再检查任务和车载三份交付材料哈希后启动Windows休眠进程，随后SSH／8765／8770离线；未收到Windows退出码／电源事件，准确状态为“已发起休眠，主机随后离线”。最后文档在工作端保存并推送，车载唤醒后再同步收尾记录。
