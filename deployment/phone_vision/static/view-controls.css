@@ -1,0 +1,6 @@
+.view-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px;padding:14px 0;border-top:1px dashed var(--line);margin-bottom:14px}
+.view-controls label{display:grid;gap:6px;font-size:11px;color:var(--muted);max-width:100%}
+.view-controls select{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:9px 12px;min-height:36px;max-width:100%}
+.view-controls>span{flex-basis:100%;font-size:11px;color:var(--muted);line-height:1.7}
+figcaption .camera-name{color:var(--ink);text-align:left}
+.landscape.portrait-feed{max-width:350px;aspect-ratio:9/16;max-height:none;margin:0 auto}

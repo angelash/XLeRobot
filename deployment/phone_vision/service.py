@@ -37,6 +37,8 @@ class PhoneVision:
         self.clock=clock
         self.launcher=launcher
         self.lock=threading.RLock()
+        self.settings_lock=threading.Lock()
+        self.android_epoch=0
         self.config_path=self.repo/'.local-deploy/phone-vision.json'
         self.workers={}
         self.states={device:{'enabled':False,'phase':'disabled','reason':'启用后等待手机连接',
@@ -46,14 +48,26 @@ class PhoneVision:
         default=self.repo/'.local-deploy/phone-vision-kit'
         cfg={'python':str(default/'python/python.exe'),'adb':str(default/'tools/platform-tools/adb.exe'),
              'server':str(default/'tools/scrcpy-server'),'camera_id':'0',
-             'android_transport':'usb','android_endpoint':'','android_role':'observer'}
+             'android_transport':'usb','android_endpoint':'','android_role':'observer','android_rotation':'0',
+             'android_cameras':[{'id':'0','label':'后置主摄'}]}
         if self.config_path.is_file():
             value=json.loads(self.config_path.read_text(encoding='utf-8-sig'))
             if not isinstance(value,dict):raise ValueError('Invalid phone vision configuration')
             for key in cfg:
                 if key in value:
-                    if not isinstance(value[key],str) or (not value[key] and key!='android_endpoint'):raise ValueError('Invalid phone vision configuration')
+                    if key!='android_cameras' and (not isinstance(value[key],str) or (not value[key] and key!='android_endpoint')):raise ValueError('Invalid phone vision configuration')
                     cfg[key]=value[key]
+        choices=cfg['android_cameras']
+        if not isinstance(choices,list) or not 1<=len(choices)<=16:raise ValueError('Invalid camera choices')
+        ids=set()
+        for choice in choices:
+            if not isinstance(choice,dict) or set(choice)!={'id','label'}:raise ValueError('Invalid camera choice')
+            camera,label=choice['id'],choice['label']
+            if not isinstance(camera,str) or not camera.isascii() or not camera.isdecimal() or len(camera)>3 or camera in ids:
+                raise ValueError('Invalid camera ID')
+            if not isinstance(label,str) or not 1<=len(label)<=60:raise ValueError('Invalid camera label')
+            ids.add(camera)
+        if cfg['android_rotation'] not in ('0','90','180','270'):raise ValueError('Invalid camera rotation')
         if cfg['android_transport'] not in ('usb','wifi') or cfg['android_role'] not in ('observer','rear'):
             raise ValueError('Invalid Android camera configuration')
         if cfg['android_transport']=='wifi':
@@ -85,6 +99,8 @@ class PhoneVision:
                 devices[device]={'enabled':state['enabled'],'phase':phase,'reason':reason,
                                  'transport':cfg.get('android_transport','usb') if device=='android' else 'usb',
                                  'role':cfg.get('android_role','observer') if device=='android' else 'depth',
+                                 **({'camera_id':cfg.get('camera_id','0'),'rotation_deg':int(cfg.get('android_rotation','0')),
+                                     'camera_choices':cfg.get('android_cameras',[])} if device=='android' else {}),
                                  'attempts':state['attempts'],'session':state['session'],
                                  'stopping':stopping,
                                  'sequence':frame.sequence if frame else None,'age_ms':round(age*1000,1) if age is not None else None,
@@ -92,13 +108,14 @@ class PhoneVision:
             return {'host':socket.gethostname(),'devices':devices,'readiness':readiness,
                     'freshness_limit_ms':int(FRESH_SECONDS*1000),'motion_enabled':False,'calibrated':False}
 
-    def start(self,device):
+    def start(self,device,*,_settings=False):
         if device not in DEVICES:raise ValueError('Unknown phone')
         cfg=self.config()
         if not Path(cfg['python']).is_file():raise ValueError('手机采集环境未安装，请运行车载安装包')
         if device=='android' and not all(Path(cfg[key]).is_file() for key in ('adb','server')):
             raise ValueError('安卓采集工具未安装，请运行车载安装包')
         with self.lock:
+            if device=='android' and self.settings_lock.locked() and not _settings:raise ValueError('镜头正在切换，请稍候')
             if device in self.workers:
                 if self.states[device]['enabled']:return self.status()
                 raise ValueError('上一采集会话正在退出，请稍后启用')
@@ -111,15 +128,57 @@ class PhoneVision:
             thread.start()
         return self.status()
 
-    def stop(self,device):
+    def stop(self,device,*,_settings=False):
         if device not in DEVICES:raise ValueError('Unknown phone')
         with self.lock:
+            if device=='android' and not _settings:self.android_epoch+=1
             state=self.states[device]
             state.update(enabled=False,phase='disabled',reason='已停止采集',session=None)
             state['frames'].clear()
             worker=self.workers.get(device)
             if worker:worker['stop'].set()
         return self.status()
+
+    def configure_android(self,camera_id,rotation_deg):
+        cfg=self.config()
+        if camera_id not in [choice['id'] for choice in cfg['android_cameras']]:raise ValueError('只能选择已配置并验证的镜头')
+        if type(rotation_deg)!=int or rotation_deg not in (0,90,180,270):raise ValueError('画面方向只能是0、90、180或270度')
+        if not self.settings_lock.acquire(blocking=False):raise ValueError('镜头正在切换，请稍候')
+        old=None;updated=None;written=False;enabled=False
+        try:
+            old=self.config_path.read_bytes() if self.config_path.exists() else None
+            with self.lock:
+                enabled=self.states['android']['enabled']
+                epoch=self.android_epoch
+                worker=self.workers.get('android')
+            self.stop('android',_settings=True)
+            if worker:worker['thread'].join(timeout=22)
+            with self.lock:
+                if 'android' in self.workers:raise ValueError('旧镜头尚未退出，请稍后重试')
+            current=self.config_path.read_bytes() if self.config_path.exists() else None
+            if current!=old:raise ValueError('配置已被其他操作更新，请刷新')
+            value=json.loads(old.decode('utf-8-sig')) if old else {}
+            value.update(camera_id=camera_id,android_rotation=str(rotation_deg))
+            updated=json.dumps(value,ensure_ascii=False,indent=2).encode('utf-8')
+            self.config_path.parent.mkdir(parents=True,exist_ok=True)
+            if old is not None:
+                backup=self.config_path.parent/'phone-vision-backups'/('view-'+uuid.uuid4().hex+'.json')
+                backup.parent.mkdir(parents=True,exist_ok=True);backup.write_bytes(old)
+            temporary=self.config_path.with_name('phone-view-'+uuid.uuid4().hex+'.pending')
+            temporary.write_bytes(updated);temporary.replace(self.config_path);written=True
+            with self.lock:
+                if enabled and epoch==self.android_epoch:self.start('android',_settings=True)
+            return self.status()
+        except Exception:
+            if written and self.config_path.read_bytes()==updated:
+                if old is None:self.config_path.unlink()
+                else:self.config_path.write_bytes(old)
+            with self.lock:
+                if enabled and epoch==self.android_epoch and 'android' not in self.workers:
+                    try:self.start('android',_settings=True)
+                    except (ValueError,OSError):pass
+            raise
+        finally:self.settings_lock.release()
 
     def close(self):
         for device in DEVICES:self.stop(device)
@@ -209,7 +268,7 @@ class PhoneVision:
                 args=[cfg['python'],str(Path(__file__).with_name('worker.py')),'--device',device,'--session',session]
                 if device=='android':args+=['--adb',cfg['adb'],'--server',cfg['server'],'--camera-id',cfg['camera_id'],
                                            '--android-transport',cfg['android_transport'],'--android-endpoint',cfg['android_endpoint'],
-                                           '--android-role',cfg['android_role']]
+                                           '--android-role',cfg['android_role'],'--android-rotation',cfg['android_rotation']]
                 process=None
                 try:
                     with logfile.open('ab') as log:

@@ -1,0 +1,364 @@
+{
+  "date": "2026-11-10",
+  "device_model": "23078RKD5C",
+  "camera_interfaces": [
+    {
+      "id": "0",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "PRIVATE_REPROCESSING",
+        "YUV_REPROCESSING",
+        "CONSTRAINED_HIGH_SPEED_VIDEO",
+        "OFFLINE_PROCESSING",
+        "LOGICAL_MULTI_CAMERA",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": [
+        "6",
+        "2"
+      ],
+      "conflicting_ids": [
+        "6",
+        "2"
+      ]
+    },
+    {
+      "id": "1",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "PRIVATE_REPROCESSING",
+        "YUV_REPROCESSING",
+        "CONSTRAINED_HIGH_SPEED_VIDEO",
+        "OFFLINE_PROCESSING",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": null,
+      "conflicting_ids": []
+    },
+    {
+      "id": "2",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "PRIVATE_REPROCESSING",
+        "YUV_REPROCESSING",
+        "OFFLINE_PROCESSING",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": null,
+      "conflicting_ids": [
+        "0",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "3",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "PRIVATE_REPROCESSING",
+        "YUV_REPROCESSING",
+        "OFFLINE_PROCESSING",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": null,
+      "conflicting_ids": []
+    },
+    {
+      "id": "4",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "YUV_REPROCESSING",
+        "OFFLINE_PROCESSING",
+        "LOGICAL_MULTI_CAMERA",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": [
+        "6",
+        "2"
+      ],
+      "conflicting_ids": [
+        "6",
+        "2"
+      ]
+    },
+    {
+      "id": "5",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "YUV_REPROCESSING",
+        "OFFLINE_PROCESSING",
+        "LOGICAL_MULTI_CAMERA",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": [
+        "6",
+        "2"
+      ],
+      "conflicting_ids": [
+        "6",
+        "2"
+      ]
+    },
+    {
+      "id": "6",
+      "capabilities": [
+        "BACKWARD_COMPATIBLE",
+        "MANUAL_SENSOR",
+        "MANUAL_POST_PROCESSING",
+        "READ_SENSOR_SETTINGS",
+        "RAW",
+        "BURST_CAPTURE",
+        "PRIVATE_REPROCESSING",
+        "YUV_REPROCESSING",
+        "CONSTRAINED_HIGH_SPEED_VIDEO",
+        "OFFLINE_PROCESSING",
+        "DYNAMIC_RANGE_TEN_BIT",
+        "STREAM_USE_CASE"
+      ],
+      "depth_output": false,
+      "physical_ids": null,
+      "conflicting_ids": [
+        "0",
+        "4",
+        "5"
+      ]
+    }
+  ],
+  "sequential_capture": [
+    {
+      "camera_id": "1",
+      "success": true,
+      "frames": 8,
+      "server_camera_id": [
+        "1"
+      ],
+      "errors": []
+    },
+    {
+      "camera_id": "2",
+      "success": true,
+      "frames": 8,
+      "server_camera_id": [
+        "2"
+      ],
+      "errors": []
+    },
+    {
+      "camera_id": "3",
+      "success": true,
+      "frames": 8,
+      "server_camera_id": [
+        "3"
+      ],
+      "errors": []
+    },
+    {
+      "camera_id": "4",
+      "success": true,
+      "frames": 8,
+      "server_camera_id": [
+        "4"
+      ],
+      "errors": []
+    },
+    {
+      "camera_id": "5",
+      "success": true,
+      "frames": 8,
+      "server_camera_id": [
+        "5"
+      ],
+      "errors": []
+    },
+    {
+      "camera_id": "6",
+      "success": true,
+      "frames": 8,
+      "server_camera_id": [
+        "6"
+      ],
+      "errors": []
+    }
+  ],
+  "initial_camera_0_existing_live_capture": true,
+  "independent_front_rear_trial": "front_interrupted_rear",
+  "all_native_concurrency_modes_validated": false,
+  "arcore_package_installed": false,
+  "arcore_runtime_depth_verified": false,
+  "public_arcore_model_support": true,
+  "public_sources": [
+    "https://developers.google.com/ar/devices",
+    "https://developers.google.com/ar/develop/depth"
+  ],
+  "view_switch_cases": [
+    {
+      "camera_id": "1",
+      "session_changed": true,
+      "old_frame_rejected": true,
+      "rotation_deg": 90
+    },
+    {
+      "camera_id": "2",
+      "session_changed": true,
+      "old_frame_rejected": true,
+      "rotation_deg": 90
+    }
+  ],
+  "final_camera_id": "2",
+  "final_rotation_deg": 90,
+  "wifi_requested_fps": 10,
+  "wifi_bit_rate": 2000000,
+  "rotated_jpeg_size": [
+    720,
+    1280
+  ],
+  "native_video_size": [
+    1280,
+    720
+  ],
+  "monitor": {
+    "fresh_samples": 204,
+    "stream_sessions": 1,
+    "age_median_ms": 212.45,
+    "maximum_attempts": 2,
+    "unavailable_polls": 20
+  },
+  "http_stale_rejections": 3,
+  "local_checks_passed": 65,
+  "car_checks_passed": 65,
+  "robot_commands": 0,
+  "iphone_restarted": false,
+  "source_files_readback": [
+    {
+      "path": "deployment/phone_vision/service.py",
+      "sha256": "23ac785c7380716c75ea8690989fb5fcea167b2ddbc3a688eec7f2626f44ad6f"
+    },
+    {
+      "path": "deployment/phone_vision/worker.py",
+      "sha256": "cfa05d4133a6a6b9ebe57dcab39cfa90c6c07d9fcf29badaa87aeb53f761083a"
+    },
+    {
+      "path": "deployment/phone_vision/integration.py",
+      "sha256": "e147ee2c80537cf0ce6f127e942d5f5a3295104f7ca49f8e8dbfe4a5d9d0fa9d"
+    },
+    {
+      "path": "deployment/phone_vision/install_kit.py",
+      "sha256": "b62a77f8fbb108c0e8d56b8395f70228c6fb398809d316f6fde3ce4a5a978fdc"
+    },
+    {
+      "path": "deployment/phone_vision/static/index.html",
+      "sha256": "e26e5ed9342b6c6a7f9385b633b93a68cea95f67e919e027a275bd16ca72d9d0"
+    },
+    {
+      "path": "deployment/phone_vision/static/app.js",
+      "sha256": "11b0bd6eab990e9dfe3845222a1e1a434820d0ca787e6d9cef2dc1454c7c0d04"
+    },
+    {
+      "path": "deployment/phone_vision/static/view-controls.css",
+      "sha256": "0af5f4959224484fd76b0fcc44678f315260eabfe6b44fca1ddd9f4c8377ed61"
+    },
+    {
+      "path": "deployment/phone_vision/test_camera_settings.py",
+      "sha256": "efbc80cae17eeefa204898e0d0db0655d897977eaf67de5a3966354f118f4b83"
+    },
+    {
+      "path": "deployment/phone_vision/test_integration.py",
+      "sha256": "26c44e4008928e1069e86be823a2cc3b03188572a6224962f898beffb188caff"
+    }
+  ],
+  "private_evidence_manifest": [
+    {
+      "name": "inventory/camera-dump.txt",
+      "sha256": "8273ed7985acdd6de959c694853eee1043fdadf4b9fe97c357fa507596e13abd",
+      "bytes": 778844
+    },
+    {
+      "name": "inventory/scrcpy-camera-list.txt",
+      "sha256": "dc0efb15c3cee6babc43951fba54eb2f580c424aaecb99da0d34b9f5ae321d6d",
+      "bytes": 6745
+    },
+    {
+      "name": "inventory/arcore-version.txt",
+      "sha256": "fa8138a1e494f35e34427ea9c034f06caebd2fb3d992fad3f98be1eb068f52b6",
+      "bytes": 47
+    },
+    {
+      "name": "concurrent.txt",
+      "sha256": "8e5825581b28d93c1c834953c676200f6fea5019bc28d83a2bf597845dd76235",
+      "bytes": 151
+    },
+    {
+      "name": "sequential/result.json",
+      "sha256": "1004691cb2aabad46957a6ea899cb7f6886ea40d13f335f9440313a495b77aaf",
+      "bytes": 1882
+    },
+    {
+      "name": "view-api-verification.json",
+      "sha256": "92bad93db1662b9ff9b7a05a37208d33cd7d427373973573355d89e6dc029190",
+      "bytes": 3125
+    },
+    {
+      "name": "view-monitor.json",
+      "sha256": "03c5d4413e7d492c043a2913bb1d5d4a01710e605aacf28c2075be1184b4c901",
+      "bytes": 226734
+    },
+    {
+      "name": "final-tests.txt",
+      "sha256": "da51076c7c963dfe60d20a95572a4263468440800f71588327b7f22252a834db",
+      "bytes": 611
+    },
+    {
+      "name": "final-car.txt",
+      "sha256": "ce693bde01555250b57d217bb537b49fe3e0d0b9412e0343ba8983ae753a55ef",
+      "bytes": 2219
+    },
+    {
+      "name": "source-verification.json",
+      "sha256": "e5368256137e4f782ea0e426d8f0eec06f42b9b208fd6a28c5defacf167eae40",
+      "bytes": 1343
+    }
+  ],
+  "report": "docs/autonomy/PHONE_CAMERA_CAPABILITIES_20261110_ZH.md"
+}

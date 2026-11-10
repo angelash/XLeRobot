@@ -111,6 +111,18 @@ def test_missing_native_dependencies_allow_page_and_observation_only(prepared):
     assert client.post('/api/platform/phone-vision/iphone/start',content=b'x'*1100,headers={'Content-Type':'application/json'}).status_code==413
 
 
+def test_android_view_configuration_requires_local_origin_and_leaves_iphone_frames_intact(prepared):
+    service,clock,client=prepared
+    path='/api/platform/phone-vision/android/view'
+    value={'camera_id':'0','rotation_deg':90}
+    assert client.post(path,json=value,headers={'Origin':'https://outside.example'}).status_code==403
+    assert client.post(path,json={**value,'command':'ignored'}).status_code==422
+    assert client.post(path,json={'camera_id':'9','rotation_deg':0}).status_code==422
+    result=client.post(path,json=value)
+    assert result.status_code==200 and result.json()['devices']['android']['rotation_deg']==90
+    assert service.frame('iphone','first',1).raw==message()[3]
+
+
 def test_pipe_size_limit_and_depth_shape_are_checked_before_use():
     wire=io.BytesIO();write_message(wire,*message());wire.seek(0)
     assert read_message(wire)==message()

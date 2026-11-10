@@ -84,7 +84,9 @@ def install(kit,robot_root):
              'camera_id':existing.get('camera_id','0'),
              'android_transport':existing.get('android_transport','usb'),
              'android_endpoint':existing.get('android_endpoint',''),
-             'android_role':existing.get('android_role','observer')}
+             'android_role':existing.get('android_role','observer'),
+             'android_rotation':existing.get('android_rotation','0'),
+             'android_cameras':existing.get('android_cameras',[{'id':'0','label':'后置主摄'}])}
         temporary=config_path.with_suffix('.pending')
         temporary.write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(config_path)
     receipt={'installed_at':now,'robot_root':str(robot_root),'backup':str(backup),'source_files':installed,

@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter,HTTPException,Request
 from fastapi.responses import FileResponse,RedirectResponse,Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from .service import PhoneVision
 
 STATIC=Path(__file__).with_name('static')
@@ -16,7 +17,7 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     app.state.phone_vision=service
     router=APIRouter(prefix=API)
 
-    async def action(request,device,operation):
+    async def body(request):
         origin=request.headers.get('origin')
         allowed=allowed_origins() if callable(allowed_origins) else (allowed_origins or ())
         if origin and origin not in allowed:raise HTTPException(403,'只接受本平台的操作')
@@ -26,8 +27,15 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
             content.extend(chunk)
             if len(content)>1024:raise HTTPException(413,'请求过大')
         try:
-            body=json.loads(content or b'{}')
-            if body!={}:raise ValueError('操作不接收路径或执行命令')
+            value=json.loads(content or b'{}')
+            if not isinstance(value,dict):raise ValueError('需要JSON对象')
+            return value
+        except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
+
+    async def action(request,device,operation):
+        value=await body(request)
+        try:
+            if value!={}:raise ValueError('操作不接收路径或执行命令')
             return getattr(service,operation)(device)
         except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
 
@@ -39,6 +47,14 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
 
     @router.post('/{device}/stop')
     async def stop(device:str,request:Request):return await action(request,device,'stop')
+
+    @router.post('/android/view')
+    async def configure_android(request:Request):
+        value=await body(request)
+        try:
+            if set(value)!={'camera_id','rotation_deg'}:raise ValueError('只接受镜头和画面方向')
+            return await run_in_threadpool(service.configure_android,value['camera_id'],value['rotation_deg'])
+        except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
 
     @router.get('/{device}/frame.jpg')
     def frame(device:str,session:str,seq:int,kind:str='rgb'):

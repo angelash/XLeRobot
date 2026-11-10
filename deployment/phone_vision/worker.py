@@ -36,6 +36,7 @@ def main():
     parser.add_argument('--android-transport',choices=('usb','wifi'),default='usb')
     parser.add_argument('--android-endpoint',default='')
     parser.add_argument('--android-role',choices=('observer','rear'),default='observer')
+    parser.add_argument('--android-rotation',choices=('0','90','180','270'),default='0')
     parser.add_argument('--session')
     parser.add_argument('--check',action='store_true')
     args=parser.parse_args()
@@ -173,8 +174,10 @@ def android(args,wire,stop,status):
     try:
         adb('-s',serial,'push',args.server,remote)
         port=int(adb('-s',serial,'forward','tcp:0','localabstract:scrcpy_'+scid))
+        capture_fps=10 if transport=='wifi' else 15
+        bit_rate=2_000_000 if transport=='wifi' else 4_000_000
         options=['5.0.1','scid='+scid,'video_source=camera','camera_id='+args.camera_id,
-                 'camera_size=1280x720','camera_fps=15','video_codec=h264','video_bit_rate=4000000',
+                 'camera_size=1280x720','camera_fps='+str(capture_fps),'video_codec=h264','video_bit_rate='+str(bit_rate),
                  'audio=false','control=false','tunnel_forward=true','cleanup=false',
                  'send_device_meta=false','send_stream_meta=false','send_dummy_byte=true','send_frame_meta=true']
         process=subprocess.Popen([args.adb,'-s',serial,'shell','CLASSPATH='+remote,'app_process','/',
@@ -210,10 +213,14 @@ def android(args,wire,stop,status):
                     continue
                 if now-last_publish<.125:continue
                 bgr=frame.to_ndarray(format='bgr24')
+                rotation=int(getattr(args,'android_rotation','0'))
+                bgr=orient_frame(bgr,rotation)
                 ok,jpeg=cv2.imencode('.jpg',bgr,[cv2.IMWRITE_JPEG_QUALITY,78])
                 if not ok:raise ValueError('JPEG encoding failed')
                 sequence+=1
-                meta={'kind':'frame','width':frame.width,'height':frame.height,'sequence':sequence,'rgbd':False,
+                meta={'kind':'frame','width':int(bgr.shape[1]),'height':int(bgr.shape[0]),'sequence':sequence,'rgbd':False,
+                      'native_width':frame.width,'native_height':frame.height,'camera_id':args.camera_id,'rotation_deg':rotation,
+                      'configured_fps':capture_fps,'configured_bit_rate':bit_rate,
                       'host_acquired_monotonic':acquired,'relative_backlog_ms':round(lag*1000,1),
                       'absolute_latency_verified':False,'transport':transport,'role':getattr(args,'android_role','observer'),
                       'source_pts_us':pts,'calibrated':False,'fps':round((len(arrivals)-1)/(arrivals[-1]-arrivals[0]),2)
@@ -230,6 +237,14 @@ def android(args,wire,stop,status):
             except (OSError,subprocess.SubprocessError):pass
         try:adb('-s',serial,'shell','rm',remote)
         except (OSError,subprocess.SubprocessError):pass
+
+
+def orient_frame(bgr,rotation):
+    import cv2
+    if rotation==0:return bgr
+    codes={90:cv2.ROTATE_90_CLOCKWISE,180:cv2.ROTATE_180,270:cv2.ROTATE_90_COUNTERCLOCKWISE}
+    if rotation not in codes:raise ValueError('Invalid camera rotation')
+    return cv2.rotate(bgr,codes[rotation])
 
 
 if __name__=='__main__':main()
