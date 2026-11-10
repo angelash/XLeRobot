@@ -45,17 +45,24 @@ class PhoneVision:
     def config(self):
         default=self.repo/'.local-deploy/phone-vision-kit'
         cfg={'python':str(default/'python/python.exe'),'adb':str(default/'tools/platform-tools/adb.exe'),
-             'server':str(default/'tools/scrcpy-server'),'camera_id':'0'}
+             'server':str(default/'tools/scrcpy-server'),'camera_id':'0',
+             'android_transport':'usb','android_endpoint':'','android_role':'observer'}
         if self.config_path.is_file():
             value=json.loads(self.config_path.read_text(encoding='utf-8-sig'))
             if not isinstance(value,dict):raise ValueError('Invalid phone vision configuration')
             for key in cfg:
                 if key in value:
-                    if not isinstance(value[key],str) or not value[key]:raise ValueError('Invalid phone vision tool path')
+                    if not isinstance(value[key],str) or (not value[key] and key!='android_endpoint'):raise ValueError('Invalid phone vision configuration')
                     cfg[key]=value[key]
+        if cfg['android_transport'] not in ('usb','wifi') or cfg['android_role'] not in ('observer','rear'):
+            raise ValueError('Invalid Android camera configuration')
+        if cfg['android_transport']=='wifi':
+            from .android_network import wifi_endpoint
+            wifi_endpoint(cfg['android_endpoint'])
         return cfg
 
     def status(self):
+        cfg={}
         try:
             cfg=self.config()
             readiness={'worker_python':Path(cfg['python']).is_file(),
@@ -76,6 +83,8 @@ class PhoneVision:
                 if frame and phase=='live' and not available:
                     phase='stale';reason='画面已过期，正在等待新的采集帧'
                 devices[device]={'enabled':state['enabled'],'phase':phase,'reason':reason,
+                                 'transport':cfg.get('android_transport','usb') if device=='android' else 'usb',
+                                 'role':cfg.get('android_role','observer') if device=='android' else 'depth',
                                  'attempts':state['attempts'],'session':state['session'],
                                  'stopping':stopping,
                                  'sequence':frame.sequence if frame else None,'age_ms':round(age*1000,1) if age is not None else None,
@@ -198,7 +207,9 @@ class PhoneVision:
                 if logfile.exists() and logfile.stat().st_size>1_000_000:
                     logfile.replace(logfile.with_suffix('.previous.log'))
                 args=[cfg['python'],str(Path(__file__).with_name('worker.py')),'--device',device,'--session',session]
-                if device=='android':args+=['--adb',cfg['adb'],'--server',cfg['server'],'--camera-id',cfg['camera_id']]
+                if device=='android':args+=['--adb',cfg['adb'],'--server',cfg['server'],'--camera-id',cfg['camera_id'],
+                                           '--android-transport',cfg['android_transport'],'--android-endpoint',cfg['android_endpoint'],
+                                           '--android-role',cfg['android_role']]
                 process=None
                 try:
                     with logfile.open('ab') as log:

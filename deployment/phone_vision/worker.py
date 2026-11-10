@@ -33,6 +33,9 @@ def main():
     parser.add_argument('--adb')
     parser.add_argument('--server')
     parser.add_argument('--camera-id',default='0')
+    parser.add_argument('--android-transport',choices=('usb','wifi'),default='usb')
+    parser.add_argument('--android-endpoint',default='')
+    parser.add_argument('--android-role',choices=('observer','rear'),default='observer')
     parser.add_argument('--session')
     parser.add_argument('--check',action='store_true')
     args=parser.parse_args()
@@ -148,17 +151,20 @@ def iphone(wire,stop,status):
 def android(args,wire,stop,status):
     import av,cv2
     from deployment.phone_vision.android_usb import receive_exact,receive_packet
+    from deployment.phone_vision.android_network import select_device,wifi_endpoint,VideoClock
     if not args.adb or not args.server or not Path(args.adb).is_file() or not Path(args.server).is_file():
         status('error','手机采集工具尚未安装，请运行车载安装包');return
     if not args.camera_id.isascii() or not args.camera_id.isdecimal():raise ValueError('Invalid camera ID')
     def adb(*values):
         return subprocess.run([args.adb,*values],capture_output=True,check=True,timeout=8,
                               creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0)).stdout.decode('utf-8','replace').strip()
+    transport=getattr(args,'android_transport','usb');endpoint=getattr(args,'android_endpoint','')
+    if transport=='wifi':
+        try:adb('connect',wifi_endpoint(endpoint))
+        except subprocess.CalledProcessError:pass  # Report the exact authorization state below.
     rows=[row.split() for row in adb('devices').splitlines()[1:] if row.strip()]
-    candidates=[row[0] for row in rows if len(row)>1 and row[1]=='device']
-    if len(candidates)!=1:
-        status('waiting','请连接一台安卓手机，解锁并接受 USB 调试授权');return
-    serial=candidates[0]
+    serial,reason=select_device(rows,transport,endpoint)
+    if serial is None:status('waiting',reason);return
     if args.session and (len(args.session)!=32 or any(c not in '0123456789abcdef' for c in args.session)):
         raise ValueError('Invalid worker session')
     scid=f'{int(args.session[:8],16)&0x7fffffff:08x}' if args.session else f'{secrets.randbits(31):08x}'
@@ -187,7 +193,7 @@ def android(args,wire,stop,status):
         if stop.is_set():return
         channel.settimeout(2)
         decoder=av.CodecContext.create('h264','r');config=b'';sequence=0;previous_pts=None
-        last_publish=0.;arrivals=deque(maxlen=60)
+        last_publish=0.;arrivals=deque(maxlen=60);video_clock=VideoClock();last_backlog_notice=0.
         while not stop.is_set():
             pts,is_config,raw=receive_packet(channel)
             if pts is None:continue
@@ -197,13 +203,19 @@ def android(args,wire,stop,status):
             packet=av.Packet(config+raw);config=b'';packet.pts=packet.dts=pts;packet.time_base=Fraction(1,1000000)
             for frame in decoder.decode(packet):
                 now=time.monotonic();arrivals.append(now)
+                acquired,lag=video_clock.observe(frame.pts if frame.pts is not None else pts,now)
+                if lag>.5:
+                    if now-last_backlog_notice>1:
+                        status('waiting','画面传输积压，正在等待新的后视画面');last_backlog_notice=now
+                    continue
                 if now-last_publish<.125:continue
                 bgr=frame.to_ndarray(format='bgr24')
                 ok,jpeg=cv2.imencode('.jpg',bgr,[cv2.IMWRITE_JPEG_QUALITY,78])
                 if not ok:raise ValueError('JPEG encoding failed')
                 sequence+=1
                 meta={'kind':'frame','width':frame.width,'height':frame.height,'sequence':sequence,'rgbd':False,
-                      'host_acquired_monotonic':now,
+                      'host_acquired_monotonic':acquired,'relative_backlog_ms':round(lag*1000,1),
+                      'absolute_latency_verified':False,'transport':transport,'role':getattr(args,'android_role','observer'),
                       'source_pts_us':pts,'calibrated':False,'fps':round((len(arrivals)-1)/(arrivals[-1]-arrivals[0]),2)
                       if len(arrivals)>1 and arrivals[-1]>arrivals[0] else None}
                 write_message(wire,meta,jpeg.tobytes());last_publish=now

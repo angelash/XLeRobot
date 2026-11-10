@@ -81,7 +81,10 @@ def install(kit,robot_root):
         if config_path.exists():shutil.copy2(config_path,backup/'phone-vision-config.json')
         cfg={'managed_by':'phone-vision-kit','python':str(runtime/'python/python.exe'),
              'adb':str(runtime/'tools/platform-tools/adb.exe'),'server':str(runtime/'tools/scrcpy-server'),
-             'camera_id':existing.get('camera_id','0')}
+             'camera_id':existing.get('camera_id','0'),
+             'android_transport':existing.get('android_transport','usb'),
+             'android_endpoint':existing.get('android_endpoint',''),
+             'android_role':existing.get('android_role','observer')}
         temporary=config_path.with_suffix('.pending')
         temporary.write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(config_path)
     receipt={'installed_at':now,'robot_root':str(robot_root),'backup':str(backup),'source_files':installed,

@@ -7,9 +7,11 @@
   function hide(device){for(const kind of (device==='iphone'?['rgb','depth']:['rgb'])){const img=$(device+'-'+kind);img.hidden=true;img.removeAttribute('src');$(device+'-'+kind+'-empty').hidden=false;}
     const old=view[device];if(old?.urls)old.urls.forEach(URL.revokeObjectURL);view[device]=null;
     if(device==='iphone')$('depth-readout').textContent='点击深度画面查看像素深度原值；距离精度尚待标定。';}
-  function facts(device,state){const node=$(device+'-facts');node.replaceChildren();const m=state.meta;if(!m)return;
-    const values=[['尺寸',m.width+' × '+m.height],['接收',m.fps==null?'—':m.fps+' fps'],['更新',Math.round(state.age_ms)+' ms']];
-    if(device==='iphone')values.push(['数值深度',(m.positive_depth_fraction*100).toFixed(1)+'%'],['置信度图',m.confidence_available?'已提供':'未提供']);
+  function facts(device,state){const node=$(device+'-facts');node.replaceChildren();const m=state.meta;
+    const values=[['连接',state.transport==='wifi'?'Wi-Fi':'USB']];
+    if(m)values.push(['尺寸',m.width+' × '+m.height],['接收',m.fps==null?'—':m.fps+' fps'],['更新',Math.round(state.age_ms)+' ms']);
+    if(m?.relative_backlog_ms!=null)values.push(['流内积压',Math.round(m.relative_backlog_ms)+' ms']);
+    if(device==='iphone'&&m)values.push(['数值深度',(m.positive_depth_fraction*100).toFixed(1)+'%'],['置信度图',m.confidence_available?'已提供':'未提供']);
     for(const [key,value] of values){const div=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;div.append(dt,dd);node.append(div);}}
   async function images(device,state){if(view[device]?.sequence===state.sequence&&view[device]?.session===state.session)return;
     const token=state.session+':'+state.sequence;view[device]??={};view[device].loading=token;
@@ -22,6 +24,9 @@
     }catch{urls.forEach(URL.revokeObjectURL);hide(device);}}
   async function poll(){if(polling||!visible)return;polling=true;
     try{const status=await (await request('/status')).json();$('host').textContent=status.host;
+      const rear=status.devices.android.role==='rear';$('android-role').textContent=rear?'后视视角':'辅助视角';
+      $('android-transport').textContent=(status.devices.android.transport==='wifi'?'Wi-Fi 回传':'USB 连接')+' · 彩色视频';
+      if(rear&&$('android-device').nextElementSibling!==$('iphone-device'))$('iphone-device').before($('android-device'));
       const ready=status.readiness.worker_python;$('notice').hidden=ready;if(!ready)$('notice').textContent='这台电脑尚未安装手机采集环境，请运行随项目提供的手机视觉安装包。';
       for(const device of ids){const s=status.devices[device],state=$(device+'-state');state.textContent=labels[s.phase]||s.phase;state.className='state '+s.phase;
         $(device+'-reason').textContent=s.reason;facts(device,s);

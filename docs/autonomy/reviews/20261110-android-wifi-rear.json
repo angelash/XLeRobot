@@ -1,0 +1,109 @@
+{
+  "date": "2026-11-10",
+  "status": "wifi_camera_ready_for_mounting",
+  "software_deployed": true,
+  "android_app_installs": 0,
+  "transport": "wifi",
+  "role": "rear",
+  "source_files_verified": [
+    {
+      "path": "deployment/phone_vision/android_network.py",
+      "sha256": "d711126b6d493eccc2636dae476f9084cf37a42de92f3f2577c79a8444d47f14"
+    },
+    {
+      "path": "deployment/phone_vision/worker.py",
+      "sha256": "ee937e2619305ba2d15333159c3f52b815d2858d30b8574fc72fd842e0704780"
+    },
+    {
+      "path": "deployment/phone_vision/service.py",
+      "sha256": "3b5c390a60d501322e752c0ac651ecfc7a4694283ed48e84ba515a35d78f5d00"
+    },
+    {
+      "path": "deployment/phone_vision/install_kit.py",
+      "sha256": "9d71041eb67b3454de9f42c81474c253e2d01e9acb7e9310c8f52576a4d898a4"
+    },
+    {
+      "path": "deployment/phone_vision/static/index.html",
+      "sha256": "043a2b5f548b9fd611c2daece3d48f3fe91582fdcd694b5660a25bf3dfc68c52"
+    },
+    {
+      "path": "deployment/phone_vision/static/app.js",
+      "sha256": "7d254104d6670a16e5f635be7ad22cea900daf3aa8221490504d13c79e4cec45"
+    },
+    {
+      "path": "deployment/phone_vision/test_android_network.py",
+      "sha256": "63c17cc59a646feac587934bbe09c8da43281b4bd4c91d364da3b9609c3512be"
+    }
+  ],
+  "local_checks": 60,
+  "car_checks": 60,
+  "js_syntax_checked": true,
+  "car_live_observation_seconds": 60,
+  "car_samples": {
+    "samples": 225,
+    "sessions": 1,
+    "age_median_ms": 151.8,
+    "backlog_max_ms": 465.6,
+    "last_fps": 14.99,
+    "unique_hashes": 225
+  },
+  "live_tests": {
+    "continuous_wifi_frames": true,
+    "stop_clears_image_and_restart_has_new_session": true,
+    "adb_network_disconnect_hides_old_image_and_reconnects": true
+  },
+  "recovery_seconds_including_ssh": 14.344000000040978,
+  "working_adb_dependency_test": {
+    "working_adb_disconnected": true,
+    "same_car_session": true,
+    "car_frame_available": true,
+    "car_sequence_advanced": true,
+    "transport": "wifi"
+  },
+  "absolute_optical_latency_verified": false,
+  "phone_mounted": false,
+  "physical_usb_unplug_verified": false,
+  "screen_lock_verified": false,
+  "phone_reboot_verified": false,
+  "long_duration_heat_verified": false,
+  "phone_reboot_requires_network_debug_initialization": true,
+  "controller_restarted": false,
+  "robot_commands": 0,
+  "iphone_enabled": false,
+  "android_enabled_at_finish": true,
+  "old_map_observations": 119,
+  "old_map_features": 11,
+  "private_evidence_manifest": [
+    {
+      "name": "working-wifi-probe/result.json",
+      "sha256": "e7b704cfc7fbbf3403dcd31f802e137308b1f77800d1586a0fdc7b92d74215fe",
+      "bytes": 177486
+    },
+    {
+      "name": "car-wifi-verification/result.json",
+      "sha256": "3c190e48548486fbcf797209fdc638afc9b56b9df6fabbc67d4321021d27f832",
+      "bytes": 144000
+    },
+    {
+      "name": "working-adb-independent.json",
+      "sha256": "b752d25507a772667696bd7b08c95c5dd2e03073c0b3e3c884afe9fa2165529e",
+      "bytes": 159
+    },
+    {
+      "name": "car-tests.txt",
+      "sha256": "56d349c86828523062d1de45b686b9624f72bd444b08dd144ff43af3015a46a7",
+      "bytes": 747
+    },
+    {
+      "name": "final-car.txt",
+      "sha256": "7d57f09cb8f14bdad64dd577a00b62888e86fc0d932fb0c8cdaee7e7aadc5491",
+      "bytes": 1754
+    },
+    {
+      "name": "source-verification.json",
+      "sha256": "c48308bf61eec4026c253ae8e4f1728ba0b77bc63380b0c20bfbd03f9c1aa90a",
+      "bytes": 1070
+    }
+  ],
+  "report": "docs/autonomy/ANDROID_WIFI_REAR_20261110_ZH.md"
+}
