@@ -9,6 +9,28 @@ from deployment.phone_vision.protocol import read_message
 from deployment.phone_vision.worker import iphone
 
 
+def test_missing_phone_worker_exits_with_open_stdin_without_interpreter_abort():
+    import subprocess
+    code="""
+import sys,types
+sys.modules['record3d']=types.SimpleNamespace()
+from deployment.phone_vision import worker
+worker.iphone=lambda wire,stop,status:status('waiting','phone absent')
+worker.main()
+"""
+    process=subprocess.Popen([sys.executable,'-c',code,'--device','iphone'],
+                             stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    try:
+        process.wait(timeout=15)  # stdin intentionally stays open at worker exit.
+        stdout,stderr=process.communicate()
+        assert process.returncode==0,stderr.decode('utf-8','replace')
+        wire=io.BytesIO(stdout)
+        assert read_message(wire)[0]['phase']=='starting'
+        assert read_message(wire)[0]['reason']=='phone absent'
+    finally:
+        if process.poll() is None:process.kill();process.communicate()
+
+
 def test_iphone_worker_emits_coherent_rgb_depth_and_numeric_array(monkeypatch):
     class Coeffs:
         fx=435.;fy=435.;tx=239.;ty=321.

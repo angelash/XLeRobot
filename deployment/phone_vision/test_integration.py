@@ -34,6 +34,18 @@ def test_numeric_pixel_and_empty_depth_are_not_confidence(prepared):
     assert client.get(common+'-1').status_code==422
 
 
+def test_raw_depth_preserves_numeric_values_and_fresh_session_contract(prepared):
+    service,clock,client=prepared
+    path='/api/platform/phone-vision/iphone/depth.raw?session=first&seq=1'
+    response=client.get(path)
+    assert response.content==message()[3]
+    assert response.headers['X-Depth-Format']=='float32-le-meters'
+    assert response.headers['X-Depth-Width']=='2'
+    assert client.get(path.replace('first','old')).status_code==409
+    clock[0]+=1.01
+    assert client.get(path).status_code==409
+
+
 def test_old_frame_is_hidden_and_both_image_and_depth_refused(prepared):
     service,clock,client=prepared
     assert client.get('/api/platform/phone-vision/status').json()['devices']['iphone']['frame_available']

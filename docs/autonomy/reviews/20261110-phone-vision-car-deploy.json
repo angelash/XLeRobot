@@ -1,0 +1,109 @@
+{
+  "date": "2026-11-10",
+  "software_deployed": true,
+  "same_studio_port": 8770,
+  "controller_restarted": false,
+  "controller_pid_snapshot": 35476,
+  "studio_pid_snapshot": 5648,
+  "source_readback_files": [
+    {
+      "path": "deployment/phone_vision/integration.py",
+      "sha256": "39784f6a1ec704476beec45367292b4112bdfad24f0037d4ecb90d01158fca46"
+    },
+    {
+      "path": "deployment/phone_vision/service.py",
+      "sha256": "4e3c1e70673a8196baa0515b8d2773128ee5d06f36d40b7731dadfc55d7e9efa"
+    },
+    {
+      "path": "deployment/phone_vision/worker.py",
+      "sha256": "d7f9d399322060f1f8fdda1e58f75ce1bae8a7ff77a85e64f2be099c7f4b8ec4"
+    },
+    {
+      "path": "deployment/phone_vision/spatial_probe.py",
+      "sha256": "89755e5e63e943efb0fcb2674ed6cd9c4778a8a4e1bce350fd38e98789b9f253"
+    },
+    {
+      "path": "deployment/phone_vision/test_worker.py",
+      "sha256": "ab16d5c8e0ceb9d9e1e058628d089cec883929c712bbb39d75fd27926a20c12e"
+    },
+    {
+      "path": "deployment/phone_vision/test_integration.py",
+      "sha256": "7945fa9a8088386838b40b5138864911b557c41e8dc2d0e782fd4d49041d7e7e"
+    },
+    {
+      "path": "deployment/phone_vision/test_spatial_probe.py",
+      "sha256": "08a211141df92bfc441855c60d280b87e6f8d27a733886d0ca8304e36608b278"
+    }
+  ],
+  "car_checks_passed": 52,
+  "phone_capture_verified": false,
+  "iphone_enumeration_final": 0,
+  "android_enumeration_final": 0,
+  "usb_descriptor_failure_persists": true,
+  "usb_node_restart_attempts": 1,
+  "phone_probe_wait_seconds": 20,
+  "rgbd_samples_received": 0,
+  "registered_map": false,
+  "original_uvc_cameras_recovered": [
+    0,
+    1,
+    2
+  ],
+  "motor_count_final": 16,
+  "motor_torque_on_final": 0,
+  "robot_motion_commands": 0,
+  "robot_torque_writes": 0,
+  "grasp_trials": 0,
+  "base_commands": 0,
+  "existing_map_observations": 119,
+  "existing_map_features": 11,
+  "status": "software_ready_waiting_for_physical_usb_connection",
+  "private_evidence_manifest": [
+    {
+      "name": "install2.json",
+      "sha256": "98d7fbcecc995cac5f944d76d15f9c41e641c9efb0733fc767494997533e00f5",
+      "bytes": 5168
+    },
+    {
+      "name": "tests-final.txt",
+      "sha256": "458859e7dbb553d5bee717da37410906a23fabfe68f24b9ea1eda8badd5c7aae",
+      "bytes": 611
+    },
+    {
+      "name": "source-doc-verification.json",
+      "sha256": "42b50a51a6fc517fc1b9c9f938d74003350105618089fd062d14d16694fc6dc2",
+      "bytes": 1064
+    },
+    {
+      "name": "start-phones2.txt",
+      "sha256": "e9848129d34fcf0f4b13c840f8529c52aca0273df128a18f85f964e76d9777a7",
+      "bytes": 1287
+    },
+    {
+      "name": "spatial-probe01.txt",
+      "sha256": "e5ca274ebb2722afd522a22580a3f4efabb8a51ef7742868bebc04eb1cbfd9cf",
+      "bytes": 137
+    },
+    {
+      "name": "recover-uvc.txt",
+      "sha256": "7a8ddcc477e16a1b1436d817cdd032a6cd8b9a0d4a777ea9bda26beeb78c9536",
+      "bytes": 1176
+    },
+    {
+      "name": "recover-rightcam.txt",
+      "sha256": "11d7dd22a799aa16e6a94a135e1176f0f13cfed2573eed2cba8084f03b0dfab2",
+      "bytes": 208
+    },
+    {
+      "name": "final-check2.txt",
+      "sha256": "8ee01cf505d8166a096eecf3733dd6ca03432511d8be44be4e2fe1e0a2b9c7d1",
+      "bytes": 1739
+    },
+    {
+      "name": "observation-after-recovery.json",
+      "sha256": "8266912decaaadbfbe39f82fe8644529ee4cecc25d8d83f2394f7c13b3e948f9",
+      "bytes": 1864
+    }
+  ],
+  "report": "docs/autonomy/PHONE_VISION_DEPLOY_20261110_ZH.md"
+}

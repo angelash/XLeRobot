@@ -48,3 +48,9 @@ python -m pytest deployment/phone_vision/test_android_usb.py deployment/phone_vi
 协议检查使用生成字节，覆盖 scrcpy 5 的 session／config／keyframe 标志、分段读取、非法包长和中途断流。2026-11-09 实测见[落地报告](../../docs/autonomy/PHONE_VISION_TEST_20261109_ZH.md)。工具、虚拟环境、设备标识、原始画面和日志仅放忽略的本地目录，不提交公开仓库。
 
 深度检查额外覆盖空数组、零／负／NaN／Inf 排除和分位数；全部使用生成数据，不打开手机或相机。
+
+## 车载深度与局部点云采样
+
+原 Studio 手机页启用iPhone后，可用隔离采集Python运行 `spatial_probe.py --output <新的私有目录> --wait 30 --samples 12`。默认只读取本机8770，不发送机器人命令。每组RGB／深度预览／float32原数组绑定同一新鲜会话与帧号，保留内参与文件哈希；收到真实数组后导出相机坐标PLY和主要平面描述。无帧时写失败回执，不生成地图。
+
+0.15—1.5m只是分析筛选窗口，未验证距离精度或RGB-D配准；相机坐标尚无机器人外参。该工具不累计未配准帧、不提供SLAM或自动抓取目标。车载部署及USB故障边界见[2026-11-10续测](../../docs/autonomy/PHONE_VISION_DEPLOY_20261110_ZH.md)。

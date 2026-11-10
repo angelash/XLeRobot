@@ -58,6 +58,18 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
         except LookupError as exc:raise HTTPException(409,str(exc)) from None
         except ValueError as exc:raise HTTPException(422,str(exc)) from None
 
+    @router.get('/{device}/depth.raw')
+    def raw_depth(device:str,session:str,seq:int):
+        try:
+            value=service.frame(device,session,seq)
+            if not value.raw:raise ValueError('该相机不提供数值深度')
+            return Response(value.raw,media_type='application/octet-stream',headers={
+                'Cache-Control':'no-store','X-Phone-Session':value.session,
+                'X-Phone-Sequence':str(value.sequence),'X-Depth-Format':'float32-le-meters',
+                'X-Depth-Width':str(value.meta['width']),'X-Depth-Height':str(value.meta['height'])})
+        except LookupError as exc:raise HTTPException(409,str(exc)) from None
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
     app.include_router(router)
     app.mount('/phone-vision/assets',StaticFiles(directory=STATIC),name='phone-vision-assets')
 

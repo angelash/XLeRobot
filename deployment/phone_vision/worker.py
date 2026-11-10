@@ -50,10 +50,18 @@ def main():
     stop=threading.Event()
     def commands():
         try:
+            pending=b''
             while True:
-                line=sys.stdin.buffer.readline()
-                if not line or line.strip()==b'stop':
+                # A buffered reader held by a daemon thread aborts CPython at
+                # shutdown when a missing phone makes the main worker return.
+                chunk=os.read(sys.stdin.fileno(),256)
+                if not chunk:
                     stop.set();return
+                pending+=chunk
+                while b'\n' in pending:
+                    line,pending=pending.split(b'\n',1)
+                    if line.strip()==b'stop':stop.set();return
+                if len(pending)>1024:stop.set();return
         except OSError:
             stop.set()
     threading.Thread(target=commands,daemon=True).start()

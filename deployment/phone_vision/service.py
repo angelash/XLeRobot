@@ -235,7 +235,8 @@ class PhoneVision:
                         diagnostic.write(('\nStudio pipe: '+type(exc).__name__+': '+str(exc)+'\n').encode('utf-8','replace'))
                     with self.lock:
                         if not stop.is_set():
-                            self.states[device].update(phase='waiting',reason='连接中断，正在重试；请检查手机授权和采集状态')
+                            if self.states[device]['phase'] not in ('waiting','error'):
+                                self.states[device].update(phase='waiting',reason='连接中断，正在重试；请检查手机授权和采集状态')
                             self.states[device]['frames'].clear()
                 finally:
                     if process:
