@@ -35,5 +35,14 @@
   "metric_localization_valid": false,
   "local_autonomous_navigation_accepted": false,
   "user_stop_latches_disabled_before_controller_requests": true,
+  "initial_checkpoint_payload_files_independently_verified": 420,
+  "initial_checkpoint_payload_bytes": 17052796,
+  "initial_checkpoint_zip_sha256": "e4c01ca5a8b6288e5e66517de3d29f30467d3eb009dd87e57245e5ddb475c5f3",
+  "post_release_camera0_original_collector_restarts": 1,
+  "camera0_restart_resolved_low_light": false,
+  "independent_uvc_fresh_samples_after_restart": 12,
+  "uvc_low_light_root_cause_confirmed": false,
+  "base_motion_after_low_light_diagnosis": 0,
+  "exploration_phase_after_diagnosis": "guarded_stop",
   "raw_images_logs_and_arrays_committed": false
 }
