@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .store import Survey, STATIC
 from .body import profile as body_profile, plan as body_plan
 from .history import History
+from .exploration import Exploration
 
 API = '/api/platform/fieldmap'
 PAGE = '/fieldmap'
@@ -51,6 +52,8 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     app.state.fieldmap = survey
     history = History(Path(data_dir)/'history', history_evidence_root, history_fieldtests_root, history_forward_sign)
     app.state.fieldmap_history = history
+    exploration=Exploration(Path(data_dir)/'exploration')
+    app.state.exploration=exploration
     router = APIRouter(prefix=API)
 
     async def body(request):
@@ -96,6 +99,32 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.get('/status')
     def status():
         return survey.status()
+
+    @router.get('/exploration')
+    def exploration_status():return exploration.status()
+
+    @router.post('/exploration/start')
+    async def exploration_start(request:Request):
+        value=await body(request)
+        if set(value)-{'authorization','confirmed'}:raise HTTPException(422,'无效的探索启动请求')
+        try:return exploration.start(value.get('authorization'),value.get('confirmed'))
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.post('/exploration/update')
+    async def exploration_update(request:Request):
+        value=await body(request)
+        allowed={'session_id','phase','note','translation_legs','turn_attempts','wheel_path_m'}
+        if set(value)-allowed or not {'session_id','phase','note'}<=set(value):raise HTTPException(422,'无效的探索状态更新')
+        try:return exploration.update(**value)
+        except ValueError as exc:raise HTTPException(409,str(exc)) from None
+
+    @router.post('/exploration/stop')
+    async def exploration_stop(request:Request):
+        value=await body(request)
+        if value:raise HTTPException(422,'停止请求不接收动作参数')
+        from starlette.concurrency import run_in_threadpool
+        result=await run_in_threadpool(exploration.stop,survey.controller)
+        return Response(json.dumps(result,ensure_ascii=False),media_type='application/json',status_code=503 if result['errors'] else 200)
 
     @router.get('/body')
     def robot_body():
@@ -165,6 +194,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         from starlette.concurrency import run_in_threadpool
         def stop_actions():
             failures = []
+            # Latch exploration off before the existing controller stop calls.
+            if exploration.status()['enabled']:
+                result=exploration.stop(survey.controller);failures.extend(result['errors'])
             for path in ('/api/agent/stop', '/api/controller/stop'):
                 try:
                     survey.controller(path, {})

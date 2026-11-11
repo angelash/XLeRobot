@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse,RedirectResponse,Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from .service import PhoneVision
+from .evidence import Evidence, geometry
 
 STATIC=Path(__file__).with_name('static')
 API='/api/platform/phone-vision'
@@ -15,6 +16,8 @@ CSP="default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'sel
 def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     service=service or PhoneVision(repo,data_dir)
     app.state.phone_vision=service
+    evidence=Evidence(Path(data_dir)/'evidence')
+    app.state.phone_evidence=evidence
     router=APIRouter(prefix=API)
 
     async def body(request):
@@ -41,6 +44,48 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
 
     @router.get('/status')
     def status():return service.status()
+
+    @router.get('/captures')
+    def captures(limit:int=48):
+        try:return evidence.list('captures',limit)
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.get('/models')
+    def models():return evidence.list('models')
+
+    @router.post('/captures')
+    async def capture(request:Request):
+        value=await body(request)
+        if set(value)-{'device','session','sequence','label'} or not {'device','session','sequence'}<=set(value):raise HTTPException(422,'需指定设备和本次画面')
+        if not isinstance(value['session'],str) or not 1<=len(value['session'])<=128 or type(value['sequence']) is not int or value['sequence']<1:raise HTTPException(422,'需指定确切画面会话和序号')
+        try:
+            frame=service.frame(value['device'],value['session'],value['sequence'])
+            return await run_in_threadpool(evidence.capture,value['device'],frame,value.get('label',''))
+        except LookupError as exc:raise HTTPException(409,str(exc)) from None
+        except (ValueError,KeyError) as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.get('/evidence/{kind}/{identifier}/{name}')
+    def evidence_file(kind:str,identifier:str,name:str):
+        try:
+            path=evidence.media(kind,identifier,name)
+            media='application/json' if name.endswith('.json') else 'image/jpeg' if name.endswith('.jpg') else 'application/octet-stream'
+            return FileResponse(path,media_type=media,headers={'Cache-Control':'no-store'})
+        except KeyError:raise HTTPException(404,'图像或空间记录不存在') from None
+
+    @router.get('/{device}/preview.jpg')
+    def preview(device:str):
+        try:
+            value=service.frame(device)
+            return Response(value.rgb,media_type='image/jpeg',headers={'Cache-Control':'no-store','X-Phone-Session':value.session,
+                'X-Phone-Sequence':str(value.sequence),'X-Phone-Age-Ms':str(max(0,(service.clock()-value.received)*1000))})
+        except LookupError as exc:raise HTTPException(409,str(exc)) from None
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.get('/{device}/points')
+    def points(device:str,session:str,seq:int,world:bool=False):
+        try:return geometry(service.frame(device,session,seq),world=world)
+        except LookupError as exc:raise HTTPException(409,str(exc)) from None
+        except (ValueError,KeyError) as exc:raise HTTPException(422,str(exc)) from None
 
     @router.post('/{device}/start')
     async def start(device:str,request:Request):return await action(request,device,'start')
