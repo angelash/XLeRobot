@@ -2,7 +2,8 @@
 const Studio = (() => {
   const pages=[['home','工作台总览','01'],['control','控制中心','02'],['devices','设备与相机','03'],['phones','手机视觉','04'],['fieldmap','空间观察','05'],['obstacle','实时避障','06'],['grasp','快速抓取','07'],['data','数据工作室','08'],['simulation','仿真实验室','09'],['vision','视觉实验室','10'],['learning','学习实验室','11'],['autonomy','自主学习','12'],['manual','图文手册','13'],['capabilities','能力全景','14']];
   // Same-origin module views hosted by this Studio process.
-  const embedded={fieldmap:'/fieldmap/view',obstacle:'/perception/view',grasp:'/grasp/view',autonomy:'/autonomy/view',phones:'/phone-vision/view'};
+  const embedded={fieldmap:'/fieldmap/view',obstacle:'/perception/view',grasp:'/grasp/view',autonomy:'/autonomy/view',phones:'/phone-vision/view',storage:'/storage/view'};
+  pages.push(['storage','存储空间','15']);
   const labels={integrated:'已接入',adaptation:'待适配',guide:'图文指南',reference:'社区参考'};
   const groups={control:'遥操作',hardware:'硬件与设备',data:'数据',simulation:'仿真',vision:'视觉',learning:'学习',application:'应用与架构'};
   const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

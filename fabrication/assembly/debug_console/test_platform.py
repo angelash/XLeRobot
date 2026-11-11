@@ -25,6 +25,9 @@ def client(tmp_path,monkeypatch):
     service=mod.Workbench(tmp_path,provider)
     monkeypatch.setattr(mod,'service',service)
     monkeypatch.setattr(mod.app.state,'fieldmap_history',History(tmp_path/'history'))
+    from deployment.storage.service import StorageMonitor
+    monkeypatch.setattr(mod.app.state,'storage',StorageMonitor(tmp_path,tmp_path/'storage',
+        roots=[tmp_path],volumes=lambda:[],hardware=lambda:{'disks':[]}))
     with TestClient(mod.app) as c:yield c
 
 
@@ -129,7 +132,7 @@ def test_invalid_lan_origin_never_expands_workbench_access(tmp_path,origin):
 
 def test_catalog_resolves_all_sources_and_media(client):
     c=client.get('/api/platform/catalog').json()
-    assert len(c['capabilities'])==25 and len(c['guides'])==14
+    assert len(c['capabilities'])==26 and len(c['guides'])==14
     assert all(p in c['source_ids'] for x in GUIDES+CAPABILITIES for p in x['sources'])
     for id in c['media']:assert client.get(c['media'][id]).status_code==200
     assert client.get('/api/platform/sources/'+c['sources'][0]['id']).json()['content']

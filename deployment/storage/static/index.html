@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>存储空间 · XLeRobot Studio</title><link rel="stylesheet" href="/storage/assets/storage.css"></head>
+<body>
+<header class="heading"><div><p class="eyebrow">STORAGE / 本机空间</p><h1>留足空间，保存每次尝试。</h1><p>查看车载电脑的磁盘余量、照片与机器人资料占用。</p></div><button id="refresh" type="button">重新统计资料 ↻</button></header>
+<div id="notice" class="notice" role="status" aria-live="polite">正在读取车载空间状态…</div>
+<section id="volumes" class="volumes" aria-label="磁盘余量"></section>
+<p id="check-time" class="meta"></p>
+<p id="hardware" class="meta"></p>
+<section class="inventory"><div class="section-heading"><div><p class="eyebrow">ROBOT ARCHIVE</p><h2>照片与资料，分别占多少。</h2></div><span id="inventory-state" class="pill">等待统计</span></div>
+<div id="totals" class="totals"></div>
+<p id="inventory-time" class="meta"></p>
+<div class="split"><article class="panel"><h3>按用途看空间</h3><p class="meta">每个文件只归入一种用途，可与总量核对。</p><div id="purposes"></div></article><article class="panel"><h3>照片与文件类型</h3><p class="meta">图片含现场照片、截图和项目插图。</p><div id="kinds"></div></article></div>
+<article class="panel"><h3>主要目录</h3><div class="table-scroll"><table><thead><tr><th>目录</th><th>占用</th><th>文件数</th><th>图片数 / 占用</th></tr></thead><tbody id="directories"></tbody></table></div></article>
+<details class="panel"><summary>查看最大的 20 个文件</summary><div id="largest" class="file-list"></div></details>
+<details class="panel"><summary>统计范围与读取情况</summary><div id="coverage"></div></details>
+</section>
+<footer><strong>预警规则</strong><p id="thresholds">剩余容量与剩余比例任一触线即提醒。</p><p>仅统计文件大小与数量，不读取照片内容，不自动删除或搬移资料。目录统计为运行中的快照，跳过符号链接与 Windows 目录联接；文件大小不等于实际分配空间，硬链接按文件名计数。</p></footer>
+<script src="/storage/assets/storage.js"></script>
+</body></html>

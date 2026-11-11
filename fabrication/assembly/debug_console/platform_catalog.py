@@ -112,6 +112,7 @@ GUIDES=[
 ]
 
 CAPABILITIES=[
+ dict(id='storage',title='磁盘空间与资料预警',group='data',state='integrated',route='storage',guide='record',summary='每分钟检查各盘余量，按用途与文件类型统计照片、地图、测试证据和部署资料；空间不足时在全站提醒，保留原文件。',sources=['deployment/storage/README_ZH.md','deployment/storage/service.py']),
  dict(id='phone-vision',title='手机彩色与深度测试',group='vision',state='integrated',route='phones',guide='vision',summary='USB接入安卓后摄与iPhone前置TrueDepth，预览、像素深度原值、断流隐藏和重连；度量标定待完成，不触发动作。',sources=['deployment/phone_vision/README_ZH.md','deployment/phone_vision/integration.py']),
  dict(id='fieldmap',title='空间观察与历史轨迹',group='vision',state='integrated',route='fieldmap',guide='navigation',summary='按时间回放轮估轨迹、三路历史照片与交互3D；环境示意和里程坐标分开，回放不驱动实机。',sources=['deployment/fieldmap/README_ZH.md','docs/autonomy/HISTORY_TRAJECTORY_3D_DESIGN_ZH.md','deployment/fieldmap/integration.py']),
  dict(id='autonomy',title='自主学习与算力协同',group='learning',state='integrated',route='autonomy',guide='vision',summary='工作端算力节点、计算路由回退、双目标定与学习台账；页面不发电机指令。',sources=['docs/autonomy/REQUIREMENTS_DESIGN_ZH.md','docs/autonomy/LEARNING_PROTOCOLS_ZH.md','docs/autonomy/ROBOT_TEST_PLAN_ZH.md','deployment/autonomy/integration.py']),
