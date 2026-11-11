@@ -264,13 +264,15 @@ def _read_loop(args, wire, stop, status, connection, clock, sync_clock, transpor
             acquired=clock.acquired_floor(last_device_time,now)
             age=time.monotonic()-acquired
             if not -.2 <= age <= .8:
-                status('waiting', 'ARCore画面已过期，请保持采集App在前台')
+                uncertainty=(clock.ceiling-clock.floor)*1000
+                status('waiting', f'ARCore画面已过期（保守源龄 {age*1000:.0f}ms，时钟不确定 {uncertainty:.0f}ms），正在等待新帧')
                 continue
             details, a, b, values = prepare(meta, rgb, depth, raw_depth, confidence, int(args.android_rotation))
             sequence += 1; last_key = key
             depth_age=max(0.,details['depth_age_ms']/1000.) if details['rgbd'] else 0.
             details.update(kind='frame', sequence=sequence, transport=transport, role=args.android_role,
                            host_acquired_monotonic=min(now,acquired)-depth_age, absolute_latency_verified=False,
+                           native_packet_age_ms=age*1000,
                            device_clock_uncertainty_ms=(clock.ceiling-clock.floor)*1000,
                            packet_transport='adb_forward_native_stream')
             write_message(wire, details, a, b, values)

@@ -118,3 +118,30 @@ def test_native_stream_handles_fragmented_packets_timeouts_and_bounds():
     assert read_packet(Connection(raw),threading.Event())[0]['capture_session']=='generated'
     with pytest.raises(ValueError,match='bounds'):
         read_packet(Connection(HEADER.pack(b'XLAR1\0\0\0',100_000,0,0,0,0)),threading.Event())
+
+
+def test_native_age_diagnostic_rejects_stale_source_without_refreshing_its_time(monkeypatch):
+    import io,threading
+    from types import SimpleNamespace
+    from deployment.phone_vision import arcore_stream as stream
+    from deployment.phone_vision.protocol import read_message
+    meta,jpeg,depth=sample()
+    stop=threading.Event();packets=iter([
+        (dict(meta,frame_timestamp_ns=1,host_device_monotonic_ms=29_000),jpeg,depth,b'',b''),
+        (dict(meta,frame_timestamp_ns=2,host_device_monotonic_ms=30_000),jpeg,depth,b'',b''),
+    ])
+    def next_packet(*_):
+        try:return next(packets)
+        except StopIteration:stop.set();return None
+    monkeypatch.setattr(stream,'read_packet',next_packet)
+    monkeypatch.setattr(stream.time,'monotonic',lambda:100.25)
+    clock=DeviceClock();clock.observe(100.,30.,100.)
+    notices=[];wire=io.BytesIO()
+    stream._read_loop(SimpleNamespace(android_rotation=0,android_role='observer'),wire,stop,
+                      lambda *v:notices.append(v),object(),clock,lambda:None,'wifi')
+    assert len(notices)==1 and notices[0][0]=='waiting' and '1265ms' in notices[0][1]
+    wire.seek(0);details,*_=read_message(wire)
+    assert details['sequence']==1 and details['frame_timestamp_ns']==2
+    assert details['native_packet_age_ms']==pytest.approx(265.05)
+    assert details['host_acquired_monotonic']<100.
+    assert wire.read()==b''
