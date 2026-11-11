@@ -30,6 +30,9 @@ async def lifespan(app):
 app = FastAPI(title="XLeRobot Hardware Desk v2", lifespan=lifespan)
 app.mount('/static',StaticFiles(directory=STATIC),name='static')
 
+from .web_teleop_api import install as install_web_teleop
+install_web_teleop(app, lambda: runtime)
+
 @app.middleware('http')
 async def local_requests(request: Request, call_next):
     origin=request.headers.get('origin')

@@ -51,6 +51,8 @@ class OriginalRuntime(ControlRuntime):
         self.operator_events=OperatorEvents()
         self.operator_setup={'ready':False,'reason':'等待读取控制状态'}
         self.native_menu=NativeMenuControl(self)
+        from .web_teleop import WebTeleop
+        self.web_control=WebTeleop(self)
         self.publish_operator_state()
 
     def log(self,kind,message,**fields):
@@ -82,6 +84,11 @@ class OriginalRuntime(ControlRuntime):
 
     def native_pad_event(self,raw):
         if isinstance(self,PreviewRuntime):return False
+        if self.web_control.active:
+            if raw.get('connected') and not neutral(raw):
+                self.web_control.stop('手柄输入已结束网页控制；按Menu可另行开启手柄接管')
+                self.native_menu.last_menu=None;self.native_menu.released=False
+            return True
         handled=self.native_menu.sample(raw)
         self.publish_operator_state()
         return handled
@@ -339,6 +346,9 @@ class OriginalRuntime(ControlRuntime):
 
     def check_watchdog(self):
         self.publish_operator_state()
+        if self.control_profile=='web':
+            self.web_control.tick()
+            return
         if self.control_profile not in ('original_hardware','original_joint','original_preset'):
             return super().check_watchdog()
         if self.controller['controller']!='online' or self.controller['paused']:return
@@ -696,7 +706,7 @@ class OriginalRuntime(ControlRuntime):
         if self.wheel_pulse_timer:self.wheel_pulse_timer.cancel();self.wheel_pulse_timer=None
         failures=[]
         # Attempt every active joint and both wheels even if one port fails.
-        if self.control_profile in ('original_hardware','original_joint','original_preset'):
+        if self.control_profile in ('original_hardware','original_joint','original_preset','web'):
             for (port,i) in list(self.moving):
                 try:
                     self._hold_one((port,i))
@@ -712,6 +722,7 @@ class OriginalRuntime(ControlRuntime):
         if failures:raise RuntimeError('；'.join(failures))
 
     def resume(self):
+        if self.control_profile=='web':raise ValueError('网页控制停止后请在键盘遥控页重新开启，不恢复旧输入')
         if self.control_profile=='diagnostic':return super().resume()
         with self.io:
             if self.controller['controller']!='online':raise ValueError('先开启接管')
@@ -730,6 +741,12 @@ class OriginalRuntime(ControlRuntime):
             self.controller.update(paused=False,pause_reason=None,armed=True,error=None,updated_at=now())
             self.notice=None;self.original_notice('resume','原版映射已恢复，不重放旧输入')
             return self.controller.copy()
+
+    def stop(self):
+        if self.web_control.active:
+            self.web_control.stop('已停止网页控制，保留当前位置保持')
+            return self.controller.copy()
+        return super().stop()
 
     def process_input(self,raw,source='native_gamepad'):
         # Physical Menu and disconnect events are intercepted by native_pad_event
@@ -950,6 +967,7 @@ class OriginalRuntime(ControlRuntime):
         # accepted the goal, so the fault handler must attempt a hold here.
         self.moving[key]=target
         speed=axis['grip_raw_s'] if i==6 else axis['joint_rate_deg_s']*4096/360
+        if self.control_profile=='web':speed=min(speed,100 if i==6 else 12*4096/360)
         write_register(p,i,46,min(1000,max(60,int(speed))),2)
         write_register(p,i,42,target,2)
         self.feedback_window.setdefault(key,{'origin':pos,'at':time.monotonic()})
@@ -1035,6 +1053,9 @@ class OriginalRuntime(ControlRuntime):
         direction=1 if expected>pos else -1;limit=e.get('max') if direction>0 else e.get('min')
         self.stall_marks[f'{port}:{i}']={'position':pos,'target':expected,'direction':direction,
                                          'soft_limit':limit,'time':now()}
+        if self.control_profile=='web':
+            self.web_control.stop(f'{label}编码器反馈受阻，已结束网页控制，请观察后重新开启')
+            return
         self.feedback_window.pop(key,None)
         try:
             if i==6:
@@ -1052,7 +1073,7 @@ class OriginalRuntime(ControlRuntime):
         self.log('stall',f'{label}受阻：目标{expected}，实测{pos}',port=port,id=i,position=pos,target=expected,soft_limit=limit)
 
     def _check_original_feedback(self):
-        if self.control_profile not in ('original_hardware','original_joint','original_preset'):return
+        if self.control_profile not in ('original_hardware','original_joint','original_preset','web'):return
         for key,window in list(self.feedback_window.items()):
             if time.monotonic()-window['at']<.8:continue
             port,i=key;pos=word(read_registers(self.session.ports[port],i),56)
@@ -1082,6 +1103,7 @@ class OriginalRuntime(ControlRuntime):
                           limit_selftest=self.limit_test.snapshot(),
                           agent_run=self.agent.snapshot(),
                           whole_robot_setup=setup,hardware_preparation=self.preparation,service_blocked=self.service_blocked,
+                          web_control=self.web_control.snapshot(),
                       manual_calibration=self.manual_calibration.snapshot(),control_settings=self.settings.snapshot())
             return result
 

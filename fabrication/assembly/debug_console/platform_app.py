@@ -336,6 +336,11 @@ async def local_only(request,call_next):
 @app.get('/')
 def index():return FileResponse(STATIC/'index.html')
 
+@app.get('/teleop/view')
+def web_teleop_view():
+    return FileResponse(STATIC/'web-teleop.html', headers={
+        'Content-Security-Policy': "frame-ancestors 'self'", 'X-Frame-Options': 'SAMEORIGIN'})
+
 @app.get('/api/platform/catalog')
 def get_catalog():return catalog()
 
@@ -458,7 +463,9 @@ async def camera_frame(camera:int):
 
 # A fixed route allowlist prevents the gateway becoming a generic HTTP proxy.
 PROXY_GET={'original/status','status','events','log/download'}
+PROXY_GET.add('web/status')
 PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','control-settings','torque','calibration/read','hardware/prepare','limit-test/start','limit-test/stop','limit-test/upright','manual-pose'}
+PROXY_POST.update(('web/start','web/input','web/stop'))
 PROXY_POST.update('whole-calibration/'+a for a in ('start','resume','recover','merge-checkpoint','capture','capture-item','delete-item','clear-captures','rewind','base-test','base-confirm','wheels','apply','apply-ranges','cancel'))
 
 async def proxy(request,path,stream=False):
@@ -478,6 +485,8 @@ async def proxy(request,path,stream=False):
 async def controller_proxy(path:str,request:Request):
     allowed=PROXY_GET if request.method=='GET' else PROXY_POST
     if path not in allowed:raise HTTPException(404,'接口未开放')
+    if path=='web/start' and service.recording:
+        raise HTTPException(409,'正在录制，请先结束录制再开启网页控制')
     suffix='?'+request.url.query if request.url.query else ''
     return await proxy(request,'/api/'+path+suffix)
 

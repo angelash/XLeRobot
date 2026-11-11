@@ -112,6 +112,7 @@ GUIDES=[
 ]
 
 CAPABILITIES=[
+ dict(id='web-teleop',title='键盘与按钮遥控',group='control',state='integrated',route='teleop',guide='xbox',summary='方向键驾驶，双臂末端联动与逐关节精调，头部与夹爪快捷键；按住才动，松开保持，失焦与输入超时停止。',sources=['fabrication/assembly/debug_console/WEB_TELEOP_ZH.md','fabrication/assembly/debug_console/web_teleop.py']),
  dict(id='storage',title='磁盘空间与资料预警',group='data',state='integrated',route='storage',guide='record',summary='每分钟检查各盘余量，按用途与文件类型统计照片、地图、测试证据和部署资料；空间不足时在全站提醒，保留原文件。',sources=['deployment/storage/README_ZH.md','deployment/storage/service.py']),
  dict(id='phone-vision',title='手机彩色与深度测试',group='vision',state='integrated',route='phones',guide='vision',summary='USB接入安卓后摄与iPhone前置TrueDepth，预览、像素深度原值、断流隐藏和重连；度量标定待完成，不触发动作。',sources=['deployment/phone_vision/README_ZH.md','deployment/phone_vision/integration.py']),
  dict(id='fieldmap',title='空间观察与历史轨迹',group='vision',state='integrated',route='fieldmap',guide='navigation',summary='按时间回放轮估轨迹、三路历史照片与交互3D；环境示意和里程坐标分开，回放不驱动实机。',sources=['deployment/fieldmap/README_ZH.md','docs/autonomy/HISTORY_TRAJECTORY_3D_DESIGN_ZH.md','deployment/fieldmap/integration.py']),
