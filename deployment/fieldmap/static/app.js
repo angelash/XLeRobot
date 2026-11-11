@@ -104,4 +104,4 @@ async function previewBody(){try{if(!bodyProfile)bodyProfile=await request('/api
 $('bodyForm').addEventListener('submit',e=>{e.preventDefault();previewBody();});
 load();poll();previewBody();
 
-export const environment={get data(){return data;},drawMap,drawPhoto,drawStrip,load,render,selectFeature};
+export const environment={get data(){return data;},get canRefresh(){return !reviewDirty&&!saving;},drawMap,drawPhoto,drawStrip,load,render,selectFeature};
