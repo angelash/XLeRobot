@@ -95,6 +95,32 @@ def test_full_color_is_archived_and_used_at_registered_depth_pixels(tmp_path):
         geometry(replace(f,meta=dict(meta,rgb_from_depth_scale_offset=[10.,10.,0.,0.])))
 
 
+def test_full_display_model_starts_a_new_part_and_keeps_original_and_source(tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    from .reconstruction import Reconstruction
+    image=BytesIO();Image.new('RGB',(3,3),(20,40,60)).save(image,format='JPEG')
+    f=replace(frame(),rgb=image.getvalue());store=Evidence(tmp_path);builder=Reconstruction(store)
+    first=store.capture('android',f);model=builder.add(first,f);folder=store.folder('models',model['id'])
+    # A retained full display volume; all its original bytes must survive rollover.
+    positions=[v for i in range(60000) for v in (i*.08,-1.,-2.)]
+    cloud=json.loads((folder/'cloud.json').read_text('utf8'))
+    cloud.update(positions=positions,colors=[20,40,60]*60000,count=60000)
+    model['point_count']=60000
+    (folder/'cloud.json').write_text(json.dumps(cloud),encoding='utf8')
+    (folder/'meta.json').write_text(json.dumps(model),encoding='utf8')
+    old={p.name:p.read_bytes() for p in folder.iterdir() if p.is_file()}
+    assert builder.add(first,f)['id']==model['id']
+    new_frame=replace(f,sequence=2);second=store.capture('android',new_frame)
+    result=builder.add(second,new_frame)
+    assert result['id']!=model['id'] and result['point_count']==9 and result['source_frames']==1
+    assert result['capture_session']==model['capture_session'] and result['previous_part']==model['id']
+    assert result['split_reason']=='display_point_budget' and result['source_captures']==[second['id']]
+    assert {p.name:p.read_bytes() for p in folder.iterdir() if p.is_file()}==old
+    assert store.media('captures',second['id'],'depth.f32').read_bytes()==new_frame.raw
+    assert len(store.list('models')['items'])==2
+
+
 def test_capture_and_preview_keep_freshness_and_old_session_rejection(tmp_path):
     clock=[100.];service=PhoneVision(tmp_path,tmp_path/'data',clock=lambda:clock[0]);service.states['android'].update(enabled=True,phase='live',session='session')
     service.states['android']['frames'].append(frame())

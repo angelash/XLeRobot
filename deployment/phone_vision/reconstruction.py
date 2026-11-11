@@ -21,14 +21,21 @@ class Reconstruction:
             state_path=index/'state.json';part=json.loads(state_path.read_text('utf8'))['part'] if state_path.exists() else 0
             identifier=hashlib.sha256(('persistent-arcore:'+str(capture)+':'+str(part)).encode()).hexdigest()[:32]
             prior=self.evidence.folder('models',identifier)/'meta.json'
-            if prior.exists() and json.loads(prior.read_text('utf8'))['source_frames']>=500:
-                part+=1;identifier=hashlib.sha256(('persistent-arcore:'+str(capture)+':'+str(part)).encode()).hexdigest()[:32]
+            split_reason=None;previous_part=None
+            if prior.exists():
+                previous=json.loads(prior.read_text('utf8'))
+                if saved['id'] in previous['source_captures']:return previous
+                if previous['source_frames']>=500 or previous['point_count']>=60000:
+                    split_reason='source_frame_budget' if previous['source_frames']>=500 else 'display_point_budget'
+                    previous_part=identifier
+                    part+=1;identifier=hashlib.sha256(('persistent-arcore:'+str(capture)+':'+str(part)).encode()).hexdigest()[:32]
             atomic_json(state_path,{'capture_session':capture,'part':part,'no_old_parts_deleted':True})
             folder=self.evidence.folder('models',identifier);folder.mkdir(parents=True,exist_ok=True)
             path=folder/'meta.json';meta=json.loads(path.read_text('utf8')) if path.exists() else {
                 'id':identifier,'label':'AR空间累积 · '+str(capture)[-8:]+' · '+str(part+1),'saved_at':saved['saved_at'],'point_count':0,
                 'capture_session':capture,'source_captures':[],'source_frames':0,'historical':True,'calibrated':False,
                 'registered_robot_map':False,'motion_enabled':False,'retention':'source_frames_preserved_no_automatic_deletion'}
+            if split_reason:meta.update(previous_part=previous_part,split_reason=split_reason)
             if saved['id'] in meta['source_captures']:return meta
             model=json.loads((folder/'cloud.json').read_text('utf8')) if (folder/'cloud.json').exists() else {
                 'positions':[],'colors':[],'trajectory':[],'coordinates':'arcore_world_opengl','capture_session':capture,
