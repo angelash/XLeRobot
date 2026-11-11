@@ -4,6 +4,28 @@ import pytest
 from deployment.phone_vision.arcore_stream import prepare, packet_age_seconds, DeviceClock, read_packet
 
 
+def test_persistent_uptime_channel_samples_only_requested_clock_and_closes_its_process():
+    import queue,time
+    from deployment.phone_vision.arcore_stream import UptimeShell
+    class Process:
+        def __init__(self):self.lines=queue.Queue();self.stdin=self;self.stdout=self;self.commands=[];self.closed=False
+        def write(self,b):self.commands.append(b);self.lines.put((str(time.monotonic())+' 0.0\n').encode())
+        def flush(self):pass
+        def __iter__(self):return self
+        def __next__(self):
+            line=self.lines.get(timeout=2)
+            if line is None:raise StopIteration
+            return line
+        def close(self):self.closed=True;self.lines.put(None)
+        def wait(self,timeout):return 0
+    proc=Process();args=[]
+    def launch(values,**kw):args.extend(values);return proc
+    channel=UptimeShell('adb','device',launcher=launch);clock=DeviceClock()
+    channel.observe(clock);channel.observe(clock);channel.close()
+    assert args==['adb','-s','device','shell','sh'] and proc.commands==[b'cat /proc/uptime\n']*2
+    assert proc.closed and clock.ceiling-clock.floor<.05
+
+
 def test_native_mm_depth_is_converted_and_rotated_with_scaled_camera_intrinsics():
     color=np.full((4,6,3),70,dtype=np.uint8);ok,jpeg=cv2.imencode('.jpg',color);assert ok
     meta={'depth_width':3,'depth_height':2,'image_dimensions':[6,4],

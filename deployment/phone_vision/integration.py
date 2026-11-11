@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from .service import PhoneVision
 from .evidence import Evidence, geometry
+from .reconstruction import Reconstruction
 
 STATIC=Path(__file__).with_name('static')
 API='/api/platform/phone-vision'
@@ -18,6 +19,7 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     app.state.phone_vision=service
     evidence=Evidence(Path(data_dir)/'evidence')
     app.state.phone_evidence=evidence
+    app.state.phone_reconstruction=Reconstruction(evidence)
     router=APIRouter(prefix=API)
 
     async def body(request):

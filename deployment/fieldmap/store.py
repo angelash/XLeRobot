@@ -61,6 +61,28 @@ class Survey:
             raise ValueError('Map outside data root or exceeds budget')
         return json.loads(path.read_text(encoding='utf-8-sig'))
 
+    def preserve(self):
+        """Content-addressed checkpoint; never replace or delete an older map."""
+        with self.lock:
+            path=self.root/'map.json'
+            if not path.exists():return None
+            raw=path.read_bytes();self.read_map(path)
+            folder=self.root/'history';folder.mkdir(exist_ok=True)
+            digest=hashlib.sha256(raw).hexdigest();target=folder/('retained-'+digest+'.json')
+            if target.exists():
+                if target.read_bytes()!=raw:raise ValueError('地图快照哈希冲突')
+            else:
+                with target.open('xb') as f:f.write(raw)
+            return {'sha256':digest,'snapshot':hashlib.sha256(target.name.encode()).hexdigest()[:32]}
+
+    def save(self,data,expected_sha256):
+        with self.lock:
+            path=self.root/'map.json';old=path.read_bytes() if path.exists() else b''
+            if hashlib.sha256(old).hexdigest()!=expected_sha256:raise ValueError('地图已更新，请按新版本合并；旧图保留')
+            if not isinstance(data,dict) or not isinstance(data.get('id'),str) or not isinstance(data.get('observations'),list) or not isinstance(data.get('features'),list):raise ValueError('无效地图')
+            if len(json.dumps(data).encode())>12*1024*1024:raise ValueError('地图超过容量')
+            self.preserve();atomic_json(path,data);self.preserve();return self.load()
+
     def load(self, snapshot='current'):
         paths = self.snapshot_paths()
         if snapshot not in paths:
@@ -104,6 +126,10 @@ class Survey:
                 raise ValueError('需要明确是否确认')
             item = {'feature_id': key, 'kind': kind, 'note': note,
                     'confirmed': payload['confirmed'], 'at': stamp()}
+            mobility=payload.get('mobility')
+            if mobility is not None:
+                if mobility not in ('fixed','movable','unknown','dynamic'):raise ValueError('物体可移动性分类无效')
+                item['mobility']=mobility
             current['revision'] += 1
             current['items'][key] = item
             current['history'].append(item)

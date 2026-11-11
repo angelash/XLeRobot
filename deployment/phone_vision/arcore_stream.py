@@ -7,6 +7,8 @@ from __future__ import annotations
 import subprocess
 import socket
 import time
+import queue
+import threading
 from .arcore_capture import HEADER, LIMITS, parse_snapshot
 
 
@@ -39,6 +41,37 @@ class DeviceClock:
     def acquired_floor(self, device_ms, host_now):
         # Retain a drift allowance; never use network receipt as capture time.
         return device_ms/1000.+self.floor-.005-max(0.,host_now-self.updated)*.0002
+
+
+class UptimeShell:
+    """One owned read-only shell avoids counting Windows process startup as RTT."""
+    def __init__(self,adb,serial,*,launcher=subprocess.Popen):
+        self.lines=queue.Queue(16)
+        self.process=launcher([adb,'-s',serial,'shell','sh'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),bufsize=0)
+        def reader():
+            for line in self.process.stdout:
+                try:self.lines.put_nowait(line)
+                except queue.Full:return
+        self.thread=threading.Thread(target=reader,daemon=True,name='ar-device-clock');self.thread.start()
+
+    def observe(self,clock):
+        started=time.monotonic()
+        self.process.stdin.write(b'cat /proc/uptime\n');self.process.stdin.flush()
+        try:line=self.lines.get(timeout=3)
+        except queue.Empty:raise ConnectionError('ARCore时钟通道未响应') from None
+        finished=time.monotonic();parts=line.split()
+        if len(parts)!=2:raise ValueError('ARCore时钟响应格式异常')
+        value=float(parts[0])
+        if not 0<value<1e9:raise ValueError('ARCore时钟响应范围异常')
+        clock.observe(started,value,finished)
+
+    def close(self):
+        try:self.process.stdin.close()
+        except OSError:pass
+        try:self.process.wait(timeout=2)
+        except subprocess.TimeoutExpired:self.process.terminate();self.process.wait(timeout=2)
+        self.process.stdout.close();self.thread.join(timeout=.2)
 
 
 def read_packet(connection, stop):
@@ -182,23 +215,30 @@ def stream(args, wire, stop, status):
         status('waiting', reason)
         return
     clock=DeviceClock()
+    shell=UptimeShell(args.adb,serial)
     def sync_clock():
-        started=time.monotonic()
-        now=float(adb('-s',serial,'shell','cat','/proc/uptime').split()[0])
-        clock.observe(started,now,time.monotonic())
-    for _ in range(3):sync_clock()
+        shell.observe(clock)
+    try:
+        for n in range(8):
+            sync_clock()
+            if n>=2 and clock.ceiling-clock.floor<.08:break
+    except Exception:
+        shell.close();raise
     scid=f'{int(args.session[:8],16)&0x7fffffff:08x}'
     target='localabstract:xlerobot_ar_'+scid
     # singleTop/onNewIntent reconnects the pipe without resetting AR tracking.
-    adb('-s', serial, 'shell', 'am', 'start', '-n', 'org.xlerobot.arvision/.MainActivity',
-        '--es','receiver_session',scid)
-    port=int(adb('-s',serial,'forward','tcp:0',target))
+    port=None
     try:
+        adb('-s', serial, 'shell', 'am', 'start', '-n', 'org.xlerobot.arvision/.MainActivity',
+            '--es','receiver_session',scid)
+        port=int(adb('-s',serial,'forward','tcp:0',target))
         with socket.create_connection(('127.0.0.1',port),timeout=8) as connection:
             connection.settimeout(.5)
             _read_loop(args,wire,stop,status,connection,clock,sync_clock,transport)
     finally:
-        try:adb('-s',serial,'forward','--remove','tcp:'+str(port))
+        shell.close()
+        try:
+            if port is not None:adb('-s',serial,'forward','--remove','tcp:'+str(port))
         except (OSError,subprocess.SubprocessError):pass
 
 

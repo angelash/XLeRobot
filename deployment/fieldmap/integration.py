@@ -13,6 +13,7 @@ from .store import Survey, STATIC
 from .body import profile as body_profile, plan as body_plan
 from .history import History
 from .exploration import Exploration
+from .journal import SpatialJournal
 
 API = '/api/platform/fieldmap'
 PAGE = '/fieldmap'
@@ -50,10 +51,13 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
             history_fieldtests_root=None, history_forward_sign=None):
     survey = Survey(data_dir)
     app.state.fieldmap = survey
-    history = History(Path(data_dir)/'history', history_evidence_root, history_fieldtests_root, history_forward_sign)
+    journal_root=Path(data_dir)/'journal'
+    history = History(Path(data_dir)/'history', history_evidence_root, history_fieldtests_root, history_forward_sign,journal_root=journal_root)
     app.state.fieldmap_history = history
     exploration=Exploration(Path(data_dir)/'exploration')
     app.state.exploration=exploration
+    journal=SpatialJournal(journal_root,survey,lambda:(app.state.phone_vision,app.state.phone_evidence,app.state.phone_reconstruction),forward_sign=history_forward_sign)
+    app.state.spatial_journal=journal
     router = APIRouter(prefix=API)
 
     async def body(request):
@@ -91,6 +95,24 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.get('/snapshots')
     def snapshots():
         return survey.snapshots()
+
+    @router.get('/journal/status')
+    def journal_status():return journal.status()
+
+    @router.post('/journal/configure')
+    async def journal_configure(request:Request):
+        value=await body(request)
+        if set(value)!={'enabled'}:raise HTTPException(422,'需要明确记录状态')
+        try:
+            journal.configure(value['enabled']);journal.start();return journal.status()
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.post('/checkpoint')
+    async def checkpoint(request:Request):
+        value=await body(request)
+        if value:raise HTTPException(422,'快照不接收动作参数')
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(survey.preserve)
 
     @router.get('/export')
     def export():

@@ -286,11 +286,13 @@ async def lifespan(app):
     app.state.camera_views=CameraViews(lambda: service.client, UPSTREAM)
     service.environment=available_environments()
     app.state.fieldmap_history.start()
+    app.state.spatial_journal.start()
     app.state.storage.start()
     try:
         yield
     finally:
         await app.state.camera_views.close()
+        await asyncio.to_thread(app.state.spatial_journal.close)
         await asyncio.to_thread(app.state.phone_vision.close)
         app.state.fieldmap_history.stop()
         await asyncio.to_thread(app.state.storage.close)
@@ -484,8 +486,12 @@ async def proxy(request,path,stream=False):
             response=await service.client.send(req,stream=True)
             return StreamingResponse(response.aiter_bytes(),status_code=response.status_code,
                 media_type=response.headers.get('content-type'),background=BackgroundTask(response.aclose))
-        response=await service.client.request(request.method,UPSTREAM+path,content=await request.body(),
+        raw=await request.body()
+        response=await service.client.request(request.method,UPSTREAM+path,content=raw,
             headers={'Content-Type':request.headers.get('content-type','application/json'),'Origin':UPSTREAM},timeout=45 if path.startswith('/api/whole-calibration/') else 8)
+        if request.method=='POST' and path.startswith('/api/web/') and response.is_success:
+            try:app.state.spatial_journal.accepted_input(path,json.loads(raw or b'{}'),response.json())
+            except (ValueError,TypeError):pass
         headers={k:response.headers[k] for k in ('content-disposition',) if k in response.headers}
         return Response(response.content,status_code=response.status_code,media_type=response.headers.get('content-type'),headers=headers)
     except httpx.HTTPError as exc:raise HTTPException(503,'控制服务未响应，接管状态请以控制器为准') from exc

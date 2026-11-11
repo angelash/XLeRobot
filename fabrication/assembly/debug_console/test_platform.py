@@ -25,6 +25,11 @@ def client(tmp_path,monkeypatch):
     service=mod.Workbench(tmp_path,provider)
     monkeypatch.setattr(mod,'service',service)
     monkeypatch.setattr(mod.app.state,'fieldmap_history',History(tmp_path/'history'))
+    # A live vehicle may have spatial recording enabled. Software tests must
+    # use a fresh disabled journal, never append to the running robot's memory.
+    from deployment.fieldmap.journal import SpatialJournal
+    from deployment.fieldmap.store import Survey
+    monkeypatch.setattr(mod.app.state,'spatial_journal',SpatialJournal(tmp_path/'journal',Survey(tmp_path/'map'),lambda:None))
     from deployment.storage.service import StorageMonitor
     monkeypatch.setattr(mod.app.state,'storage',StorageMonitor(tmp_path,tmp_path/'storage',
         roots=[tmp_path],volumes=lambda:[],hardware=lambda:{'disks':[]}))

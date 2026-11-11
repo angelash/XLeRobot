@@ -26,11 +26,12 @@ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT);
 
 
 class History:
-    def __init__(self, root, evidence_root=None, fieldtests_root=None, forward_sign=None):
+    def __init__(self, root, evidence_root=None, fieldtests_root=None, forward_sign=None, *, journal_root=None):
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.database = self.root / 'history.sqlite3'
-        self.roots = [Path(p).resolve() for p in (evidence_root, fieldtests_root) if p]
+        self.roots = [Path(p).resolve() for p in (evidence_root, fieldtests_root,journal_root) if p]
+        self.journal_root=journal_root
         self.evidence_root, self.fieldtests_root = evidence_root, fieldtests_root
         self.forward_sign = forward_sign if forward_sign in (-1, 1) else None
         self.lock = threading.Lock()
@@ -98,7 +99,7 @@ class History:
         counts = {'changed': 0, 'unchanged': 0, 'skipped': 0, 'errors': 0}
         began = time.monotonic()
         try:
-            sources, truncated, coverage = adapter.discover(self.evidence_root, self.fieldtests_root)
+            sources, truncated, coverage = adapter.discover(self.evidence_root, self.fieldtests_root,journal_root=self.journal_root)
             for path, kind, priority in sources:
                 if self.closed.is_set():
                     truncated = True

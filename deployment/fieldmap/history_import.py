@@ -233,6 +233,23 @@ def parse_native_servo(path):
     return value
 
 
+def parse_journal(path):
+    data=read_json(path);run_key='journal:'+data['id'];events=[];photos=[]
+    for n,row in enumerate(data.get('events',[])):
+        # Native agent/servo receipts already describe assistant movement. Keep
+        # passive observations without counting the same wheel path twice.
+        if row.get('op') in ('travel','rotate') and row.get('actor') not in ('manual_web','manual_gamepad'):
+            row={**row,'op':'observed_motion'}
+        item=event(row,n,run_key,timestamp(data['updated_at']));item['actor']=row.get('actor','observed');events.append(item)
+    for row in data.get('photos',[]):
+        if not safe_member(row['file']):continue
+        p=path.parent/row['file'];at=timestamp(row['captured_at'])
+        if at:photos.append(photo(run_key,row['camera'],at,row.get('time_basis','frame_capture'),row.get('phase','spatial memory'),p))
+    return {'id':key(run_key),'run_key':run_key,'external_id':data['id'],'title':data.get('title','空间连续记录'),
+            'kind':'spatial_journal','start_ms':timestamp(data['started_at']),'end_ms':timestamp(data.get('finished_at') or data['updated_at']),
+            'status':data['state'],'events':events,'photos':photos}
+
+
 def parse_control_zip(path):
     if path.stat().st_size > MAX_ARCHIVE:
         raise ValueError('Archive exceeds byte budget')
@@ -300,9 +317,10 @@ def fingerprint(path, kind):
     return '|'.join(f'{p.name}:{p.stat().st_mtime_ns}:{p.stat().st_size}' for p in related_paths(path, kind))
 
 
-def discover(evidence_root, fieldtests_root, budget=6000):
+def discover(evidence_root, fieldtests_root, budget=6000, *, journal_root=None):
     """Bound discovery to the documented layout, skipping nested backup ZIPs."""
     found = []
+    if journal_root and Path(journal_root).is_dir():found += [(p,'spatial_journal',90) for p in Path(journal_root).glob('*/run.json')]
     coverage = {'fieldtest_zip_count': 0, 'paired_photo_archives': 0,
                 'ignored_aggregate_archives': 0, 'unlinked_archives': 0}
     if evidence_root and Path(evidence_root).is_dir():
@@ -328,4 +346,4 @@ def discover(evidence_root, fieldtests_root, budget=6000):
 
 
 PARSERS = {'agent': parse_native_agent, 'servo': parse_native_servo,
-           'control_zip': parse_control_zip, 'agent_zip': parse_agent_zip}
+           'control_zip': parse_control_zip, 'agent_zip': parse_agent_zip,'spatial_journal':parse_journal}
