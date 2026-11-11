@@ -38,6 +38,8 @@ def test_native_mm_depth_is_converted_and_rotated_with_scaled_camera_intrinsics(
     raw=struct.pack('<6H',1000,0,1000,2000,2000,2000)
     details,rgb,preview,array=prepare(meta,jpeg.tobytes(),raw,b'',bytes([255]*6),90)
     assert (details['width'],details['height'])==(2,3)
+    assert (details['rgb_width'],details['rgb_height'])==(4,6)
+    assert cv2.imdecode(np.frombuffer(rgb,dtype=np.uint8),cv2.IMREAD_COLOR).shape[:2]==(6,4)
     assert details['intrinsics']=={'fx':2.,'fy':3.,'tx':0.,'ty':1.5}
     assert np.allclose(np.frombuffer(array,dtype='<f4').reshape(3,2),[[2.,1.],[2.,0.],[2.,1.]])
     assert not details['sensor_raw_depth'] and not details['confidence_available']
@@ -62,7 +64,23 @@ def test_sdk_crop_matches_depth_instead_of_stretching_full_cpu_image():
     details,color,_,_=prepare(meta,jpeg,raw,b'',b'',0)
     decoded=cv2.imdecode(np.frombuffer(color,dtype=np.uint8),cv2.IMREAD_COLOR)
     assert np.allclose(decoded,170,atol=2)
+    assert decoded.shape[:2]==(4,8)
     assert details['intrinsics']=={'fx':4.,'fy':4.,'tx':2.,'ty':1.}
+
+
+@pytest.mark.parametrize('rotation,first_rgb',[(0,[0,0]),(90,[1,0]),(180,[1,1]),(270,[0,1])])
+def test_full_resolution_color_keeps_exact_depth_pixel_mapping_for_all_rotations(rotation,first_rgb):
+    from deployment.phone_vision.evidence import geometry
+    from deployment.phone_vision.service import Frame
+    meta,jpeg,raw=sample()
+    details,color,_,values=prepare(meta,jpeg,raw,b'',b'',rotation)
+    image=cv2.imdecode(np.frombuffer(color,dtype=np.uint8),cv2.IMREAD_COLOR)
+    assert image.shape[:2]==((4,8) if rotation in (0,180) else (8,4))
+    assert len(values)==4*2*4
+    cloud=geometry(Frame('generated',1,0.,details,color,b'',values))
+    assert cloud['rgb_pixels'][:2]==first_rgb
+    assert len(cloud['rgb_pixels'])==cloud['count']*2
+    assert max(cloud['rgb_pixels'][::2])<image.shape[1] and max(cloud['rgb_pixels'][1::2])<image.shape[0]
 
 
 def test_fresh_rgb_does_not_refresh_cached_depth():

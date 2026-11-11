@@ -34,10 +34,14 @@ class Reconstruction:
                 'positions':[],'colors':[],'trajectory':[],'coordinates':'arcore_world_opengl','capture_session':capture,
                 'calibrated':False,'registered_robot_map':False,'voxel_m':.04,'source_frames':0}
             voxels={tuple(round(v/.04) for v in model['positions'][i:i+3]):(model['positions'][i:i+3],model['colors'][i:i+3]) for i in range(0,len(model['positions']),3)}
-            with Image.open(BytesIO(frame.rgb)) as im:rgb=im.convert('RGB').resize((cloud['width'],cloud['height']))
+            with Image.open(BytesIO(frame.rgb)) as im:
+                rgb=im.convert('RGB')
+                if 'rgb_pixels' not in cloud:rgb=rgb.resize((cloud['width'],cloud['height']))
+                elif rgb.size!=(cloud['rgb_width'],cloud['rgb_height']):raise ValueError('彩色成像尺寸与像素映射不一致')
+            color_pixels=cloud.get('rgb_pixels',cloud['pixels'])
             for n in range(cloud['count']):
                 point=cloud['positions'][n*3:n*3+3];key=tuple(round(v/.04) for v in point)
-                if key not in voxels and len(voxels)<60000:voxels[key]=(point,list(rgb.getpixel(tuple(cloud['pixels'][n*2:n*2+2]))))
+                if key not in voxels and len(voxels)<60000:voxels[key]=(point,list(rgb.getpixel(tuple(color_pixels[n*2:n*2+2]))))
             model['positions']=[v for p,c in voxels.values() for v in p];model['colors']=[v for p,c in voxels.values() for v in c]
             model['count']=len(voxels);model['source_frames']+=1
             pose=cloud.get('pose_translation')

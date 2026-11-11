@@ -15,7 +15,8 @@
   }
   function facts(device,state){const node=$(device+'-facts');node.replaceChildren();const m=state.meta;
     const values=[['连接',state.transport==='wifi'?'Wi-Fi':'USB']];
-    if(m)values.push(['尺寸',m.width+' × '+m.height],['接收',m.fps==null?'—':m.fps+' fps'],['更新',Math.round(state.age_ms)+' ms']);
+    if(m)values.push(['彩色尺寸',(m.rgb_width||m.width)+' × '+(m.rgb_height||m.height)],['接收',m.fps==null?'—':m.fps+' fps'],['更新',Math.round(state.age_ms)+' ms']);
+    if(m?.rgbd)values.push(['深度尺寸',m.width+' × '+m.height]);
     if(m?.relative_backlog_ms!=null)values.push(['流内积压',Math.round(m.relative_backlog_ms)+' ms']);
     if(device==='iphone'&&m)values.push(['数值深度',(m.positive_depth_fraction*100).toFixed(1)+'%'],['置信度图',m.confidence_available?'已提供':'未提供'],['深度来源',m.sensor_raw_depth===false?'Wi-Fi 色相还原':'USB 浮点数组']);
     if(device==='android'&&m?.android_mode==='arcore'){

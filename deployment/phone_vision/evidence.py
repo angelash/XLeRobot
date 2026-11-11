@@ -63,7 +63,15 @@ def geometry(frame, *, world=False, max_points=6000):
     if rotation not in (0,90,180,270):
         raise ValueError('不支持的相机旋转')
     stride = max(1, math.ceil(math.sqrt(w*h/max_points)))
-    positions, pixels = [], []
+    positions, pixels, rgb_pixels = [], [], []
+    rgb_mapping=m.get('rgb_from_depth_scale_offset')
+    if rgb_mapping is not None:
+        rw,rh=m.get('rgb_width'),m.get('rgb_height')
+        if (type(rw)!=int or type(rh)!=int or not 1<=rw<=4096 or not 1<=rh<=4096
+                or not isinstance(rgb_mapping,list) or len(rgb_mapping)!=4
+                or not all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in rgb_mapping)
+                or min(rgb_mapping[:2])<=0):
+            raise ValueError('彩色与深度像素映射无效')
     for py in range(0,h,stride):
         for px in range(0,w,stride):
             z = struct.unpack_from('<f', frame.raw, (py*w+px)*4)[0]
@@ -77,7 +85,13 @@ def geometry(frame, *, world=False, max_points=6000):
             else:
                 point=(x,-y,-z)
             positions.extend(round(v,5) for v in point);pixels.extend((px,py))
-    return {'positions':positions,'pixels':pixels,'count':len(pixels)//2,'width':w,'height':h,
+            if rgb_mapping is not None:
+                sx,sy,ox,oy=rgb_mapping
+                rx,ry=px*sx+ox,py*sy+oy
+                if not -.5<=rx<rw+.5 or not -.5<=ry<rh+.5:raise ValueError('彩色映射超出成像范围')
+                rgb_pixels.extend((max(0,min(rw-1,math.floor(rx+.5))),max(0,min(rh-1,math.floor(ry+.5)))))
+    rgb_info={'rgb_pixels':rgb_pixels,'rgb_width':rw,'rgb_height':rh} if rgb_mapping is not None else {}
+    return {'positions':positions,'pixels':pixels,**rgb_info,'count':len(pixels)//2,'width':w,'height':h,
             'session':frame.session,'sequence':frame.sequence,'depth_source':m.get('depth_source','unknown'),
             'coordinates':'arcore_world_opengl' if world else 'display_camera_opengl',
             'capture_session':m.get('arcore_capture_session') if world else None,
@@ -139,10 +153,10 @@ class Evidence:
                 if data:
                     (folder/name).write_bytes(data);files[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
             # Store camera metadata, without executable paths or transport endpoints.
-            keys=('width','height','fps','camera_id','rotation_deg','transport','role','android_mode','rgbd','intrinsics','tracking',
+            keys=('width','height','rgb_width','rgb_height','rgb_from_depth_scale_offset','fps','camera_id','rotation_deg','transport','role','android_mode','rgbd','intrinsics','tracking',
                   'depth_source','sensor_raw_depth','confidence_available','raw_depth_high_confidence_fraction','raw_depth_estimate_age_ms',
                   'positive_depth_fraction','depth_02_to_5m_fraction','raw_depth_positive_fraction','raw_depth_confidence_available',
-                  'depth_age_ms','device_clock_uncertainty_ms','depth_rgb_registration',
+                  'depth_age_ms','native_packet_age_ms','device_clock_uncertainty_ms','depth_rgb_registration',
                   'pose_valid','pose_translation','pose_quaternion','pose_coordinates','arcore_capture_session','frame_timestamp_ns','depth_timestamp_ns')
             meta={k:frame.meta[k] for k in keys if k in frame.meta}
             value={'id':identifier,'device':device,'label':label or '手机观察','saved_at':datetime.now().astimezone().isoformat(),

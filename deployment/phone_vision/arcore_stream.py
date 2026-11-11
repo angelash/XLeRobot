@@ -148,10 +148,14 @@ def prepare(meta, rgb, auto_depth, raw_depth, confidence, rotation):
         if np.any(corners < -.1) or np.any(corners > np.array([iw, ih])+.1):
             raise ValueError('ARCore SDK映射超出CPU画面')
         # Same coordinate convention as Google's depth-to-CPU sample: x/w,y/h.
-        x, y = np.meshgrid(np.arange(width)/width, np.arange(height)/height)
+        rgb_width, rgb_height = min(iw,max(1,round(dx[0]))), min(ih,max(1,round(dy[1])))
+        x, y = np.meshgrid(np.arange(rgb_width)/rgb_width, np.arange(rgb_height)/rgb_height)
         map_x = np.asarray(origin[0]+x*dx[0], dtype=np.float32)
         map_y = np.asarray(origin[1]+y*dy[1], dtype=np.float32)
         color = cv2.remap(color, map_x, map_y, cv2.INTER_LINEAR)
+        sx, sy = rgb_width/width, rgb_height/height
+        rgb_mapping = {0:[sx,sy,0.,0.],90:[sy,sx,sy-1,0.],
+                       180:[sx,sy,sx-1,sy-1],270:[sy,sx,0.,sx-1]}[rotation]
         depth = np.frombuffer(data, dtype='<u2').reshape(height, width).astype(np.float32)*.001
         fx, fy = meta['focal_length']; cx, cy = meta['principal_point']
         fx *= width/dx[0]; fy *= height/dy[1]
@@ -167,6 +171,7 @@ def prepare(meta, rgb, auto_depth, raw_depth, confidence, rotation):
             intrinsics={'fx': float(fx), 'fy': float(fy), 'tx': float(cx), 'ty': float(cy)},
             intrinsics_image_rotation_deg=rotation, depth_native_dimensions=[width, height],
             registration='arcore_sdk_texture_to_cpu_crop',
+            rgb_from_depth_scale_offset=rgb_mapping,
             depth_uv_to_image_pixels=corners.ravel().tolist(),
             depth_timestamp_ns=meta[prefix+'_timestamp_ns'],
             positive_depth_fraction=float((depth > 0).mean()),
@@ -180,13 +185,15 @@ def prepare(meta, rgb, auto_depth, raw_depth, confidence, rotation):
                            raw_depth_high_confidence_fraction=float((conf >= 128).mean()),
                            confidence_scope='arcore_raw_depth_only')
     color = orient_frame(color, rotation)
-    details.update(width=int(color.shape[1]), height=int(color.shape[0]))
+    details.update(rgb_width=int(color.shape[1]), rgb_height=int(color.shape[0]))
     ok, jpeg = cv2.imencode('.jpg', color, [cv2.IMWRITE_JPEG_QUALITY, 78])
     if not ok:
         raise ValueError('ARCore JPEG编码失败')
     if depth is None:
+        details.update(width=details['rgb_width'],height=details['rgb_height'])
         return details, jpeg.tobytes(), b'', b''
     depth = orient_frame(depth, rotation)
+    details.update(width=int(depth.shape[1]),height=int(depth.shape[0]))
     valid = depth > 0
     display = np.where(valid, np.clip((depth-.2)/4.8, 0, 1)*254+1, 0).astype(np.uint8)
     preview = cv2.applyColorMap(255-display, cv2.COLORMAP_TURBO)

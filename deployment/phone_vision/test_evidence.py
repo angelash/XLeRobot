@@ -69,6 +69,32 @@ def test_far_estimates_remain_archived_but_do_not_offer_an_empty_spatial_model(t
     assert json.loads(path.read_text('utf8'))['cloud_available'] is True
 
 
+def test_full_color_is_archived_and_used_at_registered_depth_pixels(tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    from .reconstruction import Reconstruction
+    image=Image.new('RGB',(6,6))
+    for y in range(6):
+        for x in range(6):image.putpixel((x,y),(x*25,y*30,20))
+    wire=BytesIO();image.save(wire,format='JPEG',quality=95,subsampling=0)
+    f=frame();meta=dict(f.meta,rgb_width=6,rgb_height=6,rgb_from_depth_scale_offset=[2.,2.,1.,1.],native_packet_age_ms=500.)
+    f=replace(f,meta=meta,rgb=wire.getvalue());store=Evidence(tmp_path)
+    saved=store.capture('android',f,'完整彩色与原生深度')
+    assert saved['meta']['rgb_width']==6 and saved['meta']['width']==3
+    assert saved['meta']['native_packet_age_ms']==500.
+    cloud=geometry(f,world=True)
+    assert cloud['rgb_pixels'][:2]==[1,1] and cloud['rgb_pixels'][-2:]==[5,5]
+    model=Reconstruction(store).add(saved,f)
+    rebuilt=json.loads(store.media('models',model['id'],'cloud.json').read_text('utf8'))
+    with Image.open(BytesIO(f.rgb)) as decoded:
+        assert rebuilt['colors'][:3]==list(decoded.getpixel((1,1)))
+        assert rebuilt['colors'][-3:]==list(decoded.getpixel((5,5)))
+    with pytest.raises(ValueError,match='映射无效'):
+        geometry(replace(f,meta=dict(meta,rgb_from_depth_scale_offset=[float('nan'),2.,0.,0.])))
+    with pytest.raises(ValueError,match='超出成像'):
+        geometry(replace(f,meta=dict(meta,rgb_from_depth_scale_offset=[10.,10.,0.,0.])))
+
+
 def test_capture_and_preview_keep_freshness_and_old_session_rejection(tmp_path):
     clock=[100.];service=PhoneVision(tmp_path,tmp_path/'data',clock=lambda:clock[0]);service.states['android'].update(enabled=True,phase='live',session='session')
     service.states['android']['frames'].append(frame())

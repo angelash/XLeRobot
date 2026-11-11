@@ -19,8 +19,9 @@ export class PhoneSpace {
     if(data.colors?.length===data.positions.length)colors=data.colors.map(v=>Math.min(255,Math.max(0,v))/255);
     else if(imageURL&&data.pixels?.length===data.count*2){
       try{const im=new Image();im.src=imageURL;await im.decode();if(version!==this.version)return;
-        const cv=document.createElement('canvas');cv.width=data.width;cv.height=data.height;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(im,0,0,cv.width,cv.height);const rgba=ctx.getImageData(0,0,cv.width,cv.height).data;colors=[];
-        for(let n=0;n<data.pixels.length;n+=2){const k=(data.pixels[n+1]*cv.width+data.pixels[n])*4;colors.push(rgba[k]/255,rgba[k+1]/255,rgba[k+2]/255);}
+        const registered=data.rgb_pixels?.length===data.pixels.length,pixels=registered?data.rgb_pixels:data.pixels;
+        const cv=document.createElement('canvas');cv.width=registered?data.rgb_width:data.width;cv.height=registered?data.rgb_height:data.height;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(im,0,0,cv.width,cv.height);const rgba=ctx.getImageData(0,0,cv.width,cv.height).data;colors=[];
+        for(let n=0;n<pixels.length;n+=2){const k=(pixels[n+1]*cv.width+pixels[n])*4;colors.push(rgba[k]/255,rgba[k+1]/255,rgba[k+2]/255);}
       }catch{colors=null;}
     }
     if(version!==this.version)return;
