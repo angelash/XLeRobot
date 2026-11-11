@@ -136,7 +136,7 @@ class Evidence:
         return value
 
     def media(self,kind,identifier,name):
-        allowed={'rgb.jpg','depth.jpg','depth.f32','preview.jpg','cloud.json'}
+        allowed={'rgb.jpg','depth.jpg','depth.f32','preview.jpg','cloud.json','coverage.json'}
         if name not in allowed:raise KeyError('媒体不存在')
         p=self.folder(kind,identifier)/name
         if not p.is_file() or p.stat().st_size>12*1024*1024:raise KeyError('媒体不存在')
@@ -165,5 +165,9 @@ class Evidence:
             if cloud is not None:
                 (folder/'cloud.json').write_text(json.dumps(cloud,separators=(',',':')),encoding='utf8')
                 value['cloud_available']=cloud['count']>0;value['point_count']=cloud['count'];value['depth_quality']=cloud['depth_quality']
+                from .coverage import frame_coverage
+                coverage=frame_coverage(frame.meta,frame.raw)
+                (folder/'coverage.json').write_text(json.dumps(coverage,separators=(',',':')),encoding='utf8')
+                value['coverage_fraction']=coverage['fraction']
             (folder/'meta.json').write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf8')
             return value

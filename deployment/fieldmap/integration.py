@@ -122,6 +122,39 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     def status():
         return survey.status()
 
+    @router.get('/phone-space')
+    def phone_space():
+        evidence=getattr(app.state,'phone_evidence',None)
+        if evidence is None:raise HTTPException(503,'手机空间记录尚未接入')
+        models=evidence.list('models',100)
+        captures=evidence.list('captures',48)
+        return {'models':models['items'],'captures':captures['items'],
+                'model_limit':100,'capture_limit':48,'motion_enabled':False,
+                'retention':'original_sources_preserved_no_automatic_deletion'}
+
+    @router.get('/phone-space/coverage')
+    def phone_coverage(kind:str,identifier:str):
+        coverage=getattr(app.state,'phone_coverage',None)
+        if coverage is None:raise HTTPException(503,'手机点阵分析尚未接入')
+        try:return coverage.read(kind,identifier)
+        except KeyError:raise HTTPException(404,'手机空间记录不存在') from None
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+        except OSError:raise HTTPException(503,'原始空间记录暂不可读，保留原文件') from None
+
+    @router.get('/phone-space/live')
+    def phone_space_live(session:str,seq:int):
+        from deployment.phone_vision.coverage import frame_coverage
+        service=getattr(app.state,'phone_vision',None)
+        if service is None:raise HTTPException(503,'手机尚未接入')
+        try:
+            frame=service.frame('android',session,seq)
+            report=frame_coverage(frame.meta,frame.raw) if frame.raw else None
+            return {'coverage':report,'meta':frame.meta,'session':frame.session,'sequence':frame.sequence,
+                    'remaining_fresh_ms':max(0,1000-(service.clock()-frame.received)*1000),
+                    'historical':False,'motion_enabled':False}
+        except LookupError as exc:raise HTTPException(409,str(exc)) from None
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
     @router.get('/exploration')
     def exploration_status():return exploration.status()
 
