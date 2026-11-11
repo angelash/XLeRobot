@@ -7,7 +7,7 @@ const svg=(tag,attrs={},text)=>{const e=document.createElementNS(NS,tag);for(con
 const date=ms=>new Date(ms).toLocaleString('zh-CN',{hour12:false});
 const clock=ms=>new Date(ms).toLocaleTimeString('zh-CN',{hour12:false});
 const cameraName={'0':'头部','1':'右腕','2':'左腕'};
-const opName={travel:'平移',rotate:'转向',advance:'前进脉冲',drive:'轮组动作',snapshot:'拍照',move:'关节动作',arm:'关节动作',wait:'等待'};
+const opName={travel:'平移',rotate:'转向',advance:'前进脉冲',drive:'轮组动作',snapshot:'拍照',move:'关节动作',arm:'关节动作',wait:'等待',historical_control:'人工操作日志',manual_input:'手动输入',observed_motion:'动作结果观测',observation_gap:'记录间断'};
 const S={mode:'history',range:null,window:null,cursor:0,result:null,episode:'',camera:'0',nearest:{},album:[],status:null,playing:false,queryVersion:0,photoVersion:0};
 try{S.obstacles=localStorage.getItem('fieldmap.history.obstacles')!=='hidden';}catch{S.obstacles=true;}
 let scene=null,sceneLoading=false,sceneKey='',view=null,photoTimer,playFrame,photoAbort,albumAbort,queryAbort;
