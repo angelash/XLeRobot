@@ -10,3 +10,16 @@
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .fieldmap-frame{display:block;width:100%;min-height:960px;border:0;border-radius:10px;background:#101514}
+
+/* The manual desk owns its camera wall and uses the available browser height. */
+body[data-workspace="teleop"] #workspace{padding:12px 16px 0}
+body[data-workspace="teleop"] #phone-watch,body[data-workspace="teleop"] .app-footer{display:none!important}
+body[data-workspace="teleop"] #teleop-frame{min-height:0;border-radius:0;background:transparent}
+body[data-workspace="teleop"] .session-strip{padding:6px 17px;font-size:10px;min-height:30px;line-height:1.6}
+body[data-workspace="teleop"] .exploration-banner{margin:0 0 9px;padding:7px 12px;gap:10px}
+body[data-workspace="teleop"] .exploration-banner>div{display:flex;align-items:center;gap:12px;min-width:0}
+body[data-workspace="teleop"] .exploration-banner strong{font-size:11px;white-space:nowrap}
+body[data-workspace="teleop"] .exploration-banner span{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body[data-workspace="teleop"] .exploration-banner small{display:none}
+body[data-workspace="teleop"] .exploration-banner button{padding:6px 10px;font-size:10px}
+@media(max-width:800px){body[data-workspace="teleop"] #workspace{padding:10px 10px 0}}

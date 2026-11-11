@@ -21,9 +21,9 @@ if (typeof document !== 'undefined') (() => {
   const labels = ['肩水平','肩抬升','肘关节','腕俯仰','腕旋转','夹爪'];
   const keys = new Set(), pointers = new Map();
   let token = null, seq = 0, arm = 'left', mode = 'integrated', joint = 1, status = null;
-  let inFlight = 0, starting = false, generation = 0, cameraOn = false, pollBusy = false;
-  let lastStatus = 0, ownedAt = 0, cameraSeq = -1, cameraBusy = false, cameraBlob = null, cameraGeneration = 0;
-  let lastReason = '进入页面只读取状态，开启后按住才运动。';
+  let inFlight = 0, starting = false, generation = 0, pollBusy = false;
+  let lastStatus = 0, ownedAt = 0;
+  let lastReason = '按住才动，松开保持；空格或 Esc 停止。';
   let pageActive = window.parent === window || window.parent.location.hash.split('/')[0] === '#teleop';
 
   async function api(path, payload, keepalive = false) {
@@ -78,8 +78,8 @@ if (typeof document !== 'undefined') (() => {
     $('connection').textContent = online ? `${status.runtime.ports?.reduce((n,p)=>n+p.motors.length,0)||0} / 16 电机在线` : '控制服务离线';
     $('connection').className = 'pill ' + (online ? 'live' : 'error');
     $('signal').classList.toggle('live',owned);
-    $('session-state').textContent = owned ? '网页控制已开启 · 按住才运动' : occupied ? '其他控制会话正在使用' : '尚未开启控制';
-    $('session-detail').textContent = lastReason;
+    $('session-state').textContent = owned ? '控制已开启 · 按住才动' : occupied ? '其他控制会话正在使用' : '尚未开启控制';
+    $('session-detail').textContent = lastReason;$('session-detail').title=lastReason;
     $('start').disabled = !online || !$('confirm').checked || owned || occupied || starting || Boolean(status?.recording);
     $('end').disabled = !owned; $('confirm').disabled = owned || starting;
     document.querySelectorAll('[data-motion]').forEach(b => {
@@ -169,12 +169,12 @@ if (typeof document !== 'undefined') (() => {
   window.addEventListener('keydown',keydown,true);window.addEventListener('keyup',keyup,true);
   document.addEventListener('focusin',e=>{if(TeleopKeys.editing(e.target))release();});
   window.addEventListener('blur',()=>{if(token||starting)end('页面失去焦点，已结束控制');});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden){end('页面进入后台，已结束控制');closeCamera();}});
-  window.addEventListener('pagehide',()=>{end('页面已离开');closeCamera();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){end('页面进入后台，已结束控制');window.TeleopCameras?.setActive(false);}});
+  window.addEventListener('pagehide',()=>{end('页面已离开');window.TeleopCameras?.setActive(false);});
   window.addEventListener('message',e=>{
     if(e.origin!==location.origin||e.source!==window.parent||e.data?.type!=='studio-page')return;
-    pageActive=e.data.active===true;
-    if(!pageActive){end('已离开键盘遥控页');closeCamera();}
+    pageActive=e.data.active===true;window.TeleopCameras?.setActive(pageActive);
+    if(!pageActive){end('已离开键盘遥控页');window.TeleopCameras?.setActive(false);}
   });
   if(window.parent!==window) {
     window.parent.addEventListener('blur',()=>{if(token||starting)end('浏览器失去焦点，已结束控制');});
@@ -182,8 +182,8 @@ if (typeof document !== 'undefined') (() => {
       if((token||starting)&&(e.code==='Space'||e.code==='Escape')){e.preventDefault();end('键盘立即停止');}
     },true);
     window.parent.addEventListener('hashchange',()=>{
-      pageActive=window.parent.location.hash.split('/')[0]==='#teleop';
-      if(!pageActive){end('已切换工作区');closeCamera();}
+      pageActive=window.parent.location.hash.split('/')[0]==='#teleop';window.TeleopCameras?.setActive(pageActive);
+      if(!pageActive){end('已切换工作区');window.TeleopCameras?.setActive(false);}
     });
   }
   async function poll() {
@@ -195,26 +195,8 @@ if (typeof document !== 'undefined') (() => {
     } catch(e){status=null;if(token)end('遥测中断，已结束控制');}
     finally{pollBusy=false;render();}
   }
-  function closeCamera(){
-    cameraOn=false;cameraGeneration++;$('camera-image').hidden=true;$('camera-image').removeAttribute('src');
-    if(cameraBlob)URL.revokeObjectURL(cameraBlob);cameraBlob=null;
-    $('camera-placeholder').hidden=false;$('camera-toggle').textContent='打开画面';
-  }
-  async function cameraFrame() {
-    if(!cameraOn||cameraBusy||!pageActive||document.hidden)return;
-    cameraBusy=true;const version=cameraGeneration;
-    try {
-      const response=await fetch(`/api/platform/camera/${$('camera').value}/frame?after=${cameraSeq}`,{signal:AbortSignal.timeout(4500)});
-      if(!response.ok)throw new Error('相机暂未提供新帧');
-      const blob=await response.blob();
-      if(!cameraOn||version!==cameraGeneration)return;
-      const previous=cameraBlob;cameraBlob=URL.createObjectURL(blob);$('camera-image').src=cameraBlob;
-      $('camera-image').hidden=false;$('camera-placeholder').hidden=true;if(previous)URL.revokeObjectURL(previous);
-      cameraSeq=Number(response.headers.get('X-Frame-Seq')||-1);$('camera-status').textContent='已读取相机快照 · '+new Date().toLocaleTimeString();
-    } catch(e){if(version===cameraGeneration){$('camera-image').hidden=true;$('camera-placeholder').hidden=false;$('camera-status').textContent=e.message;}}
-    finally{cameraBusy=false;}
-  }
-  $('camera-toggle').addEventListener('click',()=>{if(cameraOn)closeCamera();else{cameraOn=true;cameraGeneration++;cameraSeq=-1;$('camera-toggle').textContent='关闭画面';cameraFrame();}});
-  $('camera').addEventListener('change',()=>{const resume=cameraOn;closeCamera();if(resume){cameraOn=true;cameraSeq=-1;$('camera-toggle').textContent='关闭画面';cameraFrame();}});
-  setInterval(()=>send(),100);setInterval(poll,1000);setInterval(cameraFrame,600);render();poll();
+  $('help-open').addEventListener('click',()=>{release();$('help-dialog').showModal();});
+  $('help-close').addEventListener('click',()=>$('help-dialog').close());
+  window.TeleopCameras?.mount(release);window.TeleopCameras?.setActive(pageActive);
+  setInterval(()=>send(),100);setInterval(poll,1000);render();poll();
 })();

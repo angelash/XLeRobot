@@ -283,12 +283,14 @@ service=Workbench()
 @asynccontextmanager
 async def lifespan(app):
     service.client=httpx.AsyncClient(trust_env=False,timeout=3)
+    app.state.camera_views=CameraViews(lambda: service.client, UPSTREAM)
     service.environment=available_environments()
     app.state.fieldmap_history.start()
     app.state.storage.start()
     try:
         yield
     finally:
+        await app.state.camera_views.close()
         await asyncio.to_thread(app.state.phone_vision.close)
         app.state.fieldmap_history.stop()
         await asyncio.to_thread(app.state.storage.close)
@@ -297,6 +299,8 @@ async def lifespan(app):
 
 app=FastAPI(title='XLeRobot Studio',lifespan=lifespan)
 app.mount('/assets',StaticFiles(directory=STATIC),name='platform-assets')
+from .camera_views import CameraViews
+app.state.camera_views=CameraViews(lambda: service.client, UPSTREAM)
 
 # Register before the generic /api/{path:path} controller allowlist.
 from presentation.api import install as install_presence
@@ -460,6 +464,11 @@ async def camera_frame(camera:int):
                 if len(data)>4_000_000:break
     except httpx.HTTPError as exc:raise HTTPException(503,'当前相机没有可读取画面') from exc
     raise HTTPException(503,'相机未返回有效图像，请检查设备连接')
+
+@app.get('/api/platform/camera/{camera}/live')
+async def camera_live(camera:int):
+    content,headers=await app.state.camera_views.frame(camera)
+    return Response(content,media_type='image/jpeg',headers=headers)
 
 # A fixed route allowlist prevents the gateway becoming a generic HTTP proxy.
 PROXY_GET={'original/status','status','events','log/download'}

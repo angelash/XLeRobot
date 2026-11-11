@@ -55,6 +55,7 @@ const Studio = (() => {
     const version=++routeVersion;stopHold();cancelDemo();playing=false;const parts=location.hash.slice(1).split('/');route=pages.some(x=>x[0]===parts[0])?parts[0]:'home';
     $('current-page').textContent=pages.find(x=>x[0]===route)[1];document.title=`${$('current-page').textContent} · XLeRobot Studio`;
     $('navigation').querySelectorAll('a').forEach(a=>{const active=a.hash==='#'+route;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+    document.body.dataset.workspace=route;
     $('sidebar').classList.remove('open');$('control-page').hidden=route!=='control';$('page').hidden=route==='control';window.scrollTo({top:0});
     for(const name of Object.keys(embedded))$(name+'-page').hidden=route!==name;
     $('teleop-frame').contentWindow?.postMessage({type:'studio-page',active:route==='teleop'},location.origin);
@@ -72,8 +73,8 @@ const Studio = (() => {
     if(!frame.getAttribute('src')){
       frame.addEventListener('load',()=>{
         const doc=frame.contentDocument;if(!doc?.body)return;
-        frame.studioResize=()=>{if(!$(name+'-page').hidden)frame.style.height=Math.ceil(doc.body.getBoundingClientRect().height+4)+'px';};
-        new ResizeObserver(frame.studioResize).observe(doc.body);frame.studioResize();
+        frame.studioResize=()=>{if($(name+'-page').hidden)return;frame.style.height=(name==='teleop'?Math.max(540,window.innerHeight-frame.getBoundingClientRect().top-12):Math.ceil(doc.body.getBoundingClientRect().height+4))+'px';};
+        new ResizeObserver(frame.studioResize).observe(doc.body);if(name==='teleop'){window.addEventListener('resize',frame.studioResize);new ResizeObserver(frame.studioResize).observe($('workspace'));}frame.studioResize();
       });
       frame.src=embedded[name];
     }

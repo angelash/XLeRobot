@@ -6,14 +6,16 @@
   <link rel="stylesheet" href="/assets/web-teleop.css">
 </head>
 <body tabindex="-1">
-  <header class="heading"><div><p class="eyebrow">MANUAL CONTROL / 01</p><h1>把机器人，交到指尖。</h1><p>方向键驾驶 · 手臂联动 · 逐关节精调</p></div><span id="connection" class="pill">读取设备状态…</span></header>
   <section class="session" aria-label="控制会话">
-    <div><span class="signal" id="signal"></span><strong id="session-state">尚未开启控制</strong><p id="session-detail" role="status">进入页面只读取状态，开启后按住才运动。</p></div>
-    <div class="session-actions"><label class="check"><input id="confirm" type="checkbox">已看清周围，运动范围内无人</label><button id="start" class="button primary" disabled>开启网页控制 ↗</button><button id="end" class="button" disabled>结束控制</button><button id="stop" class="button stop">■ 立即停止 <kbd>Space</kbd></button></div>
+    <div class="session-info"><div><span class="signal" id="signal"></span><strong id="session-state">尚未开启控制</strong><span id="connection" class="pill">读取设备…</span></div><p id="session-detail" role="status">按住才动，松开保持；空格或 Esc 停止。</p></div>
+    <div class="session-actions"><label class="check"><input id="confirm" type="checkbox">运动范围内无人</label><button id="start" class="button primary" disabled>开启控制</button><button id="end" class="button" disabled>结束</button><button id="stop" class="button stop">■ 立即停止 <kbd>Space</kbd></button></div>
   </section>
-  <main>
-    <div class="column">
-      <section class="panel drive"><div class="panel-heading"><div><p class="eyebrow">01 / CHASSIS</p><h2>底盘驾驶</h2></div><span class="pill subtle">双轮差速</span></div><p class="hint">↑ 前进　↓ 后退　← 左转　→ 右转<br>可组合前进与转向；双轮底盘不支持横移。</p>
+  <section class="vision" aria-label="全部摄像头">
+    <header class="vision-bar"><div class="section-title"><span class="eyebrow">LIVE VIEWS</span><h1>现场视野</h1><span id="camera-count" class="subtle"></span></div><div id="camera-selectors" class="camera-selectors" aria-label="显示或折叠相机"></div><button id="camera-collapse" class="text-button">全部折叠</button></header>
+    <div id="camera-grid" class="camera-grid"></div><p id="camera-empty" class="camera-empty" hidden>视频已折叠，点击上方相机名称展开。机器人控制仍可用。</p>
+  </section>
+  <main class="control-deck">
+      <section class="panel drive"><div class="panel-heading"><div><h2>底盘驾驶</h2></div><span class="subtle">↑ ↓ ← →</span></div>
         <div class="dpad" aria-label="底盘方向控制">
           <button data-motion="base.forward" class="motion forward" aria-label="底盘前进"><kbd>↑</kbd><span>前进</span></button>
           <button data-motion="base.left" class="motion turn-left" aria-label="底盘左转"><kbd>←</kbd><span>左转</span></button>
@@ -21,37 +23,31 @@
           <button data-motion="base.right" class="motion turn-right" aria-label="底盘右转"><kbd>→</kbd><span>右转</span></button>
           <button data-motion="base.back" class="motion backward" aria-label="底盘后退"><kbd>↓</kbd><span>后退</span></button>
         </div>
-        <label class="speed-label" for="speed">操作速度 <output id="speed-value">慢速 · 50%</output></label><input id="speed" type="range" min="20" max="100" step="10" value="50"><p class="hint small">按住 <kbd>Shift</kbd> 临时精细控制 · 松开方向键即停车</p>
+        <div class="speed-control"><label class="speed-label" for="speed">速度 <output id="speed-value">慢速 · 50%</output></label><input id="speed" type="range" min="20" max="100" step="10" value="50"></div><p class="hint">按住 <kbd>Shift</kbd> 精调 · 双轮不支持横移</p>
         <p id="base-telemetry" class="readout">轮速与设备状态等待读取</p>
       </section>
-      <section class="panel head"><div class="panel-heading"><div><p class="eyebrow">02 / HEAD</p><h2>转头看一看</h2></div><span class="pill subtle">I J K L</span></div>
-        <div class="head-grid"><button class="motion" data-motion="head.up"><kbd>I</kbd> 抬头</button><button class="motion" data-motion="head.left"><kbd>J</kbd> 左看</button><button class="motion" data-motion="head.down"><kbd>K</kbd> 低头</button><button class="motion" data-motion="head.right"><kbd>L</kbd> 右看</button></div><p class="hint small">头部与手臂快捷键独立，可配合实时画面观察。</p>
-      </section>
-    </div>
-    <div class="column">
-      <section class="panel arms"><div class="panel-heading"><div><p class="eyebrow">03 / MANIPULATORS</p><h2>双臂，轻松操控。</h2></div><span id="arm-port" class="pill subtle">物理左臂</span></div>
-        <div class="segmented" id="arm-selector" aria-label="控制哪条手臂"><button data-arm="left" class="selected" aria-pressed="true">左臂 <kbd>1</kbd></button><button data-arm="right" aria-pressed="false">右臂 <kbd>2</kbd></button><button data-arm="both" aria-pressed="false">双臂 <kbd>3</kbd></button></div>
-        <div class="tabs" id="mode-selector"><button data-mode="integrated" class="selected" aria-selected="true">简易联动</button><button data-mode="joints" aria-selected="false">逐关节控制</button></div>
+      <section class="panel arms"><div class="panel-heading"><div><h2>手臂控制</h2></div><span id="arm-port" class="pill subtle">物理左臂</span></div>
+        <div class="arm-toolbar"><div class="segmented" id="arm-selector" aria-label="控制哪条手臂"><button data-arm="left" class="selected" aria-pressed="true">左臂 <kbd>1</kbd></button><button data-arm="right" aria-pressed="false">右臂 <kbd>2</kbd></button><button data-arm="both" aria-pressed="false">双臂 <kbd>3</kbd></button></div>
+        <div class="tabs" id="mode-selector"><button data-mode="integrated" class="selected" aria-selected="true">简易联动</button><button data-mode="joints" aria-selected="false">逐关节</button></div></div>
         <div id="integrated-controls">
-          <p class="hint">伸缩、升降会联动肩、肘和腕俯仰，保持当前腕姿。<br>按 <kbd>W A S D</kbd> 控制当前手臂；选择“双臂”时同向联动。</p>
-          <div class="arm-plane"><span class="plane-guide">末端平面 / 径向 × 高度</span><button class="motion" data-motion="arm.up"><kbd>W</kbd><span>升高</span></button><div class="plane-row"><button class="motion" data-motion="arm.retract"><kbd>A</kbd><span>收近</span></button><div class="plane-center">↗<small>末端联动</small></div><button class="motion" data-motion="arm.extend"><kbd>D</kbd><span>伸远</span></button></div><button class="motion" data-motion="arm.down"><kbd>S</kbd><span>降低</span></button></div>
+
+          <div class="integrated-layout"><div class="arm-plane" aria-label="末端伸缩升降"><span class="plane-guide">末端伸缩 / 升降</span><button class="motion plane-up" data-motion="arm.up"><kbd>W</kbd><span>升高</span></button><button class="motion plane-left" data-motion="arm.retract"><kbd>A</kbd><span>收近</span></button><div class="plane-center">↗</div><button class="motion plane-right" data-motion="arm.extend"><kbd>D</kbd><span>伸远</span></button><button class="motion plane-down" data-motion="arm.down"><kbd>S</kbd><span>降低</span></button></div>
           <div class="paired-controls">
-            <div><label>肩部水平</label><button class="motion" data-motion="arm.pan_left"><kbd>Q</kbd> 负向</button><button class="motion" data-motion="arm.pan_right"><kbd>E</kbd> 正向</button></div>
-            <div><label>腕部俯仰</label><button class="motion" data-motion="arm.pitch_up"><kbd>R</kbd> 负向</button><button class="motion" data-motion="arm.pitch_down"><kbd>F</kbd> 正向</button></div>
-            <div><label>腕部旋转</label><button class="motion" data-motion="arm.roll_left"><kbd>Z</kbd> 负向</button><button class="motion" data-motion="arm.roll_right"><kbd>C</kbd> 正向</button></div>
+            <div><label>肩部水平</label><button class="motion" data-motion="arm.pan_left"><kbd>Q</kbd> −</button><button class="motion" data-motion="arm.pan_right"><kbd>E</kbd> +</button></div>
+            <div><label>腕部俯仰</label><button class="motion" data-motion="arm.pitch_up"><kbd>R</kbd> −</button><button class="motion" data-motion="arm.pitch_down"><kbd>F</kbd> +</button></div>
+            <div><label>腕部旋转</label><button class="motion" data-motion="arm.roll_left"><kbd>Z</kbd> −</button><button class="motion" data-motion="arm.roll_right"><kbd>C</kbd> +</button></div>
             <div><label>夹爪开合</label><button class="motion" data-motion="arm.open"><kbd>U</kbd> 张开</button><button class="motion" data-motion="arm.close"><kbd>O</kbd> 闭合</button></div>
           </div>
-          <p id="ik-status" class="notice">正在读取运动学参考…</p>
+          </div><p id="ik-status" class="notice">正在读取运动学参考…</p>
         </div>
-        <div id="joint-controls" hidden><p class="hint">每次只操作选中手臂的一个关节。按钮 ± 沿用此轴的方向设置；显示实测编码器与当前设备限位。</p><div id="joint-rows"></div><p class="hint small">选择关节后按 <kbd>[</kbd> / <kbd>]</kbd> 负向 / 正向。<kbd>U</kbd> / <kbd>O</kbd> 始终控制夹爪。</p></div>
+        <div id="joint-controls" hidden><div id="joint-rows"></div><p class="hint small">选中关节后按 <kbd>[</kbd> / <kbd>]</kbd>。<kbd>U</kbd> / <kbd>O</kbd> 开合夹爪。</p></div>
       </section>
-    </div>
-    <div class="column observation-column">
-      <section class="panel observation"><div class="panel-heading"><div><p class="eyebrow">04 / LIVE VIEW</p><h2>边看，边操作。</h2></div><button id="camera-toggle" class="text-button">打开画面</button></div><div class="camera-select"><label for="camera">观察相机</label><select id="camera"><option value="0">头部相机</option><option value="2">左腕相机</option><option value="1">右腕相机</option></select></div><div class="camera-view"><img id="camera-image" alt="所选相机实时画面" hidden><div id="camera-placeholder"><span>◎</span><p>按需开启实时画面</p><small>头部 / 左腕 / 右腕</small></div></div><p id="camera-status" class="hint small">相机与控制使用原平台服务。</p></section>
-      <section class="panel instructions"><p class="eyebrow">QUICK REFERENCE</p><h2>记住这几件事。</h2><ol><li><strong>主动开启</strong><span>先观察现场，再开启控制。浏览页面不会发动作。</span></li><li><strong>按住才动</strong><span>松手保持当前位置；夹爪松键后保持，不自动张开。</span></li><li><strong>随时停止</strong><span>空格或 Esc 结束控制。切页、失焦、断网也会停止。</span></li><li><strong>精细一点</strong><span>Shift 降速。参考不足或姿态折叠时，改用逐关节调整。</span></li></ol><a href="/#devices" target="_top">查看设备与完整遥测 ↗</a></section>
-    </div>
+      <section class="panel head"><div class="panel-heading"><div><h2>头部与操作</h2></div><span class="pill subtle">I J K L</span></div>
+        <div class="head-grid"><button class="motion" data-motion="head.up"><kbd>I</kbd> 抬头</button><button class="motion" data-motion="head.left"><kbd>J</kbd> 左看</button><button class="motion" data-motion="head.down"><kbd>K</kbd> 低头</button><button class="motion" data-motion="head.right"><kbd>L</kbd> 右看</button></div><div class="quick-notes"><p><kbd>Space</kbd> / <kbd>Esc</kbd> 立即停止</p><p>按住才动，松开保持。<br>切页、失焦、断网结束控制。</p><p>夹爪松键保持当前开度。</p></div><button id="help-open" class="text-button">完整按键与操作说明 ↗</button><a href="/#devices" target="_top" class="text-link">设备与遥测 ↗</a>
+      </section>
   </main>
-  <footer><span>按键状态 <strong id="held-keys">全部松开</strong></span><span>输入租约 <b>650 ms</b> · 控制保护始终生效</span></footer>
-  <script src="/assets/web-teleop.js"></script>
+  <footer><span>按键 <strong id="held-keys">全部松开</strong></span><span>输入租约 <b>650 ms</b> · 画面独立折叠，布局自动记忆</span></footer>
+  <dialog id="help-dialog"><header><h2>键盘与按钮操作</h2><button id="help-close" class="button">关闭 ×</button></header><p>先观察现场、确认周围安全，再开启控制。所有动作按住才运行；打开视频不会开启运动控制。</p><ul><li>方向键驾驶；1 / 2 / 3 选择左臂、右臂或双臂。</li><li>W / S 升降，A / D 伸缩；Q / E 肩转，R / F 腕俯仰，Z / C 腕转。</li><li>U / O 夹爪开合；I J K L 控制头部。</li><li>逐关节模式选中关节后用 [ / ]，或按住对应 ± 按钮。</li><li>Shift 临时精细速度；空格或 Esc 停止。离开页面或失焦会结束控制。</li></ul><p>三路机器人相机可同时看。安卓镜头共享一条采集通路，主摄、前置、超广角等按需轮切；iPhone可独立展开。手机未连接时显示实际状态。</p></dialog>
+  <script src="/assets/web-teleop-cameras.js"></script><script src="/assets/web-teleop.js"></script>
 </body>
 </html>

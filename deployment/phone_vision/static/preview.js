@@ -26,7 +26,7 @@
       h.innerHTML='<header><div><strong data-phone-label>手机视角</strong><span data-phone-state>等待读取</span></div><div><select id="phone-watch-device" aria-label="手机预览来源"><option value="auto">当前可用手机</option><option value="android">红米</option><option value="iphone">iPhone</option></select><a href="#phones">镜头、成像与三维空间 ↗</a></div></header><details open><summary aria-label="折叠或展开手机画面">手机实时画面 ▾</summary><div class="phone-watch-viewport"><img alt="当前手机的实时彩色画面" hidden><p data-phone-empty>等待手机的新鲜画面</p></div></details>';
       workspace.prepend(h);
     }
-    window.PhoneVisionPreview.setActive(['devices','control','teleop','fieldmap','grasp','vision','obstacle'].includes(location.hash.slice(1).split('/')[0]));
+    window.PhoneVisionPreview.setActive(['devices','control','fieldmap','grasp','vision','obstacle'].includes(location.hash.slice(1).split('/')[0]));
   }
   async function exploration(){
     if(document.hidden)return;let banner=document.getElementById('exploration-banner');const workspace=document.getElementById('workspace');if(!workspace)return;
