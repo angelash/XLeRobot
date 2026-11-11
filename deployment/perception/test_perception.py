@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from deployment.perception.floor import DEFAULT_CONFIG, WORK, Calibration, FloorModel, analyse, near_region, polygon_mask, render
+from deployment.perception.floor import DEFAULT_CONFIG, WORK, Calibration, FloorModel, PeopleDetector, analyse, near_region, polygon_mask, render
 from deployment.perception.integration import install
 from deployment.perception.service import PerceptionService
 
@@ -92,6 +92,19 @@ def test_uncalibrated_or_unlearned_floor_is_never_metric():
     assert not empty['valid'] and '地面外观' in empty['reasons'][0]
     restored = FloorModel.from_json(trained_model().to_json())
     assert restored.ready
+
+
+def test_supported_runtime_can_run_hog_people_detection(tmp_path):
+    # Exercise the native dependency: OpenCV 5 removed these APIs, while floor
+    # processing alone still passes and silently leaves people detection off.
+    detector = PeopleDetector()
+    assert detector.detect(np.zeros((WORK[1], WORK[0], 3), np.uint8)) == []
+    service = PerceptionService(tmp_path)
+    try:
+        assert service.people is not None
+        assert service.status()['people_detector'].startswith('可用')
+    finally:
+        service.http.close()
 
 
 class Ledger:

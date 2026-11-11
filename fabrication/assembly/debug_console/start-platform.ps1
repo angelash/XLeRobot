@@ -3,6 +3,10 @@ $ErrorActionPreference = 'Stop'
 $consoleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = (Resolve-Path (Join-Path $consoleDir '..\..\..')).Path
 $python = Join-Path $repo '.venv-debug\Scripts\python.exe'
+# An optional Studio environment keeps vision dependencies separate from the
+# running serial controller. Both environments use the same platform and port.
+$studioPython = Join-Path $repo '.venv-studio\Scripts\python.exe'
+if (Test-Path -LiteralPath $studioPython) { $python = $studioPython }
 if (-not (Test-Path -LiteralPath $python)) { throw '缺少 .venv-debug，请按调试台README初始化环境。' }
 $networkPath = Join-Path $repo '.local-deploy\studio-network.json'
 $network = if (Test-Path -LiteralPath $networkPath) { Get-Content -LiteralPath $networkPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }

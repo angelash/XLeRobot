@@ -108,6 +108,7 @@ web_control/server/.pytest_cache/
 .claude/
 .venv-cad/
 .venv-debug/
+.venv-studio/
 .venv-robot/
 fabrication/assembly/debug_console/server.pid
 fabrication/assembly/debug_console/server.stdout.log
