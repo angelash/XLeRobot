@@ -8,3 +8,5 @@
 .panel .pill{color:var(--muted);border-color:var(--line);margin:0}
 
 @media(min-width:950px) and (max-height:620px){body{gap:7px}.camera-viewport{height:clamp(70px,calc(100dvh - 505px),110px)}}
+
+.frame-hold{position:absolute;bottom:7px;left:7px;padding:3px 7px;border-radius:3px;background:#243025d9;color:#f7dfaa;font-size:9px;pointer-events:none}.camera-card.waiting [data-state]{color:#927343}

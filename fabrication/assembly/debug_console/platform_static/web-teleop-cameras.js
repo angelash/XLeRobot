@@ -7,7 +7,7 @@ window.TeleopCameras = (() => {
   let visible = true, saved = {}, phoneState = null, phoneBusy = false, phoneChange = false, desiredLens = '0';
   try {saved = JSON.parse(localStorage.getItem(storageKey)) || {};} catch {}
   const views = sources.map(s => ({...s,open:typeof saved[s.id]==='boolean'?saved[s.id]:s.id!=='iphone',
-    busy:false,version:0,url:null,key:null,expires:0,abort:null}));
+    busy:false,version:0,url:null,key:null,expires:0,abort:null,capturedAt:0,waiting:''}));
   let releaseInput = () => {};
 
   function persist(){try {localStorage.setItem(storageKey,JSON.stringify(Object.fromEntries(views.map(v=>[v.id,v.open]))));}catch{}}
@@ -15,8 +15,16 @@ window.TeleopCameras = (() => {
     const node=$(v.id+'-view');if(!node)return;
     node.querySelector('img').hidden=true;node.querySelector('img').removeAttribute('src');
     node.querySelector('[data-empty]').hidden=false;node.querySelector('[data-empty-text]').textContent=note;
-    if(v.url)URL.revokeObjectURL(v.url);v.url=null;v.key=null;v.expires=0;
+    if(v.url)URL.revokeObjectURL(v.url);v.url=null;v.key=null;v.expires=0;v.waiting='';
+    node.classList.remove('waiting');node.querySelector('[data-hold]').hidden=true;
     node.querySelector('[data-state]').textContent=note;node.querySelector('[data-state]').classList.remove('live');
+  }
+  function wait(v,note='等待更新'){
+    if(v.camera!==undefined||!v.url){clear(v,note);return;}
+    v.waiting=note;v.expires=0;
+    const node=$(v.id+'-view');node.classList.add('waiting');
+    node.querySelector('[data-hold]').hidden=false;
+    const state=node.querySelector('[data-state]');state.textContent='等待更新 · 上一帧 '+Math.max(0,(performance.now()-v.capturedAt)/1000).toFixed(1)+'秒前';state.title=note;
   }
   function inactive(v){v.version++;v.abort?.abort();v.abort=null;clear(v,'已折叠');}
   function layout(){
@@ -33,7 +41,7 @@ window.TeleopCameras = (() => {
     for(const v of views){
       const selector=document.createElement('button');selector.dataset.view=v.id;selector.textContent=v.name;selector.title='展开或折叠'+v.name;selector.addEventListener('click',()=>toggle(v));$('camera-selectors').append(selector);
       const card=document.createElement('article');card.className='camera-card';card.id=v.id+'-view';
-      card.innerHTML=`<header><h2>${v.name}${v.camera===undefined?'':'相机'}</h2><span>${v.camera===undefined?'PHONE':'UVC '+v.camera}</span><button title="折叠${v.name}" aria-label="折叠${v.name}">−</button></header><div class="camera-viewport"><img alt="${v.name}实时画面" hidden><div class="camera-placeholder" data-empty><span>◎</span><p data-empty-text>正在读取画面…</p></div></div><div class="camera-meta"><span data-state role="status">等待连接</span><span data-source>${v.camera===undefined?'USB / Wi-Fi':'640 × 480'}</span></div>`;
+      card.innerHTML=`<header><h2>${v.name}${v.camera===undefined?'':'相机'}</h2><span>${v.camera===undefined?'PHONE':'UVC '+v.camera}</span><button title="折叠${v.name}" aria-label="折叠${v.name}">−</button></header><div class="camera-viewport"><img alt="${v.name}实时画面" hidden><div class="camera-placeholder" data-empty><span>◎</span><p data-empty-text>正在读取画面…</p></div><span class="frame-hold" data-hold hidden>等待更新 · 保留上一帧</span></div><div class="camera-meta"><span data-state role="status">等待连接</span><span data-source>${v.camera===undefined?'USB / Wi-Fi':'640 × 480'}</span></div>`;
       card.querySelector('header button').addEventListener('click',()=>toggle(v));
       if(v.id==='android'){
         const options=document.createElement('div');options.className='camera-options';
@@ -52,7 +60,7 @@ window.TeleopCameras = (() => {
       for(const v of views){v.open=!collapse&&v.id!=='iphone';if(!v.open)inactive(v);}persist();layout();tick();
     });
     layout();setInterval(tick,250);setInterval(phonePoll,550);
-    setInterval(()=>{for(const v of views)if(v.expires&&performance.now()>=v.expires)clear(v,'画面已过期，等待新帧');},100);
+    setInterval(()=>{for(const v of views){if(v.expires&&performance.now()>=v.expires)wait(v,'等待下一张新帧');else if(v.waiting&&v.url)wait(v,v.waiting);}},100);
     tick();phonePoll();
   }
   async function request(path,payload){
@@ -95,10 +103,10 @@ window.TeleopCameras = (() => {
           $('phone-apply').disabled=phoneChange||s.stopping||!mismatch&&s.enabled&&!arcore;select.disabled=phoneChange||s.stopping;
           if(mismatch){clear(v,'当前为'+actual+'，选择主摄后点击“切换镜头”');continue;}
         }
-        if(!s.frame_available){clear(v,s.reason||'等待手机连接');continue;}
+        if(!s.frame_available){wait(v,s.reason||'等待手机连接');continue;}
         refresh(v);
       }
-    }catch(e){if(visible)for(const v of views.filter(v=>v.camera===undefined&&v.open))clear(v,e.message);}
+    }catch(e){if(visible)for(const v of views.filter(v=>v.camera===undefined&&v.open))wait(v,e.message);}
     finally{phoneBusy=false;}
   }
   async function refresh(v){
@@ -116,14 +124,20 @@ window.TeleopCameras = (() => {
       const key=isPhone?s.session+':'+res.headers.get('X-Phone-Sequence'):res.headers.get('X-Captured-At')+':'+res.headers.get('X-Frame-Sequence');
       const ttl=isPhone?phoneState.freshness_limit_ms-Number(res.headers.get('X-Phone-Age-Ms')):Number(res.headers.get('X-Frame-Ttl-Ms'));
       const deadline=started+ttl;
-      if(version!==v.version||!v.open||!visible||document.hidden||!Number.isFinite(ttl)||ttl<=0||performance.now()>=deadline)return;
+      if(version!==v.version||!v.open||!visible||document.hidden||!Number.isFinite(ttl)||ttl<=0||!isPhone&&performance.now()>=deadline)return;
       if(v.key===key){v.expires=Math.min(v.expires,deadline);return;}
-      const previous=v.url;v.url=URL.createObjectURL(blob);v.key=key;v.expires=deadline;
+      const next=URL.createObjectURL(blob),loaded=new Image();loaded.src=next;
+      try{await loaded.decode();}catch{URL.revokeObjectURL(next);throw Error('等待完整的新画面');}
+      if(version!==v.version||!v.open||!visible||document.hidden){URL.revokeObjectURL(next);return;}
+      const previous=v.url;v.url=next;v.key=key;v.expires=deadline;v.waiting='';
       const node=$(v.id+'-view'),img=node.querySelector('img');img.src=v.url;img.hidden=false;node.querySelector('[data-empty]').hidden=true;
+      node.classList.remove('waiting');node.querySelector('[data-hold]').hidden=true;
       if(previous)URL.revokeObjectURL(previous);
       const age=isPhone?res.headers.get('X-Phone-Age-Ms'):res.headers.get('X-Frame-Age-Ms');
+      v.capturedAt=started-Number(age||0);
       node.querySelector('[data-state]').textContent='● 实时 · '+Math.round(Number(age)||0)+' ms';
-    }catch(e){if(version===v.version&&v.open&&visible&&(!v.expires||performance.now()>=v.expires))clear(v,e.name==='AbortError'?'连接较慢，等待新帧':e.message);}
+      if(performance.now()>=deadline)wait(v);
+    }catch(e){if(version===v.version&&v.open&&visible&&(!v.expires||performance.now()>=v.expires))wait(v,e.name==='AbortError'?'连接较慢，等待新帧':e.message);}
     finally{clearTimeout(timer);if(v.abort===abort)v.abort=null;v.busy=false;}
   }
   function tick(){if(visible&&!document.hidden)views.filter(v=>v.open).forEach(refresh);}

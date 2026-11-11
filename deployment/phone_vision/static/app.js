@@ -4,10 +4,15 @@
   const labels={disabled:'未启用',starting:'连接中',stopping:'停止中',waiting:'等待手机',live:'实时',stale:'画面过期',error:'连接异常'};
   const $=id=>document.getElementById(id), view={}, busy=new Set();let polling=false,visible=true,appliedView='',lastStatus=null,spaceViewer=null,spaceBusy=false,spaceKey='',spaceEpoch=0,lastSpaceAt=0,spaceLiveExpiresAt=0;
   async function request(path,options){const r=await fetch(api+path,options);if(!r.ok){let d;try{d=await r.json();}catch{d={detail:'连接暂不可用'};}throw new Error(d.detail||'请求失败');}return r;}
-  function hide(device){for(const kind of ['rgb','depth']){const img=$(device+'-'+kind);img.hidden=true;img.removeAttribute('src');$(device+'-'+kind+'-empty').hidden=false;}
+  function hide(device){$(device+'-device').classList.remove('holding-frame');for(const kind of ['rgb','depth']){const img=$(device+'-'+kind);img.hidden=true;img.removeAttribute('src');$(device+'-'+kind+'-empty').hidden=false;}
     const old=view[device];if(old?.urls)old.urls.forEach(URL.revokeObjectURL);view[device]=null;
     if(device==='iphone')$('depth-readout').textContent='点击深度画面查看像素深度原值；距离精度尚待标定。';
     if(device==='android')$('android-depth-readout').hidden=true;}
+  function waitFrame(device,note='等待更新'){
+    const current=view[device];if(!current?.urls?.length){hide(device);return;}
+    $(device+'-device').classList.add('holding-frame');
+    $(device+'-reason').textContent=note+' · 保留上一帧（'+Math.max(0,(Date.now()-current.shownAt)/1000).toFixed(1)+'秒前）';
+  }
   function facts(device,state){const node=$(device+'-facts');node.replaceChildren();const m=state.meta;
     const values=[['连接',state.transport==='wifi'?'Wi-Fi':'USB']];
     if(m)values.push(['尺寸',m.width+' × '+m.height],['接收',m.fps==null?'—':m.fps+' fps'],['更新',Math.round(state.age_ms)+' ms']);
@@ -33,11 +38,14 @@
     if(device==='android'){$('android-depth-figure').hidden=!state.meta.rgbd;$('android-depth-readout').hidden=!state.meta.rgbd;$('android-feeds').classList.toggle('feeds',Boolean(state.meta.rgbd));
       if(!state.meta.rgbd){$('android-depth').hidden=true;$('android-depth').removeAttribute('src');}}
     try{const blobs=await Promise.all(kinds.map(async kind=>{const r=await request('/'+device+'/frame.jpg?'+new URLSearchParams({session:state.session,seq:state.sequence,kind}));return r.blob();}));
-      if(view[device]?.loading!==token||!visible||Date.now()>=state.expiresAt)return;
-      urls=blobs.map(URL.createObjectURL);const old=view[device].urls||[];
+      if(view[device]?.loading!==token||!visible)return;
+      urls=blobs.map(URL.createObjectURL);
+      await Promise.all(urls.map(url=>{const image=new Image();image.src=url;return image.decode();}));
+      if(view[device]?.loading!==token||!visible){urls.forEach(URL.revokeObjectURL);return;}
+      const old=view[device].urls||[];$(device+'-device').classList.remove('holding-frame');
       kinds.forEach((kind,i)=>{const img=$(device+'-'+kind);if(device==='android')img.parentElement.classList.toggle('portrait-feed',state.meta.height>state.meta.width);img.src=urls[i];img.hidden=false;$(device+'-'+kind+'-empty').hidden=true;});
       view[device]={session:state.session,sequence:state.sequence,urls,meta:state.meta,shownAt:Date.now(),expiresAt:state.expiresAt};old.forEach(URL.revokeObjectURL);
-    }catch{urls.forEach(URL.revokeObjectURL);hide(device);}}
+    }catch{urls.forEach(URL.revokeObjectURL);waitFrame(device,'等待完整的新画面');}}
   async function poll(){if(polling||!visible)return;polling=true;
     try{const askedAt=Date.now(),status=await (await request('/status')).json();lastStatus=status;$('host').textContent=status.host;
       const rear=status.devices.android.role==='rear';$('android-role').textContent=status.devices.android.mode==='arcore'?'ARCore 算法深度':rear?'后视与机体观察':'辅助视角';settings(status.devices.android);
@@ -51,9 +59,9 @@
         for(const b of document.querySelectorAll('[data-capture="'+device+'"]'))b.disabled=!s.frame_available||busy.has(device);
         s.expiresAt=askedAt+Math.max(0,status.freshness_limit_ms-(s.age_ms??status.freshness_limit_ms));
         for(const b of document.querySelectorAll('[data-device="'+device+'"]'))b.disabled=busy.has(device)||(b.dataset.action==='start'?(s.enabled||s.stopping||!ready||(device==='android'&&!status.readiness.android_tools)):!s.enabled);
-        if(!s.frame_available)hide(device);else await images(device,s);}
+        if(!s.frame_available)waitFrame(device,s.reason);else await images(device,s);}
       if($('space-source').value==='live'&&Date.now()-lastSpaceAt>1000)loadSpace();
-    }catch(e){$('notice').hidden=false;$('notice').textContent=e.message;ids.forEach(hide);}finally{polling=false;}}
+    }catch(e){$('notice').hidden=false;$('notice').textContent=e.message;ids.forEach(d=>waitFrame(d,e.message));}finally{polling=false;}}
   document.addEventListener('click',async event=>{const b=event.target.closest('button[data-device]');if(!b)return;
     const device=b.dataset.device;if(busy.has(device))return;busy.add(device);b.disabled=true;
     try{await request('/'+device+'/'+b.dataset.action,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(b.dataset.action==='stop')hide(device);}
@@ -64,6 +72,7 @@
     catch(e){$('android-view-note').textContent=e.message;}finally{busy.delete('android');await poll();}});
   $('android-mode').addEventListener('change',()=>{const arcore=$('android-mode').value==='arcore';$('android-camera').disabled=arcore;if(arcore)$('android-camera').value='0';});
   for(const device of ids)$(device+'-depth').addEventListener('click',async event=>{const current=view[device];if(!current?.meta?.rgbd)return;
+    if(Date.now()>=current.expiresAt){$(device==='iphone'?'depth-readout':'android-depth-readout').textContent='等待新深度帧，当前显示保留画面。';return;}
     const readout=$(device==='iphone'?'depth-readout':'android-depth-readout');
     const img=event.currentTarget,rect=img.getBoundingClientRect(),m=current.meta,scale=Math.min(rect.width/m.width,rect.height/m.height);
     const x=Math.floor((event.clientX-rect.left-(rect.width-m.width*scale)/2)/scale),y=Math.floor((event.clientY-rect.top-(rect.height-m.height*scale)/2)/scale);
@@ -128,7 +137,7 @@
   $('space-refresh').addEventListener('click',()=>loadSpace(true));$('space-reset').addEventListener('click',()=>spaceViewer?.reset());$('space-size').addEventListener('input',e=>spaceViewer?.pointSize(Number(e.target.value)));
   $('gallery-refresh').addEventListener('click',loadArchives);$('space-save').addEventListener('click',async()=>{try{await saveObservation(ids.find(d=>view[d]?.meta?.rgbd)||'android');}catch(e){$('gallery-message').textContent=e.message;}});
   $('space-view').addEventListener('space-error',e=>{$('space-empty').hidden=false;$('space-empty').textContent=e.detail;});
-  setInterval(()=>{for(const device of ids)if(view[device]&&Date.now()>=view[device].expiresAt)hide(device);if($('space-source').value==='live'&&spaceLiveExpiresAt&&Date.now()>=spaceLiveExpiresAt){spaceViewer?.empty();spaceLiveExpiresAt=0;$('space-empty').hidden=false;$('space-empty').textContent='等待新的深度帧';}},100);
+  setInterval(()=>{for(const device of ids)if(view[device]&&Date.now()>=view[device].expiresAt)waitFrame(device);if($('space-source').value==='live'&&spaceLiveExpiresAt&&Date.now()>=spaceLiveExpiresAt){spaceViewer?.empty();spaceLiveExpiresAt=0;$('space-empty').hidden=false;$('space-empty').textContent='等待新的深度帧';}},100);
   document.addEventListener('visibilitychange',()=>{visible=!document.hidden;if(!visible)ids.forEach(hide);else poll();});
   window.addEventListener('pagehide',()=>ids.forEach(hide));poll().then(loadArchives);setInterval(poll,400);
 })();

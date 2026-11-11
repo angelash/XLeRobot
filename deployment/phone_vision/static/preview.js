@@ -1,21 +1,31 @@
 /* One shared, passive phone view for Studio workspaces. It never starts cameras. */
 (() => {
-  let active=false,busy=false,version=0,url=null,expires=0,chosen='auto';
+  let active=false,busy=false,version=0,url=null,expires=0,chosen='auto',capturedAt=0,waiting=false,lastKey='',source='';
   const host=()=>document.getElementById('phone-watch');
-  function clear(){const h=host();if(!h)return;const img=h.querySelector('img');img.hidden=true;img.removeAttribute('src');h.querySelector('[data-phone-empty]').hidden=false;if(url)URL.revokeObjectURL(url);url=null;expires=0;}
+  function clear(){const h=host();if(!h)return;const img=h.querySelector('img');img.hidden=true;img.removeAttribute('src');h.querySelector('[data-phone-empty]').hidden=false;if(url)URL.revokeObjectURL(url);url=null;expires=0;waiting=false;lastKey='';h.classList.remove('holding');}
+  function wait(note='等待更新'){
+    const h=host();if(!h)return;
+    if(!url){clear();h.querySelector('[data-phone-empty]').textContent=note;h.querySelector('[data-phone-state]').textContent=note;return;}
+    waiting=true;expires=0;h.classList.add('holding');
+    const state=h.querySelector('[data-phone-state]');state.textContent='等待更新 · 保留上一帧 · '+Math.max(0,(Date.now()-capturedAt)/1000).toFixed(1)+'秒前';state.title=note;
+  }
   async function poll(){
     const h=host();if(!h||!active||document.hidden||busy)return;busy=true;const stamp=version,asked=Date.now(),abort=new AbortController(),timer=setTimeout(()=>abort.abort(),2000);
     try{
       const response=await fetch('/api/platform/phone-vision/status',{signal:abort.signal});if(!response.ok)throw Error('手机视觉服务暂不可用');const state=await response.json();
-      const device=chosen==='auto'?['android','iphone'].find(d=>state.devices[d].frame_available)||'android':chosen,s=state.devices[device];
+      const prior=source.split(':')[0],device=chosen==='auto'?(state.devices[prior]?.enabled?prior:['android','iphone'].find(d=>state.devices[d].frame_available)||'android'):chosen,s=state.devices[device];
+      const identity=device+':'+(s.camera_id||'')+':'+(s.rotation_deg||0);if(source&&source!==identity)clear();source=identity;
       h.querySelector('[data-phone-label]').textContent=(device==='android'?'红米':'iPhone')+' · '+(s.camera_choices?.find(c=>c.id===s.camera_id)?.label||'彩色与深度')+' · '+(s.transport==='wifi'?'Wi-Fi':'USB');
       h.querySelector('[data-phone-state]').textContent=s.frame_available?Math.round(s.age_ms)+' ms · 实时':s.reason;
-      if(!s.frame_available){clear();h.querySelector('[data-phone-empty]').textContent=s.reason;return;}
+      if(!s.frame_available){wait(s.reason);return;}
       const result=await fetch('/api/platform/phone-vision/'+device+'/preview.jpg',{signal:abort.signal});if(!result.ok)throw Error('等待下一张新鲜手机画面');const blob=await result.blob();
       const deadline=asked+Math.max(0,state.freshness_limit_ms-Number(result.headers.get('X-Phone-Age-Ms')));
-      if(stamp!==version||!active||document.hidden||Date.now()>=deadline)return;
-      const next=URL.createObjectURL(blob),previous=url;url=next;expires=deadline;const img=h.querySelector('img');img.src=next;img.hidden=false;h.querySelector('[data-phone-empty]').hidden=true;if(previous)URL.revokeObjectURL(previous);
-    }catch(e){if(stamp===version){clear();h.querySelector('[data-phone-state]').textContent=e.name==='AbortError'?'等待手机画面':e.message;}}
+      if(stamp!==version||!active||document.hidden)return;
+      const key=result.headers.get('X-Phone-Session')+':'+result.headers.get('X-Phone-Sequence');if(key===lastKey){if(waiting)wait();return;}
+      const next=URL.createObjectURL(blob),loaded=new Image();loaded.src=next;try{await loaded.decode();}catch{URL.revokeObjectURL(next);throw Error('等待完整的新画面');}
+      if(stamp!==version||!active||document.hidden){URL.revokeObjectURL(next);return;}
+      const previous=url;url=next;expires=deadline;waiting=false;lastKey=key;capturedAt=asked-Number(result.headers.get('X-Phone-Age-Ms'));h.classList.remove('holding');const img=h.querySelector('img');img.src=next;img.hidden=false;h.querySelector('[data-phone-empty]').hidden=true;if(previous)URL.revokeObjectURL(previous);if(Date.now()>=deadline)wait();
+    }catch(e){if(stamp===version){wait(e.name==='AbortError'?'等待手机画面':e.message);}}
     finally{clearTimeout(timer);busy=false;}
   }
   window.PhoneVisionPreview={setActive(value){active=value;version++;const h=host();if(h)h.hidden=!value;if(!value)clear();else poll();}};
@@ -42,5 +52,5 @@
   document.addEventListener('change',e=>{if(e.target.id==='phone-watch-device'){chosen=e.target.value;version++;clear();poll();}});
   document.addEventListener('visibilitychange',()=>{version++;if(document.hidden)clear();else poll();});
   window.addEventListener('hashchange',mount);document.addEventListener('DOMContentLoaded',mount);mount();
-  setInterval(poll,400);setInterval(()=>{if(expires&&Date.now()>=expires)clear();},100);setInterval(exploration,1500);exploration();
+  setInterval(poll,400);setInterval(()=>{if(expires&&Date.now()>=expires)wait();else if(waiting&&url)wait();},100);setInterval(exploration,1500);exploration();
 })();
