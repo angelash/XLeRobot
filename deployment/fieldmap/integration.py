@@ -14,6 +14,7 @@ from .body import profile as body_profile, plan as body_plan
 from .history import History
 from .exploration import Exploration
 from .journal import SpatialJournal
+from .surround import Surround
 
 API = '/api/platform/fieldmap'
 PAGE = '/fieldmap'
@@ -58,6 +59,8 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     app.state.exploration=exploration
     journal=SpatialJournal(journal_root,survey,lambda:(app.state.phone_vision,app.state.phone_evidence,app.state.phone_reconstruction),forward_sign=history_forward_sign)
     app.state.spatial_journal=journal
+    surround=Surround(Path(data_dir)/'surround',lambda:app.state.phone_evidence,history_fieldtests_root)
+    app.state.surround=surround
     router = APIRouter(prefix=API)
 
     async def body(request):
@@ -95,6 +98,34 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.get('/snapshots')
     def snapshots():
         return survey.snapshots()
+
+    @router.get('/surround')
+    def surround_list():return surround.list()
+
+    @router.get('/surround/plan')
+    def surround_plan(model_id:str):
+        try:return surround.model_plan(model_id)
+        except (ValueError,KeyError) as exc:raise HTTPException(422,str(exc)) from None
+        except OSError:raise HTTPException(503,'原始点云暂不可读取，源文件保留') from None
+
+    @router.post('/surround/import-head')
+    async def surround_import(request:Request):
+        value=await body(request)
+        if set(value)!={'source_trial'}:raise HTTPException(422,'需要确切环视源运行')
+        from starlette.concurrency import run_in_threadpool
+        try:return await run_in_threadpool(surround.import_head,value['source_trial'])
+        except (ValueError,KeyError) as exc:raise HTTPException(422,str(exc)) from None
+        except OSError:raise HTTPException(503,'环视源图暂不可读取，原文件保留') from None
+
+    @router.get('/surround/{identifier}')
+    def surround_record(identifier:str):
+        try:return surround.read(identifier)
+        except (ValueError,KeyError) as exc:raise HTTPException(404,str(exc)) from None
+
+    @router.get('/surround/{identifier}/{name}')
+    def surround_image(identifier:str,name:str):
+        try:return FileResponse(surround.media(identifier,name),media_type='image/jpeg',headers={'Cache-Control':'private, max-age=300'})
+        except (ValueError,KeyError) as exc:raise HTTPException(404,str(exc)) from None
 
     @router.get('/journal/status')
     def journal_status():return journal.status()
