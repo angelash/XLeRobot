@@ -1,6 +1,7 @@
 """Surroundings review is a module of the existing port8770 Studio application."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -187,13 +188,16 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         except ValueError as exc:raise HTTPException(422,str(exc)) from None
 
     @router.get('/exploration')
-    def exploration_status():return exploration.status()
+    async def exploration_status():
+        # Sync camera/controller routes share AnyIO's limited worker pool.
+        # Supervision and the durable stop latch must not queue behind them.
+        return await asyncio.to_thread(exploration.status)
 
     @router.post('/exploration/start')
     async def exploration_start(request:Request):
         value=await body(request)
         if set(value)-{'authorization','confirmed'}:raise HTTPException(422,'无效的探索启动请求')
-        try:return exploration.start(value.get('authorization'),value.get('confirmed'))
+        try:return await asyncio.to_thread(exploration.start,value.get('authorization'),value.get('confirmed'))
         except ValueError as exc:raise HTTPException(422,str(exc)) from None
 
     @router.post('/exploration/update')
@@ -201,15 +205,14 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         value=await body(request)
         allowed={'session_id','phase','note','translation_legs','turn_attempts','wheel_path_m'}
         if set(value)-allowed or not {'session_id','phase','note'}<=set(value):raise HTTPException(422,'无效的探索状态更新')
-        try:return exploration.update(**value)
+        try:return await asyncio.to_thread(exploration.update,**value)
         except ValueError as exc:raise HTTPException(409,str(exc)) from None
 
     @router.post('/exploration/stop')
     async def exploration_stop(request:Request):
         value=await body(request)
         if value:raise HTTPException(422,'停止请求不接收动作参数')
-        from starlette.concurrency import run_in_threadpool
-        result=await run_in_threadpool(exploration.stop,survey.controller)
+        result=await asyncio.to_thread(exploration.stop,survey.controller)
         return Response(json.dumps(result,ensure_ascii=False),media_type='application/json',status_code=503 if result['errors'] else 200)
 
     @router.get('/body')
