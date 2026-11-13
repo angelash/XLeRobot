@@ -70,7 +70,8 @@ async def receive(address,stop,publish,status):
             nonlocal sequence,last_publish,last_frame
             try:
                 while not stop.is_set():
-                    frame=await asyncio.wait_for(track.recv(),timeout=12)
+                    try:frame=await asyncio.wait_for(track.recv(),timeout=12)
+                    except asyncio.TimeoutError:raise TimeoutError('Record3D video track delivered no decoded frame for 12 seconds') from None
                     if track.kind!='video':continue
                     now=time.monotonic();last_frame=now;arrivals.append(now)
                     pts_us=round(frame.pts*frame.time_base*1_000_000) if frame.pts is not None else round(now*1_000_000)
@@ -111,5 +112,12 @@ async def receive(address,stop,publish,status):
             if pc.connectionState in ('failed','closed') or time.monotonic()-last_frame>16:raise TimeoutError('Record3D Wi-Fi frame timeout')
             await asyncio.sleep(.2)
     finally:
+        try:
+            stats=await pc.getStats()
+            fields=('type','kind','packetsReceived','packetsLost','bytesReceived','dtlsState')
+            diagnostic('receive summary '+json.dumps({'published_frames':sequence,'streams':[
+                {k:getattr(s,k) for k in fields if hasattr(s,k)} for s in stats.values()
+                if s.type in ('inbound-rtp','transport')]}))
+        except Exception:pass
         for task in tasks:task.cancel()
         await asyncio.gather(*tasks,return_exceptions=True);await pc.close()

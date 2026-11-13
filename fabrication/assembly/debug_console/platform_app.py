@@ -293,6 +293,7 @@ async def lifespan(app):
     finally:
         await app.state.camera_views.close()
         await asyncio.to_thread(app.state.spatial_journal.close)
+        await asyncio.to_thread(app.state.phone_dense.close)
         await asyncio.to_thread(app.state.phone_vision.close)
         app.state.fieldmap_history.stop()
         await asyncio.to_thread(app.state.storage.close)

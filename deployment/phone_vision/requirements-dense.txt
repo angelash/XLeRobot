@@ -1,0 +1,4 @@
+# Optional isolated CPU worker; Studio itself does not import Open3D.
+numpy>=1.26,<2
+opencv-python-headless==4.10.0.84
+open3d==0.19.0

@@ -9,6 +9,7 @@ from .service import PhoneVision
 from .evidence import Evidence, geometry
 from .reconstruction import Reconstruction
 from .coverage import Coverage
+from .dense_store import DenseStore
 
 STATIC=Path(__file__).with_name('static')
 API='/api/platform/phone-vision'
@@ -22,6 +23,9 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     app.state.phone_evidence=evidence
     app.state.phone_reconstruction=Reconstruction(evidence)
     app.state.phone_coverage=Coverage(evidence)
+    dense=DenseStore(Path(data_dir)/'dense',service)
+    app.state.phone_dense=dense
+    app.add_event_handler('shutdown',dense.close)
     router=APIRouter(prefix=API)
 
     async def body(request):
@@ -57,6 +61,33 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     @router.get('/models')
     def models():return evidence.list('models')
 
+    @router.get('/dense')
+    def dense_list():return dense.listing()
+
+    @router.post('/dense/jobs')
+    async def dense_job(request:Request):
+        value=await body(request)
+        if set(value)!={'device','fixed'} or value['fixed'] is not True:
+            raise HTTPException(422,'固定视野融合需要手机、车身与场景保持静止')
+        try:return dense.begin(value['device'])
+        except LookupError as exc:raise HTTPException(409,str(exc)) from None
+        except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.get('/dense/{identifier}')
+    def dense_read(identifier:str):
+        try:return dense.read(identifier)
+        except (KeyError,OSError):raise HTTPException(404,'重建记录不存在或尚未完成') from None
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
+    @router.get('/dense/{identifier}/{name}')
+    def dense_media(identifier:str,name:str):
+        try:
+            path=dense.media(identifier,name)
+            media='application/json' if name.endswith('.json') else 'image/jpeg' if name.endswith('.jpg') else 'image/png' if name.endswith('.png') else 'application/octet-stream'
+            return FileResponse(path,media_type=media,headers={'Cache-Control':'no-store'})
+        except (KeyError,OSError):raise HTTPException(404,'重建文件不存在或尚未完成') from None
+        except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
     @router.post('/captures')
     async def capture(request:Request):
         value=await body(request)
@@ -72,7 +103,7 @@ def install(app,*,repo,data_dir,allowed_origins=None,service=None):
     def evidence_file(kind:str,identifier:str,name:str):
         try:
             path=evidence.media(kind,identifier,name)
-            media='application/json' if name.endswith('.json') else 'image/jpeg' if name.endswith('.jpg') else 'application/octet-stream'
+            media='application/json' if name.endswith('.json') else 'image/jpeg' if name.endswith('.jpg') else 'image/png' if name.endswith('.png') else 'application/octet-stream'
             return FileResponse(path,media_type=media,headers={'Cache-Control':'no-store'})
         except KeyError:raise HTTPException(404,'图像或空间记录不存在') from None
 

@@ -19,7 +19,7 @@ from .surround import Surround
 
 API = '/api/platform/fieldmap'
 PAGE = '/fieldmap'
-CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
+CSP = "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
 
 
 def data_directory(repo, platform_data):
@@ -160,7 +160,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         if evidence is None:raise HTTPException(503,'手机空间记录尚未接入')
         models=evidence.list('models',100)
         captures=evidence.list('captures',48)
+        dense=getattr(app.state,'phone_dense',None)
         return {'models':models['items'],'captures':captures['items'],
+                'dense':dense.listing()['items'] if dense else [],
                 'model_limit':100,'capture_limit':48,'motion_enabled':False,
                 'retention':'original_sources_preserved_no_automatic_deletion'}
 
@@ -174,12 +176,12 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         except OSError:raise HTTPException(503,'原始空间记录暂不可读，保留原文件') from None
 
     @router.get('/phone-space/live')
-    def phone_space_live(session:str,seq:int):
+    def phone_space_live(session:str,seq:int,device:str='android'):
         from deployment.phone_vision.coverage import frame_coverage
         service=getattr(app.state,'phone_vision',None)
         if service is None:raise HTTPException(503,'手机尚未接入')
         try:
-            frame=service.frame('android',session,seq)
+            frame=service.frame(device,session,seq)
             report=frame_coverage(frame.meta,frame.raw) if frame.raw else None
             return {'coverage':report,'meta':frame.meta,'session':frame.session,'sequence':frame.sequence,
                     'remaining_fresh_ms':max(0,1000-(service.clock()-frame.received)*1000),
