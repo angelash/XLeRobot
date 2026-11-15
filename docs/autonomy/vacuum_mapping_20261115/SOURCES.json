@@ -1,0 +1,733 @@
+{
+  "scope": "Bounded public primary-source review, not an exhaustive literature census",
+  "raw_archive": ".local-deploy/vacuum-mapping-20261115/public-sources (private, ignored)",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "Probabilistic Robotics: occupancy mapping and localization",
+      "url": "https://mitpress.mit.edu/9780262201629/probabilistic-robotics/",
+      "topic": "textbook",
+      "retrieved_at": "2026-11-15T05:01:48.630258+00:00",
+      "status": "unavailable",
+      "error": "HTTPError: HTTP Error 403: Forbidden",
+      "previous_attempts": [
+        {
+          "id": "S01",
+          "title": "Probabilistic Robotics: occupancy mapping and localization",
+          "url": "https://www.probabilistic-robotics.org/",
+          "topic": "textbook",
+          "retrieved_at": "2026-11-15T04:54:12.485264+00:00",
+          "status": "unavailable",
+          "error": "URLError: <urlopen error EOF occurred in violation of protocol (_ssl.c:997)>"
+        },
+        {
+          "id": "S01",
+          "title": "Probabilistic Robotics: occupancy mapping and localization",
+          "url": "https://mitpress.mit.edu/9780262201629/probabilistic-robotics/",
+          "topic": "textbook",
+          "retrieved_at": "2026-11-15T04:57:57.546559+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "id": "S01",
+          "title": "Probabilistic Robotics: occupancy mapping and localization",
+          "url": "https://mitpress.mit.edu/9780262201629/probabilistic-robotics/",
+          "topic": "textbook",
+          "retrieved_at": "2026-11-15T05:00:18.310109+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "title": "Thrun: Robotic Mapping - A Survey",
+      "url": "https://robots.stanford.edu/papers/thrun.mapping-tr.pdf",
+      "topic": "survey",
+      "retrieved_at": "2026-11-15T04:57:57.549496+00:00",
+      "status": "retrieved",
+      "final_url": "https://robots.stanford.edu/papers/thrun.mapping-tr.pdf",
+      "bytes": 1484293,
+      "sha256": "fdadfdf1fde1b2b6adc3581e0a56aa25b7b5dd8febebe755437189b2b0415ecf",
+      "content_type": "application/pdf",
+      "opening_excerpt": "",
+      "previous_attempts": [
+        {
+          "id": "S02",
+          "title": "Thrun: Robotic Mapping - A Survey",
+          "url": "https://robots.stanford.edu/papers/thrun.mapping-tr.pdf",
+          "topic": "survey",
+          "retrieved_at": "2026-11-15T04:54:12.488892+00:00",
+          "status": "unavailable",
+          "error": "URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:997)>"
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "title": "Yamauchi: A Frontier-Based Approach for Autonomous Exploration",
+      "url": "https://www.cs.cmu.edu/~motionplanning/papers/sbp_papers/integrated1/yamauchi_frontiers.pdf",
+      "topic": "frontier",
+      "retrieved_at": "2026-11-15T04:54:12.488892+00:00",
+      "status": "retrieved",
+      "final_url": "https://www.cs.cmu.edu/~motionplanning/papers/sbp_papers/integrated1/yamauchi_frontiers.pdf",
+      "bytes": 564224,
+      "sha256": "81f1f039e2439813414a34c1f2242289d8b36aebba12dae0280c26aa66c3c41a",
+      "content_type": "application/pdf",
+      "opening_excerpt": ""
+    },
+    {
+      "id": "S04",
+      "title": "Hess et al.: Real-Time Loop Closure in 2D LIDAR SLAM",
+      "url": "https://research.google/pubs/real-time-loop-closure-in-2d-lidar-slam/",
+      "topic": "slam",
+      "retrieved_at": "2026-11-15T04:54:12.488892+00:00",
+      "status": "retrieved",
+      "final_url": "https://research.google/pubs/real-time-loop-closure-in-2d-lidar-slam/",
+      "bytes": 142733,
+      "sha256": "7bb7b0518521774dc2700d90e4df4cabfaf5442b4aae7ffb5d953b3e6f5dc04a",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "Real-Time Loop Closure in 2D LIDAR SLAM Skip to main content Explore our many areas of focus Explore all research areas Applied AI & sciences Earth AI Health AI Science AI Sustainability & crisis resilience Foundational ML & algorithms Algorithms & theory Information retrieval Machine intelligence Machine perception Natural language processing People, systems & quantum AI Human-computer interaction and visualization Networking Quantum AI Responsible AI Anti abuse Software engineering Software systems Learn More Publications Projects Building a collaborative ecosystem Datasets Access high-quality datasets to accelerate your research. Tools & s"
+    },
+    {
+      "id": "S05",
+      "title": "SLAM Toolbox upstream documentation",
+      "url": "https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/ros2/README.md",
+      "topic": "slam",
+      "retrieved_at": "2026-11-15T04:54:12.491440+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/ros2/README.md",
+      "bytes": 31230,
+      "sha256": "a38d6e1f7fd3876c32c15c64d12cd7c29252add2b00430f11312a324665104b2",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "## Slam Toolbox We've received feedback from users and have robots operating in the following environments with SLAM Toolbox: - Retail - Warehouses - Libraries - Research It is also the currently supported ROS2-SLAM library. See tutorials for working with it in [ROS 2 Nav2 here](https://docs.nav2.org/tutorials/docs/navigation2_with_slam.html). ### Cite This Work You can find this work [here](https://joss.theoj.org/papers/10.21105/joss.02783) and clicking on the image below. > Macenski, S., Jambrecic I., \"SLAM Toolbox: SLAM for the dynamic world\", Journal of Open Source Software, 6(61), 2783, 2021. > Macenski, S., \"On Use of SLAM Toolbox, A fr"
+    },
+    {
+      "id": "S06",
+      "title": "SLAM Toolbox: SLAM for the dynamic world",
+      "url": "https://joss.theoj.org/papers/10.21105/joss.02783",
+      "topic": "paper",
+      "retrieved_at": "2026-11-15T05:00:18.311794+00:00",
+      "status": "retrieved",
+      "final_url": "https://joss.theoj.org/papers/10.21105/joss.02783",
+      "bytes": 19417,
+      "sha256": "af4602e50e60dca00224e19b63ab5d8ae884001d5853596299efcec7cfe98d8e",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "Journal of Open Source Software: SLAM Toolbox: SLAM for the dynamic world About Papers Docs Blog Submit Log in with ORCID Active Papers Published Papers SLAM Toolbox: SLAM for the dynamic world Submitted 13 August 2020 • Published 13 May 2021 Software repository Paper review Download paper Software archive Review Editor: @arfon ( all papers ) Reviewers: @mosteo ( all reviews ), @carlosjoserg ( all reviews ) Authors Steve Macenski ( 0000-0003-1090-7733 ), Ivona Jambrecic Citation Macenski et al., (2021). SLAM Toolbox: SLAM for the dynamic world. Journal of Open Source Software, 6(61), 2783, https://doi.org/10.21105/joss.02783 @article{Macenski",
+      "previous_attempts": [
+        {
+          "id": "S06",
+          "title": "SLAM Toolbox: SLAM for the dynamic world",
+          "url": "https://arxiv.org/abs/2103.05612",
+          "topic": "paper",
+          "retrieved_at": "2026-11-15T04:54:12.491440+00:00",
+          "status": "identity_mismatch",
+          "final_url": "https://arxiv.org/abs/2103.05612",
+          "bytes": 40341,
+          "sha256": "900f8eb6b9e3e7798559e613b430582bd27ef2b46a0c7b12296286e72d3afb5a",
+          "content_type": "text/html; charset=utf-8",
+          "opening_excerpt": "[2103.05612] Challenges for Reinforcement Learning in Healthcare Skip to main content Search Submit Donate Log in Search arXiv Press Enter to search · Advanced search Computer Science > Machine Learning arXiv:2103.05612 (cs) [Submitted on 9 Mar 2021] Title: Challenges for Reinforcement Learning in Healthcare Authors: Elsa Riachi , Muhammad Mamdani , Michael Fralick , Frank Rudzicz View a PDF of the paper titled Challenges for Reinforcement Learning in Healthcare, by Elsa Riachi and 3 other authors View PDF HTML (experimental) Abstract: Many healthcare decisions involve navigating through a multitude of treatment options in a sequential and it",
+          "error": "Source identity verification rejected this document"
+        }
+      ]
+    },
+    {
+      "id": "S07",
+      "title": "ROS REP-105 coordinate frames",
+      "url": "https://www.ros.org/reps/rep-0105.html",
+      "topic": "frames",
+      "retrieved_at": "2026-11-15T04:54:12.492949+00:00",
+      "status": "retrieved",
+      "final_url": "https://www.ros.org/reps/rep-0105.html",
+      "bytes": 7452,
+      "sha256": "9a25c7d309747f827e4fe206d3bfe859d7b34f6f72080eb224566254245c64f2",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "Making sure you're not a bot! Making sure you're not a bot! Loading... Anubis could not load its JavaScript. The server may be overloaded. Please reload the page to try again. You are seeing this because the administrator of this website has set up Anubis to protect the server against the scourge of AI companies aggressively scraping websites. This can and does cause downtime for the websites, which makes their resources inaccessible for everyone. Anubis is a compromise. Anubis uses a Proof-of-Work scheme in the vein of Hashcash, a proposed proof-of-work scheme for reducing email spam. The idea is that at individual scales the additional load"
+    },
+    {
+      "id": "S08",
+      "title": "ROS REP-103 units and coordinate conventions",
+      "url": "https://www.ros.org/reps/rep-0103.html",
+      "topic": "frames",
+      "retrieved_at": "2026-11-15T04:54:12.492949+00:00",
+      "status": "retrieved",
+      "final_url": "https://www.ros.org/reps/rep-0103.html",
+      "bytes": 7452,
+      "sha256": "75e106c3b21c46ebca102a4ce1c019316fb71a4d67d4d0d858c6d63552ce2d83",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "Making sure you're not a bot! Making sure you're not a bot! Loading... Anubis could not load its JavaScript. The server may be overloaded. Please reload the page to try again. You are seeing this because the administrator of this website has set up Anubis to protect the server against the scourge of AI companies aggressively scraping websites. This can and does cause downtime for the websites, which makes their resources inaccessible for everyone. Anubis is a compromise. Anubis uses a Proof-of-Work scheme in the vein of Hashcash, a proposed proof-of-work scheme for reducing email spam. The idea is that at individual scales the additional load"
+    },
+    {
+      "id": "S09",
+      "title": "Nav2: mapping and localization",
+      "url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/README.md",
+      "topic": "navigation",
+      "retrieved_at": "2026-11-15T05:00:18.312893+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/README.md",
+      "bytes": 49007,
+      "sha256": "8c570b97f6821ac29b83178af9a83d5c569c4ff63dc15b862e2ce80f5d77ea26",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# Nav2 [![GitHub Workflow Status](https://github.com/ros-navigation/navigation2/actions/workflows/update_ci_image.yaml/badge.svg)](https://github.com/ros-navigation/navigation2/actions/workflows/update_ci_image.yaml) [![codecov](https://codecov.io/gh/ros-navigation/navigation2/branch/main/graph/badge.svg?token=S3iRmypwlg)](https://codecov.io/gh/ros-navigation/navigation2) [![Build Status](https://circleci.com/gh/ros-navigation/navigation2/tree/main.svg?style=svg)](https://circleci.com/gh/ros-navigation/navigation2/tree/main) <p align=\"center\"> <img height=\"300\" src=\"doc/nav2_logo.png\" /> </p> For detailed instructions on how to: - [Concepts](",
+      "previous_attempts": [
+        {
+          "id": "S09",
+          "title": "Nav2: mapping and localization",
+          "url": "https://docs.nav2.org/setup_guides/sensors/mapping_localization.html",
+          "topic": "navigation",
+          "retrieved_at": "2026-11-15T04:54:13.256190+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S09",
+          "title": "Nav2: mapping and localization",
+          "url": "https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/main/setup_guides/sensors/mapping_localization.rst",
+          "topic": "navigation",
+          "retrieved_at": "2026-11-15T04:57:57.550030+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "title": "Nav2: inflation layer",
+      "url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_costmap_2d/plugins/inflation_layer.cpp",
+      "topic": "costmap",
+      "retrieved_at": "2026-11-15T05:00:18.312893+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_costmap_2d/plugins/inflation_layer.cpp",
+      "bytes": 16471,
+      "sha256": "8466dc50a78dea200f133451543334d40fa2296bab3ba083f0b9107b4e9a1962",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "// Copyright (c) 2026, Dexory (Tony Najjar) // // Licensed under the Apache License, Version 2.0 (the \"License\"); // you may not use this file except in compliance with the License. // You may obtain a copy of the License at // // http://www.apache.org/licenses/LICENSE-2.0 // // Unless required by applicable law or agreed to in writing, software // distributed under the License is distributed on an \"AS IS\" BASIS, // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. // See the License for the specific language governing permissions and // limitations under the License. #include \"nav2_costmap_2d/inflation_layer.hpp\" #incl",
+      "previous_attempts": [
+        {
+          "id": "S10",
+          "title": "Nav2: inflation layer",
+          "url": "https://docs.nav2.org/configuration/packages/costmap-plugins/inflation.html",
+          "topic": "costmap",
+          "retrieved_at": "2026-11-15T04:54:13.343367+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S10",
+          "title": "Nav2: inflation layer",
+          "url": "https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/main/configuration/packages/costmap-plugins/inflation.rst",
+          "topic": "costmap",
+          "retrieved_at": "2026-11-15T04:57:58.121072+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "title": "Nav2: obstacle layer",
+      "url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_costmap_2d/plugins/obstacle_layer.cpp",
+      "topic": "costmap",
+      "retrieved_at": "2026-11-15T05:00:18.313904+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_costmap_2d/plugins/obstacle_layer.cpp",
+      "bytes": 30803,
+      "sha256": "0616f711c3037ed49139731dac3b460f8e3929f89d8a93b883b869bba788c40a",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "/********************************************************************* * * Software License Agreement (BSD License) * * Copyright (c) 2008, 2013, Willow Garage, Inc. * All rights reserved. * * Redistribution and use in source and binary forms, with or without * modification, are permitted provided that the following conditions * are met: * * * Redistributions of source code must retain the above copyright * notice, this list of conditions and the following disclaimer. * * Redistributions in binary form must reproduce the above * copyright notice, this list of conditions and the following * disclaimer in the documentation and/or other material",
+      "previous_attempts": [
+        {
+          "id": "S11",
+          "title": "Nav2: obstacle layer",
+          "url": "https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html",
+          "topic": "costmap",
+          "retrieved_at": "2026-11-15T04:54:13.394126+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S11",
+          "title": "Nav2: obstacle layer",
+          "url": "https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/main/configuration/packages/costmap-plugins/obstacle.rst",
+          "topic": "costmap",
+          "retrieved_at": "2026-11-15T04:57:58.368587+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S12",
+      "title": "Nav2: voxel layer",
+      "url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_costmap_2d/plugins/voxel_layer.cpp",
+      "topic": "costmap",
+      "retrieved_at": "2026-11-15T05:00:18.313904+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_costmap_2d/plugins/voxel_layer.cpp",
+      "bytes": 22017,
+      "sha256": "614bf59351a8bdf4836bbda5077e190bf440ea9c0e563494054c8be3783c50f5",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "/********************************************************************* * * Software License Agreement (BSD License) * * Copyright (c) 2008, 2013, Willow Garage, Inc. * All rights reserved. * * Redistribution and use in source and binary forms, with or without * modification, are permitted provided that the following conditions * are met: * * * Redistributions of source code must retain the above copyright * notice, this list of conditions and the following disclaimer. * * Redistributions in binary form must reproduce the above * copyright notice, this list of conditions and the following * disclaimer in the documentation and/or other material",
+      "previous_attempts": [
+        {
+          "id": "S12",
+          "title": "Nav2: voxel layer",
+          "url": "https://docs.nav2.org/configuration/packages/costmap-plugins/voxel.html",
+          "topic": "costmap",
+          "retrieved_at": "2026-11-15T04:54:13.841134+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S12",
+          "title": "Nav2: voxel layer",
+          "url": "https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/main/configuration/packages/costmap-plugins/voxel.rst",
+          "topic": "costmap",
+          "retrieved_at": "2026-11-15T04:57:58.425335+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S13",
+      "title": "Nav2: collision monitor",
+      "url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_collision_monitor/README.md",
+      "topic": "safety",
+      "retrieved_at": "2026-11-15T05:00:18.493820+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/ros-navigation/navigation2/main/nav2_collision_monitor/README.md",
+      "bytes": 10406,
+      "sha256": "d67976118c99ce37ebfba94e4d3b276eecc0b2f9365a25839528b880d9bcdad9",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# Nav2 Collision Monitor ## Collision Monitor The Collision Monitor is a node providing an additional level of robot safety. It performs several collision avoidance related tasks using incoming data from the sensors, bypassing the costmap and trajectory planners, to monitor for and prevent potential collisions at the emergency-stop level. This is analogous to safety sensor and hardware features; take in laser scans from a real-time certified safety scanner, detect if there is to be an imminent collision in a configurable bounding box, and either emergency-stop the certified robot controller or slow the robot to avoid such collision. However, ",
+      "previous_attempts": [
+        {
+          "id": "S13",
+          "title": "Nav2: collision monitor",
+          "url": "https://docs.nav2.org/configuration/packages/collision_monitor/configuring-collision-monitor-node.html",
+          "topic": "safety",
+          "retrieved_at": "2026-11-15T04:54:13.855336+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S13",
+          "title": "Nav2: collision monitor",
+          "url": "https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/main/configuration/packages/collision_monitor/configuring-collision-monitor-node.rst",
+          "topic": "safety",
+          "retrieved_at": "2026-11-15T04:57:58.476098+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S14",
+      "title": "robot_localization upstream",
+      "url": "https://raw.githubusercontent.com/cra-ros-pkg/robot_localization/ros2/README.md",
+      "topic": "odometry",
+      "retrieved_at": "2026-11-15T04:54:13.917502+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/cra-ros-pkg/robot_localization/ros2/README.md",
+      "bytes": 238,
+      "sha256": "9f01c81bc4352fad6c59cbefd10dd427bdadcd6b61fa2f70335903bc3fc12dd1",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "robot_localization ================== robot_localization is a package of nonlinear state estimation nodes. The package was developed by Charles River Analytics, Inc. Please see documentation here: http://wiki.ros.org/robot_localization"
+    },
+    {
+      "id": "S15",
+      "title": "RTAB-Map as an open-source lidar and visual SLAM library",
+      "url": "https://introlab.github.io/rtabmap/",
+      "topic": "rgbd-slam",
+      "retrieved_at": "2026-11-15T05:01:48.632277+00:00",
+      "status": "retrieved",
+      "final_url": "https://introlab.github.io/rtabmap/",
+      "bytes": 32079,
+      "sha256": "f728e0e07a4ae8687341616b9826e1a4c6127e3e23d86855bde936c4ec3d0f56",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "RTAB-Map | Real-Time Appearance-Based Mapping View on GitHub RTAB-Map Real-Time Appearance-Based Mapping Download this project as a .zip file Download this project as a tar.gz file Overview RTAB-Map (Real-Time Appearance-Based Mapping) is a RGB-D, Stereo and Lidar Graph-Based SLAM approach based on an incremental appearance-based loop closure detector. The loop closure detector uses a bag-of-words approach to determinate how likely a new image comes from a previous location or a new location. When a loop closure hypothesis is accepted, a new constraint is added to the map’s graph, then a graph optimizer minimizes the errors in the map. A memo",
+      "previous_attempts": [
+        {
+          "id": "S15",
+          "title": "RTAB-Map as an open-source lidar and visual SLAM library",
+          "url": "https://arxiv.org/abs/1809.06104",
+          "topic": "rgbd-slam",
+          "retrieved_at": "2026-11-15T04:54:14.246677+00:00",
+          "status": "identity_mismatch",
+          "final_url": "https://arxiv.org/abs/1809.06104",
+          "bytes": 40675,
+          "sha256": "e29b3a4808c2d331148c709a5ec65545148215d95482c96e12c430b18c72a29a",
+          "content_type": "text/html; charset=utf-8",
+          "opening_excerpt": "[1809.06104] TDMH-MAC: Real-time and multi-hop in the same wireless MAC Skip to main content Search Submit Donate Log in Search arXiv Press Enter to search · Advanced search Computer Science > Networking and Internet Architecture arXiv:1809.06104 (cs) [Submitted on 17 Sep 2018] Title: TDMH-MAC: Real-time and multi-hop in the same wireless MAC Authors: Federico Terraneo , Paolo Polidori , Alberto Leva , William Fornaciari View a PDF of the paper titled TDMH-MAC: Real-time and multi-hop in the same wireless MAC, by Federico Terraneo and 3 other authors View PDF HTML (experimental) Abstract: Supporting real-time communications over Wireless netw",
+          "error": "Source identity verification rejected this document"
+        },
+        {
+          "id": "S15",
+          "title": "RTAB-Map as an open-source lidar and visual SLAM library",
+          "url": "https://arxiv.org/abs/1809.05952",
+          "topic": "rgbd-slam",
+          "retrieved_at": "2026-11-15T05:00:18.566326+00:00",
+          "status": "identity_mismatch",
+          "final_url": "https://arxiv.org/abs/1809.05952",
+          "bytes": 40042,
+          "sha256": "1ad1c83e08f0288077c584db72a2485ee39a728a926782f3a7c5d5c168f30d3a",
+          "content_type": "text/html; charset=utf-8",
+          "opening_excerpt": "[1809.05952] Parameters estimation in a 3-parameters p-star model Skip to main content Search Submit Donate Log in Search arXiv Press Enter to search · Advanced search Mathematics > Statistics Theory arXiv:1809.05952 (math) [Submitted on 16 Sep 2018] Title: Parameters estimation in a 3-parameters p-star model Authors: Pietro Lenarda , Giorgio Gnecco , Massimo Riccaboni View a PDF of the paper titled Parameters estimation in a 3-parameters p-star model, by Pietro Lenarda and 2 other authors View PDF HTML (experimental) Abstract: An important issue in social network analysis refers to the development of algorithms for estimating optimal paramet",
+          "error": "Retrieved title/content did not identify the intended source"
+        }
+      ]
+    },
+    {
+      "id": "S16",
+      "title": "RTAB-Map ROS wrapper",
+      "url": "https://raw.githubusercontent.com/introlab/rtabmap_ros/ros2/README.md",
+      "topic": "rgbd-slam",
+      "retrieved_at": "2026-11-15T04:54:14.293410+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/introlab/rtabmap_ros/ros2/README.md",
+      "bytes": 13813,
+      "sha256": "bb9ec4d3720078c099806607ab7c6ce3a104bcb6e20bd09aae909ebd1d74111d",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "rtabmap_ros =========== ROS 2 wrapper for [RTAB-Map](https://github.com/introlab/rtabmap), a graph-based SLAM library with appearance-based loop closure detection. It builds and maintains a 3D map from RGB-D, stereo or lidar data, closes loops on revisited places and exports the result as an occupancy grid, a point cloud or an OctoMap. **ROS 2 Humble minimum required.** The interface matches ROS 1: parameters and topic names still follow the [ROS 1 documentation](http://wiki.ros.org/rtabmap_ros) for anything not yet covered by the package pages below. #### CI Latest | | Build | Docker | |---|---|---| | ROS 1 | [![ROS 1](https://github.com/int"
+    },
+    {
+      "id": "S17",
+      "title": "ORB-SLAM3",
+      "url": "https://arxiv.org/abs/2007.11898",
+      "topic": "visual-slam",
+      "retrieved_at": "2026-11-15T04:54:14.373994+00:00",
+      "status": "retrieved",
+      "final_url": "https://arxiv.org/abs/2007.11898",
+      "bytes": 45310,
+      "sha256": "1692f760aae68154d74c9dd2b58718e7d942614c62d6cea9a51907af14c47430",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "[2007.11898] ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map SLAM Skip to main content Search Submit Donate Log in Search arXiv Press Enter to search · Advanced search Computer Science > Robotics arXiv:2007.11898 (cs) [Submitted on 23 Jul 2020 ( v1 ), last revised 23 Apr 2021 (this version, v2)] Title: ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map SLAM Authors: Carlos Campos , Richard Elvira , Juan J. Gómez Rodríguez , José M. M. Montiel , Juan D. Tardós View a PDF of the paper titled ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map"
+    },
+    {
+      "id": "S18",
+      "title": "m-explore ROS2 frontier exploration",
+      "url": "https://raw.githubusercontent.com/robo-friends/m-explore-ros2/main/README.md",
+      "topic": "exploration",
+      "retrieved_at": "2026-11-15T04:54:14.420039+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/robo-friends/m-explore-ros2/main/README.md",
+      "bytes": 6736,
+      "sha256": "1558e4a2bce5629d77c290dc7133a086a7cbffcfab4122bfa7beeb8ce2280c12",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# m-explore ROS2 port ROS2 package port for multi-robot autonomous exploration of [m-explore](https://github.com/hrnr/m-explore). Targets **ROS 2 Humble** and newer. ### Contents 1. [Autonomous exploration](#Autonomous-exploration) * [Demo in simulation with a TB3 robot](#Simulation-with-a-TB3-robot) * [Demo with a JetBot](#On-a-JetBot-with-realsense-cameras) * [Instructions for the simulation demo](#Running-the-explore-demo-with-TB3) 2. [Multirobot map merge](#Multirobot-map-merge) * [Simulation demo with known initial poses](#Known-initial-poses) * [Simulation demo with unknown initial poses](#Unknown-initial-poses) * [ROS2 requirements](#R"
+    },
+    {
+      "id": "S19",
+      "title": "Choset and Pignon: Boustrophedon cellular decomposition",
+      "url": "https://www.ri.cmu.edu/publications/coverage-path-planning-the-boustrophedon-decomposition/",
+      "topic": "coverage",
+      "retrieved_at": "2026-11-15T04:54:14.512179+00:00",
+      "status": "retrieved",
+      "final_url": "https://publications.ri.cmu.edu/coverage-path-planning-the-boustrophedon-decomposition",
+      "bytes": 13256,
+      "sha256": "3fcd5fc0e4f13f8bb5b7828f686a9c4096c0a59e23e1ba710db53cbe65ff679f",
+      "content_type": "text/html; charset=UTF-8",
+      "opening_excerpt": "Coverage Path Planning: The Boustrophedon Decomposition - Robotics Institute Carnegie Mellon University Filter By: All Publications Conference Papers Journal Articles Workshop Paper Master's Theses PhD Theses Technical Reports ← Back to Publications Coverage Path Planning: The Boustrophedon Decomposition December 1997 Coverage Path Planning: The Boustrophedon Decomposition View Publication Authors: Howie Choset and Philippe Pignon Conference Paper Abstract: Coverage path planning is the determination of a path that a robot must take in order to pass over each point in an environment. Applications include vacuuming, floor scrubbing, and inspec"
+    },
+    {
+      "id": "S20",
+      "title": "Fields2Cover coverage planning",
+      "url": "https://raw.githubusercontent.com/Fields2Cover/Fields2Cover/main/README.md",
+      "topic": "coverage",
+      "retrieved_at": "2026-11-15T04:54:14.590060+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Fields2Cover/Fields2Cover/main/README.md",
+      "bytes": 7032,
+      "sha256": "3a0b40ec9301e3c4127e1e3ee1cc3964e885357ff1440437e1496cfc1a6b95b5",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "<p align=\"center\"> <img src=\"https://raw.githubusercontent.com/Fields2Cover/Fields2Cover/main/docs/figures/logo_fields2cover.jpeg\" alt=\"Fields2Cover logo\" width=\"600\"> </p> <p align=\"center\"><b>Robust and efficient coverage paths for autonomous agricultural vehicles</b></p> <p align=\"center\"> <a href=\"https://fields2cover.github.io\">Documentation</a> • <a href=\"https://fields2cover.github.io/source/installation.html\">Installation</a> • <a href=\"https://fields2cover.github.io/source/quick_start.html\">Quick Start</a> • <a href=\"https://fields2cover.github.io/source/tutorials.html\">Tutorials</a> • <a href=\"https://fields2cover.github.io/api/f2c_"
+    },
+    {
+      "id": "S21",
+      "title": "Valetudo: supported robots",
+      "url": "https://raw.githubusercontent.com/Hypfer/Valetudo/master/docs/pages/general/supported-robots.md",
+      "topic": "vacuum",
+      "retrieved_at": "2026-11-15T04:57:58.710580+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Hypfer/Valetudo/master/docs/pages/general/supported-robots.md",
+      "bytes": 44496,
+      "sha256": "e0bc68b1fd9a58b15937417a7f77df7f3a0164ee80ee97511e239543a7390eca",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "--- title: Supported Robots category: General order: 10 --- # Supported Robots If you're interested in hardware specifics, teardowns and more, check out Dennis Giese's [Vacuum Robot Overview](https://robotinfo.dev/). Please note that this list is exhaustive. These are the supported robots.<br/> Robots not on this list are not supported by Valetudo. If your robot is not on this list, it is not supported. Unless noted otherwise, these robots were all tested by me personally to ensure that: - They work properly with Valetudo - The way to get them to work with Valetudo is well documented - I have an Idea how the thing works, how rooting works and",
+      "previous_attempts": [
+        {
+          "id": "S21",
+          "title": "Valetudo: supported robots",
+          "url": "https://valetudo.cloud/pages/general/supported-robots.html",
+          "topic": "vacuum",
+          "retrieved_at": "2026-11-15T04:54:14.652786+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S22",
+      "title": "Valetudo map data structures",
+      "url": "https://raw.githubusercontent.com/Hypfer/Valetudo/master/backend/lib/entities/map/ValetudoMap.js",
+      "topic": "map-format",
+      "retrieved_at": "2026-11-15T04:54:14.855410+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Hypfer/Valetudo/master/backend/lib/entities/map/ValetudoMap.js",
+      "bytes": 4055,
+      "sha256": "2f179adee88d3317c15cd3381b47c8e0d46440515cd037bffa9a25fe8784130d",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "const crypto = require(\"crypto\"); const mapEntities = require(\"./entities\"); const MapLayer = require(\"./MapLayer\"); const SerializableEntity = require(\"../SerializableEntity\"); const ValetudoMapSegment = require(\"../core/ValetudoMapSegment\"); /** * Represents a Valetudo standard issue map * including MapLayers and MapEntities * * Everything is int. Coordinates and size are in cm * * The origin is found in the top-left corner * */ class ValetudoMap extends SerializableEntity { //TODO: Current, Historic, Etc. /** * * @param {object} options * @param {object} options.size * @param {number} options.size.x in cm * @param {number} options.size.y i"
+    },
+    {
+      "id": "S23",
+      "title": "Dreame Vacuum Home Assistant integration",
+      "url": "https://raw.githubusercontent.com/Tasshack/dreame-vacuum/master/README.md",
+      "topic": "dreame",
+      "retrieved_at": "2026-11-15T04:54:15.012170+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Tasshack/dreame-vacuum/master/README.md",
+      "bytes": 5712,
+      "sha256": "78490c18bf1e8e24eea0feaa1bd176b1e8585fc97259a00b1b1baf99afe160ac",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "<center> <div align=\"center\"> <hr> <a href=\"https://dreame-vacuum.tasshack.com/\"><img alt=\"Dreame Vacuum\" src=\"https://dreame-vacuum.tasshack.com/logo.svg\" width=400></a> <hr> <a href=\"https://dreame-vacuum.tasshack.com/\"><img alt=\"Dreame Vacuum\" src=\"https://dreame-vacuum.tasshack.com/dvc.png\" width=480 /></a> Complete app replacement with **Home Assistant** for **Dreame** robot vacuums. [![Version](https://img.shields.io/github/manifest-json/v/Tasshack/dreame-vacuum?filename=custom_components%2Fdreame_vacuum%2Fmanifest.json&color=18bcf2&label=Version&style=for-the-badge)](https://github.com/Tasshack/dreame-vacuum/releases) ![Downloads](http"
+    },
+    {
+      "id": "S24",
+      "title": "Dreame map decoder upstream",
+      "url": "https://raw.githubusercontent.com/Tasshack/dreame-vacuum/master/custom_components/dreame_vacuum/dreame/map.py",
+      "topic": "map-format",
+      "retrieved_at": "2026-11-15T04:54:15.070950+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Tasshack/dreame-vacuum/master/custom_components/dreame_vacuum/dreame/map.py",
+      "bytes": 656115,
+      "sha256": "b256b5d0b3f549f6c8c40ec98870c334e327a4ead5377b0332e145999d775ea7",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "from __future__ import annotations import io import math import time import threading import base64 import json import zlib import re import logging import traceback import copy import numpy as np import hashlib import textwrap from py_mini_racer import MiniRacer from cryptography.hazmat.backends import default_backend from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes from cryptography.hazmat.primitives import padding, serialization, hashes from PIL import ( Image, ImageDraw, ImageOps, ImageFont, ImageEnhance, PngImagePlugin, ImageFil"
+    },
+    {
+      "id": "S25",
+      "title": "Xiaomi Cloud Map Extractor",
+      "url": "https://raw.githubusercontent.com/PiotrMachowski/Home-Assistant-custom-components-Xiaomi-Cloud-Map-Extractor/master/README.md",
+      "topic": "map-format",
+      "retrieved_at": "2026-11-15T04:54:15.264311+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/PiotrMachowski/Home-Assistant-custom-components-Xiaomi-Cloud-Map-Extractor/master/README.md",
+      "bytes": 25404,
+      "sha256": "d0e1a94d05b7f6810f6285edf0b1cb1af54fca5ef0c7c83558a7bfc1b648a5dc",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "[![HACS Default][hacs_shield]][hacs] [![GitHub Latest Release][releases_shield]][latest_release] [![GitHub All Releases][downloads_total_shield]][releases] [![Community Forum][community_forum_shield]][community_forum]<!-- piotrmachowski_support_badges_start --> [![Ko-Fi][ko_fi_shield]][ko_fi] [![buycoffee.to][buycoffee_to_shield]][buycoffee_to] [![PayPal.Me][paypal_me_shield]][paypal_me] [![Revolut.Me][revolut_me_shield]][revolut_me] <!-- piotrmachowski_support_badges_end --> [hacs_shield]: https://img.shields.io/static/v1.svg?label=HACS&message=Default&style=popout&color=green&labelColor=41bdf5&logo=HomeAssistantCommunityStore&logoColor=whit"
+    },
+    {
+      "id": "S26",
+      "title": "python-miio: vacuum API",
+      "url": "https://raw.githubusercontent.com/rytilahti/python-miio/master/miio/integrations/vacuum/roborock/vacuum/vacuum.py",
+      "topic": "device-api",
+      "retrieved_at": "2026-11-15T05:01:48.634278+00:00",
+      "status": "unavailable",
+      "error": "HTTPError: HTTP Error 404: Not Found",
+      "previous_attempts": [
+        {
+          "id": "S26",
+          "title": "python-miio: vacuum API",
+          "url": "https://raw.githubusercontent.com/rytilahti/python-miio/master/miio/integrations/vacuum/roborock/vacuum.py",
+          "topic": "device-api",
+          "retrieved_at": "2026-11-15T04:54:15.353110+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S26",
+          "title": "python-miio: vacuum API",
+          "url": "https://raw.githubusercontent.com/rytilahti/python-miio/master/miio/integrations/vacuum/roborock/vacuum/vacuum.py",
+          "topic": "device-api",
+          "retrieved_at": "2026-11-15T04:57:58.751859+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        },
+        {
+          "id": "S26",
+          "title": "python-miio: vacuum API",
+          "url": "https://raw.githubusercontent.com/rytilahti/python-miio/master/miio/integrations/vacuum/roborock/vacuum/vacuum.py",
+          "topic": "device-api",
+          "retrieved_at": "2026-11-15T05:00:18.891725+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 404: Not Found"
+        }
+      ]
+    },
+    {
+      "id": "S27",
+      "title": "Xiaomi Home integration licensing and architecture",
+      "url": "https://raw.githubusercontent.com/XiaoMi/ha_xiaomi_home/main/README.md",
+      "topic": "device-api",
+      "retrieved_at": "2026-11-15T04:54:15.579678+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/XiaoMi/ha_xiaomi_home/main/README.md",
+      "bytes": 24139,
+      "sha256": "1a3c96f6a85fe2a34fbb068ea4606aa0c6dd2b81c9480a37c23966e863b68c9f",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# Xiaomi Home Integration for Home Assistant [English](./README.md) | [简体中文](./doc/README_zh.md) Xiaomi Home Integration is an integrated component of Home Assistant supported by Xiaomi official. It allows you to use Xiaomi IoT smart devices in Home Assistant. ## Installation > Home Assistant version requirement: > > - Core $\\geq$ 2024.4.4 > - Operating System $\\geq$ 13.0 ### Method 1: Git clone from GitHub ```bash cd config git clone https://github.com/XiaoMi/ha_xiaomi_home.git cd ha_xiaomi_home ./install.sh /config ``` We recommend this installation method, for it is convenient to switch to a tag when updating `xiaomi_home` to a certain ver"
+    },
+    {
+      "id": "S28",
+      "title": "Home Assistant REST API",
+      "url": "https://developers.home-assistant.io/docs/api/rest/",
+      "topic": "ha-api",
+      "retrieved_at": "2026-11-15T04:54:15.627993+00:00",
+      "status": "retrieved",
+      "final_url": "https://contributors.home-assistant.io/core/internals/rest-api/",
+      "bytes": 190348,
+      "sha256": "18d7465aed485bc13a1d808004944109e839f4d21904071bb433ac40333a0559",
+      "content_type": "text/html; charset=UTF-8",
+      "opening_excerpt": "REST API | Home Assistant Contributors Skip to content Core and integrations Start here Get started Build the software Core and integrations Frontend Apps Marketplace Companion apps OS and Supervisor Design, write, translate Design Brand Writing docs Translations Run the project Community Releases Roadmap Events and calendar Understand how it works Architecture Security Data Glossary Home Blog Blog Search Core and integrations / Search Show more results ↑ ↓ to move Enter to open Esc to close Overview Your first contribution Development workflow Overview Write code Development environment Code style Type hints Running the tests Writing tests L"
+    },
+    {
+      "id": "S29",
+      "title": "ROS LaserScan message contract",
+      "url": "https://raw.githubusercontent.com/ros2/common_interfaces/rolling/sensor_msgs/msg/LaserScan.msg",
+      "topic": "sensor-contract",
+      "retrieved_at": "2026-11-15T05:00:19.143280+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/ros2/common_interfaces/rolling/sensor_msgs/msg/LaserScan.msg",
+      "bytes": 1593,
+      "sha256": "bb688599d8787fa1b48393e50064013e58449055eb60e501eb01a07e8bc03357",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# Single scan from a planar laser range-finder # # If you have another ranging device with different behavior (e.g. a sonar # array), please find or create a different message, since applications # will make fairly laser-specific assumptions about this data std_msgs/Header header # timestamp in the header is the acquisition time of # the first ray in the scan. # # in frame frame_id, angles are measured around # the positive Z axis (counterclockwise, if Z is up) # with zero angle being forward along the x axis float32 angle_min # start angle of the scan [rad] float32 angle_max # end angle of the scan [rad] float32 angle_increment # angular dis",
+      "previous_attempts": [
+        {
+          "id": "S29",
+          "title": "ROS LaserScan message contract",
+          "url": "https://docs.ros.org/en/rolling/p/sensor_msgs/msg/LaserScan.html",
+          "topic": "sensor-contract",
+          "retrieved_at": "2026-11-15T04:54:15.700968+00:00",
+          "status": "identity_mismatch",
+          "final_url": "https://docs.ros.org/en/rolling/p/sensor_msgs/msg/LaserScan.html",
+          "bytes": 7452,
+          "sha256": "2a75d7f0b6a6e7e90de05ab9248a38fdaac05e4c006022137da63a0ee18e767a",
+          "content_type": "text/html; charset=utf-8",
+          "opening_excerpt": "Making sure you're not a bot! Making sure you're not a bot! Loading... Anubis could not load its JavaScript. The server may be overloaded. Please reload the page to try again. You are seeing this because the administrator of this website has set up Anubis to protect the server against the scourge of AI companies aggressively scraping websites. This can and does cause downtime for the websites, which makes their resources inaccessible for everyone. Anubis is a compromise. Anubis uses a Proof-of-Work scheme in the vein of Hashcash, a proposed proof-of-work scheme for reducing email spam. The idea is that at individual scales the additional load",
+          "error": "Source identity verification rejected this document"
+        }
+      ]
+    },
+    {
+      "id": "S30",
+      "title": "Borenstein and Feng: UMBmark systematic odometry calibration",
+      "url": "https://deepblue.lib.umich.edu/handle/2027.42/3758",
+      "topic": "calibration",
+      "retrieved_at": "2026-11-15T05:01:48.634278+00:00",
+      "status": "unavailable",
+      "error": "HTTPError: HTTP Error 403: Forbidden",
+      "previous_attempts": [
+        {
+          "id": "S30",
+          "title": "Borenstein and Feng: UMBmark systematic odometry calibration",
+          "url": "https://deepblue.lib.umich.edu/handle/2027.42/3758",
+          "topic": "calibration",
+          "retrieved_at": "2026-11-15T04:54:15.744898+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "id": "S30",
+          "title": "Borenstein and Feng: UMBmark systematic odometry calibration",
+          "url": "https://deepblue.lib.umich.edu/handle/2027.42/3758",
+          "topic": "calibration",
+          "retrieved_at": "2026-11-15T04:57:58.759285+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        },
+        {
+          "id": "S30",
+          "title": "Borenstein and Feng: UMBmark systematic odometry calibration",
+          "url": "https://deepblue.lib.umich.edu/handle/2027.42/3758",
+          "topic": "calibration",
+          "retrieved_at": "2026-11-15T05:00:19.190185+00:00",
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 403: Forbidden"
+        }
+      ]
+    },
+    {
+      "id": "S31",
+      "title": "SLAMTEC RPLIDAR ROS2 driver",
+      "url": "https://raw.githubusercontent.com/Slamtec/sllidar_ros2/main/README.md",
+      "topic": "lidar",
+      "retrieved_at": "2026-11-15T04:54:15.976839+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Slamtec/sllidar_ros2/main/README.md",
+      "bytes": 4193,
+      "sha256": "b7d957c4a7717a2b2da695437fb160490f704f43ef6b52c3e0e9748266e75038",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# SLAMTEC LIDAR ROS2 Package ROS2 node for SLAMTEC LIDAR Visit following Website for more details about SLAMTEC LIDAR: SLAMTEC LIDAR roswiki: <http://wiki.ros.org/rplidar> SLAMTEC LIDAR HomePage: <http://www.slamtec.com/en/Lidar> SLAMTEC LIDAR SDK: <https://github.com/Slamtec/rplidar_sdk> SLAMTEC LIDAR Tutorial: <https://github.com/robopeak/rplidar_ros/wiki> ## Supported SLAMTEC LIDAR | Lidar Model | | ---------------------- | |RPLIDAR A1 | |RPLIDAR A2 | |RPLIDAR A3 | |RPLIDAR C1 | |RPLIDAR S1 | |RPLIDAR S2 | |RPLIDAR S3 | |RPLIDAR S2E | |RPLIDAR T1 | ## How to install ROS2 [rolling](https://docs.ros.org/en/rolling/Installation.html), [humble"
+    },
+    {
+      "id": "S32",
+      "title": "TUM RGB-D SLAM evaluation",
+      "url": "https://cvg.cit.tum.de/data/datasets/rgbd-dataset/tools",
+      "topic": "evaluation",
+      "retrieved_at": "2026-11-15T04:54:16.070278+00:00",
+      "status": "retrieved",
+      "final_url": "https://cvg.cit.tum.de/data/datasets/rgbd-dataset/tools",
+      "bytes": 214231,
+      "sha256": "a26fed9133253cc61bbb3d8845cfcec566fb168f316645ca350cb43517b0a971",
+      "content_type": "text/html; charset=utf-8",
+      "opening_excerpt": "Computer Vision Group - Useful tools for the RGB-D benchmark Direkt zum Inhalt springen Login Computer Vision Group TUM School of Computation, Information and Technology Technical University of Munich Technical University of Munich Navigation Home Application Form TUM AI Lecture Series Members Ido Akov Dr. Hector Andrade Loarca News Input Template Publications Dr. Nikita Araslanov Mathieu Aubry Publications Teaching Daniel Bender Publications Prof. Dr. Florian Bernard Boerdgen Publications Mohammed Brahimi Matthäus Brandl Dr. Erik Bylow Qing Cheng John Chiotellis Jason Chui Weirong Chen Prof. Dr. Daniel Cremers Prof. Dr. Daniel Cremers Prof. "
+    },
+    {
+      "id": "S33",
+      "title": "RTAB-Map upstream source and paper references",
+      "url": "https://raw.githubusercontent.com/introlab/rtabmap/master/README.md",
+      "topic": "rgbd-slam",
+      "retrieved_at": "2026-11-15T05:01:48.779026+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/introlab/rtabmap/master/README.md",
+      "bytes": 7806,
+      "sha256": "b1ec41a916bdb24dc537b0e0842cf75afa503024dc448353e31b83c5b930c727",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "rtabmap ======= [![RTAB-Map Logo](https://raw.githubusercontent.com/introlab/rtabmap/master/guilib/src/images/RTAB-Map100.png)](http://introlab.github.io/rtabmap) [![Release][release-image]][releases] [![Downloads][downloads-image]][downloads] [![codecov](https://codecov.io/gh/introlab/rtabmap/graph/badge.svg?token=mPwvfZMOia)](https://codecov.io/gh/introlab/rtabmap) [![License][license-image]][license] [release-image]: https://img.shields.io/github/v/release/introlab/rtabmap?color=green&style=flat [releases]: https://github.com/introlab/rtabmap/releases [downloads-image]: https://img.shields.io/github/downloads/introlab/rtabmap/total?label=d"
+    },
+    {
+      "id": "S34",
+      "title": "ORB-SLAM3 license",
+      "url": "https://raw.githubusercontent.com/UZ-SLAMLab/ORB_SLAM3/master/LICENSE",
+      "topic": "license",
+      "retrieved_at": "2026-11-15T05:01:48.838886+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/UZ-SLAMLab/ORB_SLAM3/master/LICENSE",
+      "bytes": 35141,
+      "sha256": "589ed823e9a84c56feb95ac58e7cf384626b9cbf4fda2a907bc36e103de1bad2",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007 Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/> Everyone is permitted to copy and distribute verbatim copies of this license document, but changing it is not allowed. Preamble The GNU General Public License is a free, copyleft license for software and other kinds of works. The licenses for most software and other practical works are designed to take away your freedom to share and change the works. By contrast, the GNU General Public License is intended to guarantee your freedom to share and change all versions of a program--to make sure it remains free software for all its"
+    },
+    {
+      "id": "S35",
+      "title": "Xiaomi Home integration license",
+      "url": "https://raw.githubusercontent.com/XiaoMi/ha_xiaomi_home/main/LICENSE.md",
+      "topic": "license",
+      "retrieved_at": "2026-11-15T05:01:48.875423+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/XiaoMi/ha_xiaomi_home/main/LICENSE.md",
+      "bytes": 4816,
+      "sha256": "a215c70236368e05dd1a6a85aff7a880065c64b041efd1f54366ac9f070b95e4",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "# 许可证 版权声明 (C) 2024 小米公司。 在本许可证下提供的 Home Assistant 米家集成（Xiaomi Home Integration）和相关米家云服务 API 接口，包括源代码和目标代码（统称为“授权作品”）的所有权及知识产权归小米所有。小米在此授予您一项个人的、有限的、非排他的、不可转让的、不可转授权的、免费的权利，仅限于您为非商业性目的使用 Home Assistant 而复制、使用、修改、分发授权作品。为避免疑义，本许可证未授权您将授权作品用于任何其他用途，包括但不限于开发应用程序（APP）、Web 服务以及其他形式的软件等。 您在重新分发授权作品时，无论修改与否，无论以源码形式或目标代码形式，您均需保留本授权作品中的版权标识、免责声明及本许可证的副本。 授权作品是按“现状”分发的，小米不对授权作品承担任何明示或暗示的保证或担保，包括但不限于对授权作品没有错误或疏漏、持续性、可靠性、适用于某一特定用途或不侵权等的保证、声明或承诺。在任何情况下，对于因使用授权作品或无法使用授权作品而引起的任何直接、间接、特殊、偶然或后果性损害或损失，您需自行承担全部责任。 本许可证中未明确授予的所有权利均予保留，除本许可证明确授予您的权利外，小米未以任何形式授权您使用小米及小米关联公司的商标、著作权或其他任何形式的知识产权，例如在未获得小米另行书面许可的情况下，您不得使用“小米”、“米家”等与小米相关的字样或其他会使得公众联想到小米的字样对您使用授权作品的软件或搭载"
+    },
+    {
+      "id": "S36",
+      "title": "SLAM Toolbox package metadata and license declaration",
+      "url": "https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/ros2/package.xml",
+      "topic": "license",
+      "retrieved_at": "2026-11-15T05:01:48.930582+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/ros2/package.xml",
+      "bytes": 4095,
+      "sha256": "18af5859ed017a229ea7a91b097edb1060b82addef9c978a69e926e5c2e03931",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "<?xml version=\"1.0\"?> <?xml-model href=\"http://download.ros.org/schema/package_format3.xsd\" schematypens=\"http://www.w3.org/2001/XMLSchema\"?> <package format=\"3\"> <name>slam_toolbox</name> <version>2.10.0</version> <description> This package provides a sped up improved slam karto with updated SDK and visualization and modification toolsets </description> <maintainer email=\"stevenmacenski@gmail.com\">Steve Macenski</maintainer> <maintainer email=\"michel@ekumenlabs.com\">Michel Hidalgo</maintainer> <license>LGPL-2.1-only</license> <author>Steve Macenski</author> <buildtool_depend>ament_cmake</buildtool_depend> <build_depend>pluginlib</build_depen"
+    }
+  ]
+}
