@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "reference_id": "xiaomi-pv21cn-mapping-reference-20261115",
+  "created_at": "2026-11-15T07:27:34.091852+00:00",
+  "scope": "Existing Xiaomi 6 Pro mapping reference evidence; local private archive only",
+  "private_archive_relative_path": ".local-deploy/vacuum-mapping-20261115/xiaomi-6pro-learning-reference-20261115T072734Z.zip",
+  "payload_members": 8,
+  "manifest_members": 1,
+  "payload_bytes": 407517,
+  "zip_bytes": 47275,
+  "zip_sha256": "fbe0cbcd814ec47df1ae05dd7ed230d039eced7bb1aff494b31cf0197fc35899",
+  "exact_member_set_verified": true,
+  "member_sizes_and_sha256_readback_verified": true,
+  "crc_verified": true,
+  "source_snapshot_sha256_verified": true,
+  "spec_cache_embedded_sha256_verified": true,
+  "independent_backup": false,
+  "device_requests_this_archival_step": 0,
+  "public_content": [
+    "curated learning note",
+    "selected schema facts",
+    "hash-only archive receipt"
+  ],
+  "private_content_not_published": [
+    "raw device snapshot",
+    "room or household names",
+    "object references",
+    "cached MIoT specification"
+  ]
+}

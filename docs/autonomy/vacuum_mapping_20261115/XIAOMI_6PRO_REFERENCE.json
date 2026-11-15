@@ -1,0 +1,567 @@
+{
+  "schema_version": 1,
+  "reference_id": "xiaomi-pv21cn-mapping-reference-20261115",
+  "model": "xiaomi.vacuum.pv21cn",
+  "miot_urn": "urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-pv21cn:2",
+  "recorded_firmware": "4.5.8_0758",
+  "snapshot_at": "2026-11-15T07:06:36.124712+00:00",
+  "archived_at": "2026-11-15T07:23:49.349438+00:00",
+  "scope": "Selected interface facts and sanitized observations; not vendor algorithm source",
+  "provenance": [
+    {
+      "kind": "existing_private_live_snapshot",
+      "private_relative_path": ".local-deploy/vacuum-mapping-20261115/xiaomi-pv21cn-20261115T070636Z-private.json",
+      "sha256": "cbe4232ae12487dbcabd68c0ea31327842daa38e56588f451e85045ac527e909"
+    },
+    {
+      "kind": "existing_private_miot_cache",
+      "cache_hash_verified": true,
+      "payload_sha256": "5e25e11320a93d7268e2289c854d539d4c0c325a293104620f2419d552147c41"
+    }
+  ],
+  "no_new_device_requests": true,
+  "device_actions_executed": 0,
+  "facts": [
+    {
+      "id": "F01",
+      "kind": "saved_live_property",
+      "subject": "room-information",
+      "siid": 2,
+      "piid": 16,
+      "top_level_keys": [
+        "map_uid",
+        "rooms"
+      ],
+      "room_count": 9,
+      "room_keys": [
+        "id",
+        "name"
+      ],
+      "evidence_boundary": "Names and IDs observed; no room geometry exported"
+    },
+    {
+      "id": "F02",
+      "kind": "saved_live_property",
+      "subject": "map-management",
+      "siid": 10,
+      "piid": 5,
+      "top_level_keys": [
+        "index",
+        "map_array"
+      ],
+      "map_count": 2,
+      "map_keys": [
+        "is_current",
+        "map_id",
+        "map_name",
+        "obj_name",
+        "temp"
+      ],
+      "evidence_boundary": "Two catalog entries; floor identity and map relation unverified"
+    },
+    {
+      "id": "F03",
+      "kind": "saved_live_property",
+      "subject": "separate-map-and-trajectory-references",
+      "references": [
+        {
+          "property": "map_obj_name_p_10_1",
+          "decoded_type": "dict",
+          "keys": [
+            "index",
+            "obj_name"
+          ],
+          "object_reference_present": true,
+          "is_http_url": false
+        },
+        {
+          "property": "trajectory_obj_name_p_10_2",
+          "decoded_type": "dict",
+          "keys": [
+            "index",
+            "obj_name"
+          ],
+          "object_reference_present": true,
+          "is_http_url": false
+        }
+      ],
+      "evidence_boundary": "Object identifiers only; no map or trajectory payload downloaded"
+    },
+    {
+      "id": "F04",
+      "kind": "saved_live_property",
+      "subject": "backup-map-list",
+      "siid": 10,
+      "piid": 13,
+      "backup_count": 2,
+      "backup_keys": [
+        "backup_id",
+        "map_id",
+        "map_name",
+        "obj_name"
+      ],
+      "evidence_boundary": "Metadata only; backup creation, readback and restore were not tested"
+    },
+    {
+      "id": "F05",
+      "kind": "cached_interface_specification",
+      "subject": "map-scoped-room-ids",
+      "siid": 2,
+      "piid": 15,
+      "label": "地图房间id参数（与米家房间无关）",
+      "evidence_boundary": "Device interface definition; not proof of cross-revision room identity"
+    },
+    {
+      "id": "F06",
+      "kind": "cached_interface_specification",
+      "subject": "mapping-lifecycle",
+      "siid": 2,
+      "actions": [
+        17,
+        33,
+        34,
+        35
+      ],
+      "event": 1,
+      "evidence_boundary": "Declared actions/event; no physical lifecycle action executed"
+    },
+    {
+      "id": "F07",
+      "kind": "cached_interface_specification",
+      "subject": "property-read-notify",
+      "evidence_boundary": "read/notify is an interface capability; event delivery and exactly-once semantics untested"
+    },
+    {
+      "id": "F08",
+      "kind": "saved_live_property",
+      "subject": "empty-position-and-3d-fields",
+      "position_empty": true,
+      "map_3d_info_empty": true,
+      "evidence_boundary": "Empty values in the saved snapshot do not establish permanent lack of capability"
+    },
+    {
+      "id": "F09",
+      "kind": "saved_live_property",
+      "subject": "standard-map-room-info-transport",
+      "ha_state_characters": 255,
+      "json_parsed": false,
+      "evidence_boundary": "255-character unparseable HA state; original completeness and cause unverified"
+    },
+    {
+      "id": "F10",
+      "kind": "local_source_inspection",
+      "subject": "entity-discovery-vs-cloud-directory",
+      "source": "installed xiaomi_home/config_flow.py and miot/miot_client.py",
+      "old_device_count": 42,
+      "refreshed_device_count": 44,
+      "removed_device_count": 0,
+      "evidence_boundary": "Native integration flow was completed; ordinary entity re-query had missed the new vacuum"
+    }
+  ],
+  "services": [
+    {
+      "iid": 2,
+      "name": "vacuum",
+      "description_trans": "扫地机",
+      "properties": [
+        {
+          "iid": 2,
+          "name": "status",
+          "description_trans": "工作状态",
+          "format": "int",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 3,
+          "name": "fault",
+          "description_trans": "故障",
+          "format": "int",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 15,
+          "name": "vacuum-room-ids",
+          "description_trans": "地图房间id参数（与米家房间无关）",
+          "format": "str",
+          "access": []
+        },
+        {
+          "iid": 16,
+          "name": "room-information",
+          "description_trans": "房间信息",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 26,
+          "name": "location-status",
+          "description_trans": "定位状态",
+          "format": "bool",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 27,
+          "name": "map-complete-dialog",
+          "description_trans": "建图完成弹窗",
+          "format": "int",
+          "access": [
+            "read",
+            "notify",
+            "write"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "iid": 11,
+          "name": "get-room-configs",
+          "description_trans": "获取房间信息",
+          "in": [
+            15
+          ],
+          "out": []
+        },
+        {
+          "iid": 14,
+          "name": "split-room",
+          "description_trans": "分割房间",
+          "in": [
+            24
+          ],
+          "out": [
+            24
+          ]
+        },
+        {
+          "iid": 15,
+          "name": "merge-rooms",
+          "description_trans": "合并房间",
+          "in": [
+            15
+          ],
+          "out": [
+            24
+          ]
+        },
+        {
+          "iid": 17,
+          "name": "start-build-map",
+          "description_trans": "开始建图",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 33,
+          "name": "continue-build-map",
+          "description_trans": "继续",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 34,
+          "name": "stop-build-map-and-gocharge",
+          "description_trans": "结束建图并回充",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 35,
+          "name": "pause-build-map",
+          "description_trans": "暂停",
+          "in": [],
+          "out": []
+        }
+      ],
+      "events": [
+        {
+          "iid": 1,
+          "name": "build-map-complete",
+          "description_trans": "建图完成"
+        }
+      ]
+    },
+    {
+      "iid": 10,
+      "name": "vacuum-map",
+      "description_trans": "清洁地图",
+      "properties": [
+        {
+          "iid": 1,
+          "name": "map-obj-name",
+          "description_trans": "地图文件",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 2,
+          "name": "trajectory-obj-name",
+          "description_trans": "轨迹文件",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 3,
+          "name": "clean-record",
+          "description_trans": "清扫记录",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 4,
+          "name": "vacuum-position",
+          "description_trans": "机器人当前位置",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 5,
+          "name": "map-management",
+          "description_trans": "地图管理",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 6,
+          "name": "current-map-id",
+          "description_trans": "当前地图id",
+          "format": "int",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 7,
+          "name": "carpet-obj-name",
+          "description_trans": "地毯检测文件",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 8,
+          "name": "common-params",
+          "description_trans": "共用传参属性",
+          "format": "str",
+          "access": []
+        },
+        {
+          "iid": 9,
+          "name": "map-3d-info",
+          "description_trans": "3D 地图信息",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 10,
+          "name": "map-switch-method",
+          "description_trans": "地图切换方式",
+          "format": "int",
+          "access": [
+            "read",
+            "write",
+            "notify"
+          ]
+        },
+        {
+          "iid": 11,
+          "name": "map-upload-stop",
+          "description_trans": "停止地图上传",
+          "format": "bool",
+          "access": [
+            "read",
+            "write",
+            "notify"
+          ]
+        },
+        {
+          "iid": 12,
+          "name": "map-upload-stop-action-result",
+          "description_trans": "停止地图上传执行结果",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 13,
+          "name": "backup-map-list",
+          "description_trans": "备份地图列表",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 14,
+          "name": "restore-map-result",
+          "description_trans": "恢复备份地图结果",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 15,
+          "name": "cloud-clean-record",
+          "description_trans": "云端清扫记录",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "iid": 1,
+          "name": "clear-map",
+          "description_trans": "清空地图",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 2,
+          "name": "delete-map",
+          "description_trans": "删除地图",
+          "in": [
+            6
+          ],
+          "out": []
+        },
+        {
+          "iid": 3,
+          "name": "set-map",
+          "description_trans": "设置地图",
+          "in": [
+            6
+          ],
+          "out": []
+        },
+        {
+          "iid": 4,
+          "name": "save-map",
+          "description_trans": "保存地图",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 5,
+          "name": "auto-room-partition",
+          "description_trans": "自动分区",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 6,
+          "name": "set-map-name",
+          "description_trans": "设置地图名字",
+          "in": [
+            8
+          ],
+          "out": []
+        },
+        {
+          "iid": 7,
+          "name": "update-properties-data",
+          "description_trans": "更新属性",
+          "in": [],
+          "out": []
+        },
+        {
+          "iid": 8,
+          "name": "restore-map",
+          "description_trans": "恢复地图",
+          "in": [
+            6
+          ],
+          "out": []
+        }
+      ],
+      "events": []
+    },
+    {
+      "iid": 23,
+      "name": "vacuum-standard-map",
+      "description_trans": "扫地机标准地图",
+      "properties": [
+        {
+          "iid": 1,
+          "name": "map-room-info",
+          "description_trans": "房间信息",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 2,
+          "name": "map-object-info",
+          "description_trans": "物体信息",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        },
+        {
+          "iid": 3,
+          "name": "map-carpet-info",
+          "description_trans": "地毯信息",
+          "format": "str",
+          "access": [
+            "read",
+            "notify"
+          ]
+        }
+      ],
+      "actions": [],
+      "events": []
+    }
+  ],
+  "not_included": [
+    "account or device identifiers",
+    "room and household names",
+    "map geometry",
+    "object storage paths",
+    "tokens or signed URLs",
+    "vendor code",
+    "runtime state logs"
+  ]
+}
