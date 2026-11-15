@@ -4,6 +4,7 @@ Run from the repository root. Raw upstream documents stay in ignored local
 storage; the small source ledger records identity, hashes and retrieval gaps.
 """
 from concurrent.futures import ThreadPoolExecutor
+import argparse
 from datetime import datetime, timezone
 import hashlib
 from html.parser import HTMLParser
@@ -53,6 +54,7 @@ CATALOG = [
     ('S34', 'ORB-SLAM3 license', 'https://raw.githubusercontent.com/UZ-SLAMLab/ORB_SLAM3/master/LICENSE', 'license'),
     ('S35', 'Xiaomi Home integration license', 'https://raw.githubusercontent.com/XiaoMi/ha_xiaomi_home/main/LICENSE.md', 'license'),
     ('S36', 'SLAM Toolbox package metadata and license declaration', 'https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/ros2/package.xml', 'license'),
+    ('S37', 'Valetudo MapLayer pixel coordinates and run-length contract', 'https://raw.githubusercontent.com/Hypfer/Valetudo/master/backend/lib/entities/map/MapLayer.js', 'map-format'),
 ]
 
 FALLBACKS = {
@@ -123,6 +125,9 @@ def fetch(item):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', choices=[item[0] for item in CATALOG], help='Fetch only these source IDs')
+    args = parser.parse_args()
     RAW.mkdir(parents=True, exist_ok=True)
     ledger = HERE / 'SOURCES.json'
     previous = {r['id']: r for r in json.loads(ledger.read_text(encoding='utf-8'))['sources']} if ledger.exists() else {}
@@ -131,7 +136,7 @@ def main():
         extracted = RAW / (sid + '.extracted.txt')
         if old and old['status'] == 'retrieved' and extracted.exists() and term not in extracted.read_text(encoding='utf-8').lower():
             old.update(status='identity_mismatch', error='Source identity verification rejected this document')
-    jobs = [item for item in CATALOG if previous.get(item[0], {}).get('status') != 'retrieved']
+    jobs = [item for item in CATALOG if previous.get(item[0], {}).get('status') != 'retrieved' and (not args.ids or item[0] in args.ids)]
     jobs = [(sid, title, FALLBACKS.get(sid, url), topic) for sid, title, url, topic in jobs]
     with ThreadPoolExecutor(max_workers=8) as pool:
         refreshed = list(pool.map(fetch, jobs))
@@ -140,7 +145,7 @@ def main():
         if old:
             record['previous_attempts'] = old.get('previous_attempts', []) + [{k: v for k, v in old.items() if k != 'previous_attempts'}]
         previous[record['id']] = record
-    records = [previous[item[0]] for item in CATALOG]
+    records = [previous.get(item[0], dict(id=item[0], title=item[1], url=item[2], topic=item[3], status='not_requested')) for item in CATALOG]
     ledger.write_text(json.dumps({
         'scope': 'Bounded public primary-source review, not an exhaustive literature census',
         'raw_archive': '.local-deploy/vacuum-mapping-20261115/public-sources (private, ignored)',

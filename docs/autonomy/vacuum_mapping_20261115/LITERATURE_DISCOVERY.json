@@ -1,0 +1,2356 @@
+{
+  "scope": "Five bounded discovery queries, eight ranked metadata hits each; not an exhaustive or screened systematic review",
+  "full_text_evidence": "Use SOURCES.json and the annotated implementation decisions separately",
+  "queries": [
+    {
+      "query": "robot vacuum cleaner SLAM mapping navigation review",
+      "url": "https://api.crossref.org/works?query.bibliographic=robot+vacuum+cleaner+SLAM+mapping+navigation+review&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+      "retrieved_at": "2026-11-15T05:32:15.906282+00:00",
+      "evidence_level": "discovery_metadata_only_not_full_text",
+      "rows_requested": 8,
+      "status": "retrieved",
+      "total_results": 8627222,
+      "items": [
+        {
+          "DOI": "10.22215/etd/2008-08240",
+          "title": [
+            "Autonomous robot navigation based on simultaneous localization and mapping (SLAM), and particle filtering"
+          ],
+          "author": [
+            {
+              "given": "Amirhossein",
+              "family": "Monjazeb",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "URL": "https://doi.org/10.22215/etd/2008-08240",
+          "type": "dissertation"
+        },
+        {
+          "DOI": "10.1109/tgrs.2025.3547292/v2/review1",
+          "title": [
+            "Review for \"Lo-SLAM: Lunar Target-Oriented SLAM Using Object Identification, Relative Navigation, and Multilevel Mapping\""
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                2,
+                5
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/tgrs.2025.3547292/v2/review1",
+          "type": "peer-review"
+        },
+        {
+          "DOI": "10.1109/tgrs.2025.3547292/v1/review2",
+          "title": [
+            "Review for \"Lo-SLAM: Lunar Target-Oriented SLAM Using Object Identification, Relative Navigation, and Multilevel Mapping\""
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                17
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/tgrs.2025.3547292/v1/review2",
+          "type": "peer-review"
+        },
+        {
+          "DOI": "10.1109/tgrs.2025.3547292/v1/review1",
+          "title": [
+            "Review for \"Lo-SLAM: Lunar Target-Oriented SLAM Using Object Identification, Relative Navigation, and Multilevel Mapping\""
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                23
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/tgrs.2025.3547292/v1/review1",
+          "type": "peer-review"
+        },
+        {
+          "DOI": "10.1109/tgrs.2025.3547292/v2/review2",
+          "title": [
+            "Review for \"Lo-SLAM: Lunar Target-Oriented SLAM Using Object Identification, Relative Navigation, and Multilevel Mapping\""
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                2,
+                9
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/tgrs.2025.3547292/v2/review2",
+          "type": "peer-review"
+        },
+        {
+          "DOI": "10.1115/imece2021-70452",
+          "title": [
+            "On the Mapping Problem in SLAM Approaches for Autonomous Robot Navigation"
+          ],
+          "author": [
+            {
+              "given": "Vomsheendhur",
+              "family": "Raju",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "North Dakota State University, Fargo, North Dakota, United States"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Majura F.",
+              "family": "Selekwa",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "North Dakota State University, Fargo, North Dakota, United States"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2021,
+                11,
+                1
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1115/imece2021-70452",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.1109/ickecs61492.2024.10616915",
+          "title": [
+            "Robot Vacuum Cleaner Using SLAM and ROS"
+          ],
+          "author": [
+            {
+              "given": "M",
+              "family": "Arjun",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Adi Shanakara Institute of Engineering and Technology,Dept. of Robotics and Automation,Kalady,Ernakulam,India"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Cliff Andrew",
+              "family": "Oliver",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Adi Shanakara Institute of Engineering and Technology,Dept. of Robotics and Automation,Kalady,Ernakulam,India"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Anju Mary",
+              "family": "Joseph",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Adi Shanakara Institute of Engineering and Technology,Dept. of Robotics and Automation,Kalady,Ernakulam,India"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                4,
+                18
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/ickecs61492.2024.10616915",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.21203/rs.3.rs-2703022/v1",
+          "title": [
+            "Research of origami robot ROS-based SLAM and autonomous navigation"
+          ],
+          "author": [
+            {
+              "given": "Lijuan",
+              "family": "Zhao",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Liaoning Technical University"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Tianyi",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning Technical University"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Zuen",
+              "family": "Shang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning Technical University"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                3,
+                28
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-2703022/v1",
+          "type": "posted-content"
+        }
+      ],
+      "previous_attempts": [
+        {
+          "query": "robot vacuum cleaner SLAM mapping navigation review",
+          "url": "https://api.crossref.org/works?query.bibliographic=robot+vacuum+cleaner+SLAM+mapping+navigation+review&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+          "retrieved_at": "2026-11-15T05:30:14.048233+00:00",
+          "evidence_level": "discovery_metadata_only_not_full_text",
+          "rows_requested": 8,
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 429: Too Many Requests",
+          "items": []
+        }
+      ]
+    },
+    {
+      "query": "occupancy grid autonomous frontier exploration mobile robots",
+      "url": "https://api.crossref.org/works?query.bibliographic=occupancy+grid+autonomous+frontier+exploration+mobile+robots&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+      "retrieved_at": "2026-11-15T05:32:18.266821+00:00",
+      "evidence_level": "discovery_metadata_only_not_full_text",
+      "rows_requested": 8,
+      "status": "retrieved",
+      "total_results": 1404626,
+      "items": [
+        {
+          "DOI": "10.1109/simpar.2016.7862403",
+          "title": [
+            "Autonomous exploration by expected information gain from probabilistic occupancy grid mapping"
+          ],
+          "author": [
+            {
+              "given": "Evan",
+              "family": "Kaufman",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Taeyoung",
+              "family": "Lee",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Zhuming",
+              "family": "Ai",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2016,
+                12
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/simpar.2016.7862403",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.1023/a:1025584807625",
+          "title": [
+            "Learning Occupancy Grid Maps with Forward Sensor Models"
+          ],
+          "author": [
+            {
+              "given": "Sebastian",
+              "family": "Thrun",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2003,
+                9
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1023/a:1025584807625",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1109/compas60761.2024.10795977",
+          "title": [
+            "DiscoverBot: Advancing Autonomous Exploration through Frontier and Informed-RRT* Fusion in Mobile Robots"
+          ],
+          "author": [
+            {
+              "given": "Mir Mohibullah",
+              "family": "Sazid",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Universitat de Girona,EMJM in Intelligent Field Robotic Systems(IF RoS),Girona,Spain"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Syma",
+              "family": "Afsha",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Universitat de Girona,EMJM in Intelligent Field Robotic Systems(IF RoS),Girona,Spain"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                9,
+                25
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/compas60761.2024.10795977",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.1002/3527604405.ch11",
+          "title": [
+            "Algorithm Evaluation of Robot‐Vision Systems for Autonomous Robots"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2004,
+                12,
+                14
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1002/3527604405.ch11",
+          "type": "other"
+        },
+        {
+          "DOI": "10.3390/e20060456",
+          "title": [
+            "Autonomous Exploration and Mapping with RFS Occupancy-Grid SLAM"
+          ],
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0001-8561-4412",
+              "authenticated-orcid": false,
+              "given": "Branko",
+              "family": "Ristic",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "School of Engineering, RMIT University, Melbourne VIC 3000, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Jennifer L.",
+              "family": "Palmer",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Aerospace Division, Defence Science and Technology Group, Fishermans Bend VIC 3207, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2018,
+                6,
+                12
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.3390/e20060456",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1061/9780784483893.133",
+          "title": [
+            "Autonomous Building Occupancy Monitoring Using Mobile Robots"
+          ],
+          "author": [
+            {
+              "given": "Hafiz",
+              "family": "Oyediran",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                },
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                },
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Matthew",
+              "family": "Peavy",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                },
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                },
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Kyungki",
+              "family": "Kim",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                },
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                },
+                {
+                  "name": "Univ. of Nebraska–Lincoln"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2022,
+                5,
+                24
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1061/9780784483893.133",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.1016/j.ifacol.2023.10.827",
+          "title": [
+            "Evaluation of optimisation techniques on the performance of an on-line MPC controller in an occupancy grid for autonomous mobile robots"
+          ],
+          "author": [
+            {
+              "given": "Tobias",
+              "family": "Sprodowski",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Joe",
+              "family": "Rode",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Michael",
+              "family": "Freitag",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1016/j.ifacol.2023.10.827",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1109/ecmr.2017.8098673",
+          "title": [
+            "Semantical occupancy grid mapping framework"
+          ],
+          "author": [
+            {
+              "given": "Timo",
+              "family": "Korthals",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Julian",
+              "family": "Exner",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Thomas",
+              "family": "Schopping",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Marc",
+              "family": "Hesse",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2017,
+                9
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/ecmr.2017.8098673",
+          "type": "proceedings-article"
+        }
+      ],
+      "previous_attempts": [
+        {
+          "query": "occupancy grid autonomous frontier exploration mobile robots",
+          "url": "https://api.crossref.org/works?query.bibliographic=occupancy+grid+autonomous+frontier+exploration+mobile+robots&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+          "retrieved_at": "2026-11-15T05:30:14.049919+00:00",
+          "evidence_level": "discovery_metadata_only_not_full_text",
+          "rows_requested": 8,
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 429: Too Many Requests",
+          "items": []
+        }
+      ]
+    },
+    {
+      "query": "indoor complete coverage path planning mobile robot survey",
+      "url": "https://api.crossref.org/works?query.bibliographic=indoor+complete+coverage+path+planning+mobile+robot+survey&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+      "retrieved_at": "2026-11-15T05:30:14.050445+00:00",
+      "evidence_level": "discovery_metadata_only_not_full_text",
+      "rows_requested": 8,
+      "status": "retrieved",
+      "total_results": 2747050,
+      "items": [
+        {
+          "DOI": "10.1061/9780784484562.033",
+          "title": [
+            "Design and Simulation of Complete Coverage Indoor Robot Path Planning Algorithm Based on BIM"
+          ],
+          "author": [
+            {
+              "given": "Jiqiang",
+              "family": "Hu",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "CITIC Digital Intelligence (Wuhan) Technology Co., Ltd.",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Rongjiang",
+              "family": "Huang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CITIC Digital Intelligence (Wuhan) Technology Co., Ltd.",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Qiang",
+              "family": "Zeng",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CITIC Digital Intelligence (Wuhan) Technology Co., Ltd.",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Shipeng",
+              "family": "Luo",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CITIC Digital Intelligence (Wuhan) Technology Co., Ltd.",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Xianhe",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "CITIC Digital Intelligence (Wuhan) Technology Co., Ltd.",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                },
+                {
+                  "name": "Wuhan Univ. of Technology",
+                  "place": [
+                    "China"
+                  ]
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2022,
+                12,
+                15
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1061/9780784484562.033",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.1108/01439911211249779",
+          "title": [
+            "Complete coverage path planning of mobile robots for humanitarian demining"
+          ],
+          "author": [
+            {
+              "given": "Marija",
+              "family": "Đakulovic",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Ivan",
+              "family": "Petrovic",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2012,
+                8,
+                17
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1108/01439911211249779",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1109/tase.2025.3555042/mm2",
+          "title": [
+            "Complete coverage path planning for omnidirectional self-reconfigurable cleaning robot using aGBNN_supp1-3555042.pptx"
+          ],
+          "author": [
+            {
+              "given": "Abdullah Aamir",
+              "family": "Hayat",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "URL": "https://doi.org/10.1109/tase.2025.3555042/mm2",
+          "type": "component"
+        },
+        {
+          "DOI": "10.1109/tase.2025.3555042/mm1",
+          "title": [
+            "Complete coverage path planning for omnidirectional self-reconfigurable cleaning robot using aGBNN_supp2-3555042.mp4"
+          ],
+          "author": [
+            {
+              "given": "Abdullah Aamir",
+              "family": "Hayat",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "URL": "https://doi.org/10.1109/tase.2025.3555042/mm1",
+          "type": "component"
+        },
+        {
+          "DOI": "10.1109/wcica.2006.1713719",
+          "title": [
+            "A Complete Coverage Path Planning Method for Mobile Robot in Uncertain Environments"
+          ],
+          "author": [
+            {
+              "family": "Xuena Qiu",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "family": "Jiatao Song",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "family": "Xuejun Zhang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "family": "Shirong Liu",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2006
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/wcica.2006.1713719",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.3182/20110828-6-it-1002.03400",
+          "title": [
+            "Complete Coverage D* Algorithm for Path Planning of a Floor-Cleaning Mobile Robot"
+          ],
+          "author": [
+            {
+              "given": "Marija",
+              "family": "Dakulović",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Sanja",
+              "family": "Horvatić",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Ivan",
+              "family": "Petrović",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2011,
+                1
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.3182/20110828-6-it-1002.03400",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.5220/0013455100003970",
+          "title": [
+            "Embodied AI in Mobile Robot Simulation with EyeSim: Coverage Path Planning with Large Language Models"
+          ],
+          "author": [
+            {
+              "given": "Xiangrui",
+              "family": "Kong",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Department of Electrical, Electronic and Computer Engineering, University of Western Australia, Crawley, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Wenxiao",
+              "family": "Zhang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Department of Computer Science and Software Engineering, University of Western Australia, Crawley, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Jin",
+              "family": "Hong",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Department of Computer Science and Software Engineering, University of Western Australia, Crawley, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Thomas",
+              "family": "Bräunl",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Department of Electrical, Electronic and Computer Engineering, University of Western Australia, Crawley, Australia"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.5220/0013455100003970",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.3390/s21113709",
+          "title": [
+            "Collaborative Complete Coverage and Path Planning for Multi-Robot Exploration"
+          ],
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0002-6476-6625",
+              "authenticated-orcid": false,
+              "given": "Huei-Yung",
+              "family": "Lin",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Department of Electrical Engineering, Advanced Institute of Manufacturing with High-Tech Innovation, National Chung Cheng University, Chiayi 621, Taiwan"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Yi-Chun",
+              "family": "Huang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Department of Electrical Engineering, National Chung Cheng University, Chiayi 621, Taiwan"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2021,
+                5,
+                26
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.3390/s21113709",
+          "type": "journal-article"
+        }
+      ]
+    },
+    {
+      "query": "lidar visual SLAM dynamic indoor environment review",
+      "url": "https://api.crossref.org/works?query.bibliographic=lidar+visual+SLAM+dynamic+indoor+environment+review&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+      "retrieved_at": "2026-11-15T05:32:20.561898+00:00",
+      "evidence_level": "discovery_metadata_only_not_full_text",
+      "rows_requested": 8,
+      "status": "retrieved",
+      "total_results": 10317304,
+      "items": [
+        {
+          "DOI": "10.21203/rs.3.rs-4932875/v1",
+          "title": [
+            "Research on a novel SLAM method fusion of vision and LIDAR in indoor dynamic environment"
+          ],
+          "author": [
+            {
+              "given": "Rui",
+              "family": "Li",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Xi'an University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Shiqiang",
+              "family": "Yang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Mingjing",
+              "family": "Li",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Jiaxiang",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                1
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-4932875/v1",
+          "type": "posted-content"
+        },
+        {
+          "DOI": "10.2139/ssrn.4545588",
+          "title": [
+            "Research on SLAM Fusion of Vision and LIDAR in Indoor Dynamic Environment"
+          ],
+          "author": [
+            {
+              "given": "Rui",
+              "family": "Li",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Wei",
+              "family": "Zheng",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Shiqiang",
+              "family": "Yang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Guodong",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yuxin",
+              "family": "Zhu",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.2139/ssrn.4545588",
+          "type": "posted-content"
+        },
+        {
+          "DOI": "10.1109/ipin62893.2024.10786137",
+          "title": [
+            "IBLI-SLAM: Intensity-Based LiDAR-Inertial SLAM for Dynamic Environments"
+          ],
+          "author": [
+            {
+              "given": "Liuyin",
+              "family": "Ju",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Aerospace Information Research Institute, Chinese Academy of Sciences University of Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Hang",
+              "family": "Zhao",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Aerospace Information Research Institute, Chinese Academy of Sciences University of Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Xinchun",
+              "family": "Ji",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Aerospace Information Research Institute, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Dongyan",
+              "family": "Wei",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Aerospace Information Research Institute, Chinese Academy of Sciences,Beijing,China"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                10,
+                14
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/ipin62893.2024.10786137",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.21203/rs.3.rs-6945178/v1",
+          "title": [
+            "Deep learning-based visual SLAM method for indoor dynamic scenes"
+          ],
+          "author": [
+            {
+              "given": "jiarui",
+              "family": "qin",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "yugang",
+              "family": "wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "xueli",
+              "family": "cong",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "liyao",
+              "family": "zhou",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                7,
+                14
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-6945178/v1",
+          "type": "posted-content"
+        },
+        {
+          "DOI": "10.21203/rs.3.rs-6259914/v1",
+          "title": [
+            "Lidar-Inertial SLAM Method Integrated with Visual QR Codes for Indoor Mobile Robots"
+          ],
+          "author": [
+            {
+              "given": "Lin",
+              "family": "Yang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Xi'an Aerospace Automation Co., Ltd"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yi",
+              "family": "Tao",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an Aerospace Automation Co., Ltd"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Mohan",
+              "family": "Li",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an Aerospace Automation Co., Ltd"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Juncheng",
+              "family": "Zhou",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an Aerospace Automation Co., Ltd"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Kan",
+              "family": "Jiao",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an Aerospace Automation Co., Ltd"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Zhiwei",
+              "family": "Li",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Xi'an Aerospace Automation Co., Ltd"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                5,
+                2
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-6259914/v1",
+          "type": "posted-content"
+        },
+        {
+          "DOI": "10.21203/rs.3.rs-8981127/v1",
+          "title": [
+            " A Deep Learning-Based Visual SLAM Approach for Indoor Dynamic Scenes"
+          ],
+          "author": [
+            {
+              "given": "jiarui",
+              "family": "qin",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "yugang",
+              "family": "wang",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "xueli",
+              "family": "cong",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "liyao",
+              "family": "zhou",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Liaoning University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                30
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-8981127/v1",
+          "type": "posted-content"
+        },
+        {
+          "DOI": "10.21203/rs.3.rs-4404777/v1",
+          "title": [
+            "WITHDRAWN: Research on Enhanced Visual SLAM Loop Closure Detection Algorithm in Indoor Dynamic Scenes"
+          ],
+          "author": [
+            {
+              "given": "Lu",
+              "family": "Wang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Zhongyuan University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Chao",
+              "family": "Hu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongyuan University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Xiaoxia",
+              "family": "Lu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongyuan University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                5,
+                23
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-4404777/v1",
+          "type": "posted-content"
+        },
+        {
+          "DOI": "10.21203/rs.3.rs-4404777/v2",
+          "title": [
+            "WITHDRAWN: Research on Enhanced Visual SLAM Loop Closure Detection Algorithm in Indoor Dynamic Scenes"
+          ],
+          "author": [
+            {
+              "given": "Lu",
+              "family": "Wang",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Zhongyuan University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Chao",
+              "family": "Hu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongyuan University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Xiaoxia",
+              "family": "Lu",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "Zhongyuan University of Technology"
+                }
+              ],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                8,
+                16
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.21203/rs.3.rs-4404777/v2",
+          "type": "posted-content"
+        }
+      ],
+      "previous_attempts": [
+        {
+          "query": "lidar visual SLAM dynamic indoor environment review",
+          "url": "https://api.crossref.org/works?query.bibliographic=lidar+visual+SLAM+dynamic+indoor+environment+review&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+          "retrieved_at": "2026-11-15T05:30:14.051456+00:00",
+          "evidence_level": "discovery_metadata_only_not_full_text",
+          "rows_requested": 8,
+          "status": "unavailable",
+          "error": "HTTPError: HTTP Error 429: Too Many Requests",
+          "items": []
+        }
+      ]
+    },
+    {
+      "query": "robot vacuum cleaner multi floor map room segmentation",
+      "url": "https://api.crossref.org/works?query.bibliographic=robot+vacuum+cleaner+multi+floor+map+room+segmentation&rows=8&select=DOI%2Ctitle%2Cauthor%2Cpublished%2CURL%2Ctype",
+      "retrieved_at": "2026-11-15T05:30:14.052457+00:00",
+      "evidence_level": "discovery_metadata_only_not_full_text",
+      "rows_requested": 8,
+      "status": "retrieved",
+      "total_results": 2445339,
+      "items": [
+        {
+          "DOI": "10.55041/ijsrem67940",
+          "title": [
+            "Solar-Powered Vacuum Cleaner and Floor Cleaning Robot: A Review of Energy-Efficient Robotic Cleaning Systems"
+          ],
+          "author": [
+            {
+              "given": "Swati Laxman",
+              "family": "Shinge",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                10
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.55041/ijsrem67940",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1109/smartcities4.056956.2023.10525912",
+          "title": [
+            "Efficient Room Plan Navigation for Robot Vacuum Cleaner Using vSLAM Algorithms"
+          ],
+          "author": [
+            {
+              "given": "Ibrahim",
+              "family": "Ayman",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "German University in Cairo,Faculty of Information Engineering and Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Nouran",
+              "family": "Waleed",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "German University in Cairo,Faculty of Information Engineering and Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Tallal",
+              "family": "El-Shabrawy",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "German University in Cairo,Faculty of Information Engineering and Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            },
+            {
+              "given": "Mohamed",
+              "family": "Ashour",
+              "sequence": "additional",
+              "affiliation": [
+                {
+                  "name": "German University in Cairo,Faculty of Information Engineering and Technology"
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                10,
+                22
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1109/smartcities4.056956.2023.10525912",
+          "type": "proceedings-article"
+        },
+        {
+          "DOI": "10.3724/sp.j.1218.2010.00171",
+          "title": [
+            "Disparity Image Plane Segmentation Based Obstacle Map Construction for Mobile Robot"
+          ],
+          "author": [
+            {
+              "given": "Xinkun",
+              "family": "SONG",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Wanmi",
+              "family": "CHEN",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Yulin",
+              "family": "XU",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Lei",
+              "family": "ZHANG",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2010,
+                9,
+                16
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.3724/sp.j.1218.2010.00171",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.56726/irjmets41752",
+          "title": [
+            "SEMI AUTOMATED FLOOR VACUUM CLEANER"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                6,
+                24
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.56726/irjmets41752",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.55248/gengpi.5.0424.1093",
+          "title": [
+            "Automatic Vacuum Cleaner Robot"
+          ],
+          "author": [
+            {
+              "given": "Abhishek",
+              "family": "Solanki",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Ved",
+              "family": "Chinchay",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Shifa",
+              "family": "Khan",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Shruti",
+              "family": "Pandya",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Asst. Prof. Shikha",
+              "family": "Malik",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2024,
+                4,
+                11
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.55248/gengpi.5.0424.1093",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1108/ir.1998.04925faf.008",
+          "title": [
+            "A robotic vacuum cleaner"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                1998,
+                12,
+                1
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1108/ir.1998.04925faf.008",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1108/ir.1998.04925eab.009",
+          "title": [
+            "A robotic vacuum cleaner"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                1998,
+                10,
+                1
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1108/ir.1998.04925eab.009",
+          "type": "journal-article"
+        },
+        {
+          "DOI": "10.1126/scirobotics.aei9833",
+          "title": [
+            "Is your robot vacuum cleaner spying on you?"
+          ],
+          "author": [
+            {
+              "ORCID": "https://orcid.org/0000-0003-0774-4312",
+              "authenticated-orcid": true,
+              "given": "Robin R.",
+              "family": "Murphy",
+              "sequence": "first",
+              "affiliation": [
+                {
+                  "name": "Texas A&amp;M University, College Station, TX 77843, USA."
+                }
+              ],
+              "role": [
+                {
+                  "vocabulary": "crossref",
+                  "role": "author"
+                }
+              ]
+            }
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                6,
+                24
+              ]
+            ]
+          },
+          "URL": "https://doi.org/10.1126/scirobotics.aei9833",
+          "type": "journal-article"
+        }
+      ]
+    }
+  ]
+}

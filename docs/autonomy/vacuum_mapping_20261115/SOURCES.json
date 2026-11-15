@@ -728,6 +728,19 @@
       "sha256": "18af5859ed017a229ea7a91b097edb1060b82addef9c978a69e926e5c2e03931",
       "content_type": "text/plain; charset=utf-8",
       "opening_excerpt": "<?xml version=\"1.0\"?> <?xml-model href=\"http://download.ros.org/schema/package_format3.xsd\" schematypens=\"http://www.w3.org/2001/XMLSchema\"?> <package format=\"3\"> <name>slam_toolbox</name> <version>2.10.0</version> <description> This package provides a sped up improved slam karto with updated SDK and visualization and modification toolsets </description> <maintainer email=\"stevenmacenski@gmail.com\">Steve Macenski</maintainer> <maintainer email=\"michel@ekumenlabs.com\">Michel Hidalgo</maintainer> <license>LGPL-2.1-only</license> <author>Steve Macenski</author> <buildtool_depend>ament_cmake</buildtool_depend> <build_depend>pluginlib</build_depen"
+    },
+    {
+      "id": "S37",
+      "title": "Valetudo MapLayer pixel coordinates and run-length contract",
+      "url": "https://raw.githubusercontent.com/Hypfer/Valetudo/master/backend/lib/entities/map/MapLayer.js",
+      "topic": "map-format",
+      "retrieved_at": "2026-11-15T05:30:16.676415+00:00",
+      "status": "retrieved",
+      "final_url": "https://raw.githubusercontent.com/Hypfer/Valetudo/master/backend/lib/entities/map/MapLayer.js",
+      "bytes": 6506,
+      "sha256": "bf8cc5ae949a588fe94e37ca2e14799c7ff71d0a5e7988e208aecf270f1931fd",
+      "content_type": "text/plain; charset=utf-8",
+      "opening_excerpt": "const SerializableEntity = require(\"../SerializableEntity\"); /** * A map layer is an array of pixels in a 2d space * Examples include Walls, Floor and Rooms * * Pixels were originally stored in a 1-dimensional array * e.g. [17,24,18,25] would be two pixels [17,24] and [18,25] * * To save memory and bandwidth, CompressedPixels are stored in a RLE fashion * [37, 5, 3] maps to the three plain pixels [37,5], [38,5] and [39,5] * * A Map can have multiple map layers. * All of them are required to use the same coordinate space as well as pixel size. * * Any viewport pixel shifting has to be done beforehand * Pixel coordinates must be integers */ cla"
     }
   ]
 }

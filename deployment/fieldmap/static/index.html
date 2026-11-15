@@ -7,12 +7,14 @@
   <link rel="stylesheet" href="/fieldmap/assets/memory.css"><script src="/fieldmap/assets/memory.js" defer></script>
   <link rel="stylesheet" href="/fieldmap/assets/phone-space.css"><script type="module" src="/fieldmap/assets/phone-space.js"></script>
   <link rel="stylesheet" href="/fieldmap/assets/surround.css"><script type="module" src="/fieldmap/assets/surround.js"></script>
+  <link rel="stylesheet" href="/fieldmap/assets/metric.css"><script type="module" src="/fieldmap/assets/metric.js"></script>
 </head>
 <body class="studio-embedded">
 <main>
   <section class="intro"><div><p class="eyebrow">SPACE / OBSERVATION ARCHIVE <span id="surveyNumber">01</span></p><h1>空间，留有迹<span class="accent">。</span></h1><p id="summary" class="summary">正在读取这次环境观察……</p></div><div class="intro-actions"><span id="liveBadge" class="connection">正在连接</span><div class="mode-stamp"><span class="lock-icon">▣</span><div>停车观察<span>动作状态以实时遥测为准</span></div></div><button class="stop" id="stopButton">■ 停止动作</button></div></section>
   <section class="telemetry" aria-label="机器人实时状态"><div><span class="tiny-dot" id="motorDot"></span><span>电机</span><strong id="motors">— / 16</strong></div><div><span>轮组</span><strong id="wheels">状态待确认</strong></div><div><span>手柄</span><strong id="pad">—</strong></div><div><span>电源</span><strong id="voltage">—</strong></div><div><span>最高温度</span><strong id="temperature">—</strong></div><div class="telemetry-at" id="statusTime">等待遥测</div></section>
   <div id="notice" class="notice" role="status" hidden></div>
+  <section class="metric-workspace" id="metricWorkspace" aria-label="本地建图与算法回放"></section>
   <section class="surround-workspace" aria-labelledby="surroundTitle">
     <header class="surround-heading"><div><p class="eyebrow">SURROUND / PERSISTENT SPATIAL ATLAS</p><h2 id="surroundTitle">全周环视 · 空间地图</h2><p>先看完整方位，再沿缺口补采。照片、空间估计与未观察区域各有依据。</p></div><div class="surround-progress"><strong id="surroundDegrees">—°</strong><span>已拍方位 / 360°</span></div><button id="surroundRefresh">更新地图</button></header>
     <div class="surround-selectors"><label>环视驻点<select id="surroundScan"><option value="">正在读取环视记录…</option></select></label><label>俯视空间来源<select id="surroundModel"><option value="">正在读取AR空间…</option></select></label></div>

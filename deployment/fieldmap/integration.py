@@ -62,6 +62,8 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     app.state.spatial_journal=journal
     surround=Surround(Path(data_dir)/'surround',lambda:app.state.phone_evidence,history_fieldtests_root)
     app.state.surround=surround
+    from .metric_api import install as install_metric
+    install_metric(app, data_dir=data_dir, allowed_origins=allowed_origins)
     router = APIRouter(prefix=API)
 
     async def body(request):
