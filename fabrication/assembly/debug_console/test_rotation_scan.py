@@ -116,3 +116,39 @@ def test_scan_failure_cannot_continue_to_next_step(runtime):
     agent.start([{'op':'rotate'},{'op':'wait','seconds':0}],True,background=False)
     assert agent.error and len(agent.results)==1 and agent.results[0]['status']=='failed'
     with pytest.raises(ValueError):agent.start([{'op':'rotate','v':1}],True,background=False)
+
+
+def test_trace_distinguishes_timer_expiry_from_delayed_zero_writes(runtime):
+    p=wheels(runtime);busy=threading.Event();worker=None
+    def hold_io():
+        with runtime.io:
+            busy.set()
+            time.sleep(.16)
+    def check():
+        nonlocal worker
+        if not runtime.io._is_owned() and word(p.regs[9],46) and worker is None:
+            worker=threading.Thread(target=hold_io)
+            worker.start()
+            assert busy.wait(.5)
+    result=bounded_rotate(runtime,check,duration=.06)
+    worker.join(timeout=1)
+    trace=result['control_trace']
+    requested=next(row['t_ms'] for row in trace if row['phase']=='stop_requested')
+    acquired=next(row['t_ms'] for row in trace if row['phase']=='stop_io_acquired')
+    assert acquired-requested>50
+    assert {row['motor'] for row in trace if row['phase']=='zero_ack'}=={9,10}
+    assert all(word(p.regs[i],46)==0 and p.regs[i][40]==0 for i in (9,10))
+
+
+def test_trace_survives_a_partial_command_write(runtime):
+    p=wheels(runtime);original=p.write
+    def fail(packet):
+        if packet[2]==10 and packet[4]==3 and packet[5]==46 and any(packet[6:8]):
+            raise OSError('lost ACK')
+        return original(packet)
+    p.write=fail
+    with pytest.raises(OSError,match='lost ACK') as caught:
+        bounded_rotate(runtime,lambda:None,duration=.06)
+    trace=caught.value.rotation['control_trace']
+    assert any(row['phase']=='command_error' and row['motor']==10 for row in trace)
+    assert {row['motor'] for row in trace if row['phase']=='zero_ack'}=={9,10}

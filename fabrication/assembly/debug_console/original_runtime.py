@@ -115,7 +115,7 @@ class OriginalRuntime(ControlRuntime):
             return result
 
     def scan(self):
-        super().scan()
+        if super().scan() is False:return False
         remap_motor_labels(self.report,self.settings)
         if getattr(self,'manual_calibration',None):self.manual_calibration.observe(self.report)
         self.publish_operator_state(refresh_setup=True)
@@ -1113,6 +1113,8 @@ class OriginalRuntime(ControlRuntime):
 
 
 class PreviewRuntime(OriginalRuntime):
+    def probe_motors(self,keys):raise ValueError('隔离预览不访问串口')
+
     """Separate port preview while the user's existing hardware session stays alive."""
     def _monitor(self):
         while not self.stop_event.is_set():

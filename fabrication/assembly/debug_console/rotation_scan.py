@@ -125,6 +125,26 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     best=0;best_t=0.
     glitches=[]
     other_glitches=0
+    control_trace=[]
+    stopping=threading.Event()
+    last_rotation_sample=0.
+    applied={}
+    # Python 3.11's monotonic clock can quantize Windows writes to 0ms.
+    clock=time.perf_counter
+
+    def mark(phase, **values):
+        control_trace.append({'phase':phase,
+                              't_ms':round((clock()-started)*1000,3),
+                              **values})
+
+    def drive_write(port, motor, address, value, length, phase):
+        mark(phase+'_begin', motor=motor, address=address, value=value)
+        try:
+            write_register(port, motor, address, value, length)
+        except BaseException as exc:
+            mark(phase+'_error', motor=motor, error=str(exc))
+            raise
+        mark(phase+'_ack', motor=motor, address=address, value=value)
 
     def stable(rows):
         # STS speed is quantized in 50-count steps: idle encoder jitter by one
@@ -141,18 +161,21 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
 
     def stop():
         nonlocal drive_elapsed
+        stopping.set()
         with stop_lock:
             if stopped.is_set():
                 return
             if started is not None:
-                drive_elapsed=time.monotonic()-started
+                drive_elapsed=clock()-started
+                mark('stop_requested')
             try:
                 with runtime.io:
+                    mark('stop_io_acquired')
                     # Both wheels are attempted even after a lost acknowledgement.
                     port = runtime.session.ports['COM4']
                     for motor in (9, 10):
                         try:
-                            write_register(port, motor, 46, 0, 2)
+                            drive_write(port, motor, 46, 0, 2, 'zero')
                         except Exception as exc:
                             failures.append(f'{motor}: {exc}')
                     # Wheel-mode zero speed still hunts by a few encoder counts
@@ -160,13 +183,13 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                     # remove wheel torque between pulses; arms remain held.
                     for motor in (9, 10):
                         try:
-                            write_register(port, motor, 40, 0, 1)
+                            drive_write(port, motor, 40, 0, 1, 'release')
                         except Exception as exc:
                             failures.append(f'{motor} release: {exc}')
                     runtime.wheels_commanded = False
                     runtime.wheel_goals = [0, 0]
                     runtime.engine.wheels = [0, 0]
-                    zero_at = time.monotonic()
+                    zero_at = clock()
                     # A zero command is immediate; measured speed may still be
                     # decelerating. Require a stable encoder window within 800ms,
                     # never infer rest from the command register alone.
@@ -181,14 +204,14 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                                     failures.append(f'{motor}: 停车目标回读非零')
                             except Exception as exc:
                                 failures.append(f'{motor}: {exc}')
-                        readbacks.append({'after_zero_ms': round((time.monotonic()-zero_at)*1000),
+                        readbacks.append({'after_zero_ms': round((clock()-zero_at)*1000),
                                           'wheels': dict(final)})
                         if failures:
                             break
                         recent=[row for row in readbacks if readbacks[-1]['after_zero_ms']-row['after_zero_ms']<=240]
                         if stable(recent):
                             break
-                        if time.monotonic()-zero_at >= .8:
+                        if clock()-zero_at >= .8:
                             failures.append('800ms内未取得200ms的轮组编码器静止证据')
                             break
                         time.sleep(.025)
@@ -202,6 +225,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             except Exception as exc:
                 failures.append(str(exc))
             finally:
+                runtime.bounded_wheel_deadline=None
                 stopped.set()
 
     try:
@@ -227,13 +251,15 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             for motor in (9,10):
                 write_register(port,motor,46,0,2)
                 write_register(port,motor,40,0,1)
-            check_start=time.monotonic();rows=[]
-            while time.monotonic()-check_start<.3:
+            check_start=clock();rows=[]
+            while True:
                 check_abort();entry={}
                 for motor in (9,10):
                     reg=read_registers(port,motor)
                     entry[motor]={'position':word(reg,56),'goal_velocity':word(reg,46),'speed':word(reg,58),'torque':reg[40]}
-                rows.append({'after_zero_ms':round((time.monotonic()-check_start)*1000),'wheels':entry})
+                rows.append({'after_zero_ms':round((clock()-check_start)*1000),'wheels':entry})
+                if clock()-check_start>=.3 and stable(rows):break
+                if clock()-check_start>=.8:break
                 time.sleep(.025)
             if not stable(rows):
                 raise ValueError('轮组编码器尚未稳定，未发送旋转')
@@ -252,31 +278,41 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                 raise ValueError('拒绝非直行的轮速组合' if advance else '拒绝非原地旋转的轮速组合')
             timer = threading.Timer(duration, stop)
             timer.daemon = True
-            started = time.monotonic()
+            started = clock()
+            runtime.bounded_wheel_deadline=started+duration
+            mark('deadline_armed', requested_duration_s=duration)
             timer.start()  # Expiry exists before the first nonzero write.
             for motor in (9, 10):
                 check_abort()
-                if time.monotonic()-started >= duration:
+                if clock()-started >= duration:
                     raise RuntimeError('写入轮速前脉冲已过期')
-                write_register(port, motor, 40, 1, 1)
-                write_register(port, motor, 46, encode_velocity(command[motor]), 2)
+                drive_write(port, motor, 40, 1, 1, 'enable')
+                if stopping.is_set() or clock()-started>=duration:
+                    raise RuntimeError('轮组使能后脉冲已过期，未写入新轮速')
+                drive_write(port, motor, 46, encode_velocity(command[motor]), 2, 'command')
             runtime.wheels_commanded = True
             runtime.wheel_goals = [command[9], command[10]]
+            applied=dict(command)
     except BaseException as exc:
         # Release the serial lock before joining the independent expiry path.
         if timer is not None:
             stop()
             timer.cancel()
-        if glitches:
-            exc.rotation={'wheel_start_raw':before,'read_glitches':glitches,'readbacks':readbacks}
+        if glitches or control_trace:
+            exc.rotation={'wheel_start_raw':before,'read_glitches':glitches,'readbacks':readbacks,
+                          'control_trace':control_trace}
         raise
     try:
         while not stopped.wait(.015):
             check_abort()
-            if target_counts is not None:
+            if clock()-started>duration+1.2:
+                raise RuntimeError('观察脉冲停车超时')
+            if target_counts is not None or not advance:
+                if stopping.is_set():continue
+                if not advance and clock()-last_rotation_sample<.05:continue
                 with runtime.io:
-                    if stopped.is_set():break
-                    progress={}
+                    if stopping.is_set() or clock()-started>=duration:continue
+                    progress={};powered={}
                     for motor in (9,10):
                         reg=read_registers(runtime.session.ports['COM4'],motor)
                         other_ok=lambda r:r[33]==1 and r[40]==1 and not r[65] and 11.5<=r[62]/10<=12.6
@@ -284,7 +320,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                             reg, lambda: read_registers(runtime.session.ports['COM4'],motor), 45,
                             other_ok=other_ok, check_abort=check_abort)
                         if temperature_check:
-                            glitches.append({'t':round(time.monotonic()-started,3),'motor':motor,**temperature_check})
+                            glitches.append({'t':round(clock()-started,3),'motor':motor,**temperature_check})
                         bad=lambda r:not other_ok(r) or not normal_temperature(r[63],45)
                         if not other_ok(reg):
                             # Preserve the existing bounded recovery for non-temperature faults.
@@ -292,17 +328,40 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                             reg=read_registers(runtime.session.ports['COM4'],motor)
                             if not bad(reg):
                                 other_glitches+=1
-                                glitches.append({'kind':'other','t':round(time.monotonic()-started,3),'motor':motor,'first':first,'reread':list(reg)})
+                                glitches.append({'kind':'other','t':round(clock()-started,3),'motor':motor,'first':first,'reread':list(reg)})
                                 if other_glitches>3:
                                     raise RuntimeError('行进中轮组读数反复异常，已停')
                         if bad(reg):
                             fault={'motor':motor,'registers':list(reg),'position':word(reg,56),
                                    'mode':reg[33],'torque':reg[40],'status':reg[65],
                                    'temperature':reg[63],'voltage':reg[62]/10,'glitches':glitches}
-                            raise RuntimeError(f'直行中轮{motor}状态异常：mode={reg[33]}, torque={reg[40]}, '
+                            raise RuntimeError(f'行进中轮{motor}状态异常：mode={reg[33]}, torque={reg[40]}, '
                                                f'status={reg[65]}, temperature={reg[63]}, voltage={reg[62]/10}')
                         progress[motor]=((word(reg,56)-before[motor]+2048)%4096-2048)*(1 if command[motor]>0 else -1)
-                travel_trace.append({'t':round(time.monotonic()-started,3),'counts':progress})
+                        powered[motor]={'position':word(reg,56),'speed':word(reg,58),
+                                        'goal_velocity':word(reg,46),'load_raw':word(reg,60),
+                                        'torque':reg[40],'status':reg[65],
+                                        'temperature':reg[63],'voltage':reg[62]/10,
+                                        't':round(clock()-started,6)}
+                    travel_trace.append({'t':round(clock()-started,3),'counts':progress,'wheels':powered})
+                    if not advance:
+                        last_rotation_sample=clock()
+                        if (min(progress.values()) < -4 or max(progress.values())>130
+                                or abs(progress[9]-progress[10])>max(35,.30*max(progress.values()))):
+                            raise RuntimeError('旋转中轮位反向、不对称或超限，已停')
+                        # Only slow the leading wheel. Never increase the slow
+                        # wheel's speed, extend expiry, or relax final guards.
+                        for motor,other in ((9,10),(10,9)):
+                            lead=max(0,progress[motor]-progress[other]-2)
+                            desired=(1 if command[motor]>0 else -1)*max(0,abs(command[motor])-4*lead)
+                            if abs(desired-applied[motor])>=8:
+                                if stopping.is_set() or clock()-started>=duration:break
+                                drive_write(runtime.session.ports['COM4'],motor,46,
+                                            encode_velocity(desired),2,'balance')
+                                applied[motor]=desired
+                        runtime.wheel_goals=[applied[9],applied[10]]
+                        runtime.engine.wheels=list(runtime.wheel_goals)
+                if not advance:continue
                 if min(progress.values()) < -4 or abs(progress[9]-progress[10]) > max(35,.25*max(progress.values())):
                     raise RuntimeError('直行中轮位反向或不对称，已停')
                 # Contact stop: once moving, both wheels must keep gaining. A stall
@@ -323,18 +382,19 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                         blocked={'reason':reason,'t':travel_trace[-1]['t'],'counts':progress}
                         stop()
                         break
-                if time.monotonic()-started>1.2 and min(progress.values())<2:
+                if clock()-started>1.2 and min(progress.values())<2:
                     raise RuntimeError('直行没有取得双轮有效进展，已停')
                 if max(progress.values())>=target_counts-10:
                     reached=True;stop()
-            if time.monotonic()-started > duration+1.2:
+            if clock()-started > duration+1.2:
                 raise RuntimeError('观察脉冲停车超时')
         check_abort()
     except BaseException as exc:
         stop()
         exc.rotation={'travel_trace':travel_trace,'readbacks':readbacks,
                       'target_counts':target_counts,'failures':failures,
-                      'wheel_start_raw':before,'fault':fault,'read_glitches':glitches}
+                      'wheel_start_raw':before,'fault':fault,'read_glitches':glitches,
+                      'control_trace':control_trace}
         raise
     finally:
         stop()
@@ -344,7 +404,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     stop_evidence = {'wheel_delta_raw': deltas, 'stop_readback': final, 'readbacks': readbacks,
                      'travel_trace': travel_trace, 'target_counts': target_counts,
                      'command_raw': command, 'duration_s': drive_elapsed, 'read_glitches': glitches,
-                     'failures': failures}
+                     'failures': failures, 'control_trace':control_trace}
     if failures:
         error = RuntimeError('扫描停车失败：'+'; '.join(failures))
         error.rotation = stop_evidence
@@ -369,6 +429,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     if advance:
         stopped_by=('stall' if blocked and blocked.get('reason')=='stall' else 'obstacle_gate' if blocked else 'target')
         return {'wheel_delta_raw': deltas, 'stop_readback': final, 'stop_trace': readbacks,
+                'control_trace':control_trace,
                 'duration_s': duration if target_counts is None else round(drive_elapsed,3),
                 'command_raw': command, 'rotation_command_rad_s': 0,
                 'direction': 'forward' if direction>0 else 'backward', 'direction_frame': 'camera',
@@ -381,6 +442,9 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
     angle = sum(deltas.values())/2 * 2*math.pi/4096 * 2*radius/track
     return {'wheel_delta_raw': deltas, 'stop_readback': final,
             'stop_trace': readbacks,
+            'control_trace':control_trace,
+            'powered_trace':travel_trace,'wheel_start_raw':before,
+            'balance_policy':'reduce_leading_wheel_within_original_caps',
             'read_glitches': glitches,
             'yaw_delta_deg_estimate': math.degrees(angle), 'duration_s': duration,
             'geometry_source': 'existing_design_values_not_measured',

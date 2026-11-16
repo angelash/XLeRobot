@@ -55,6 +55,14 @@ def diagnostic_index():
 def status():
     return {**runtime.snapshot(),'server_pid':os.getpid(),'control_map':ORIGINAL_MAP if getattr(runtime,'control_profile','diagnostic')!='diagnostic' else CONTROL_MAP}
 
+class MotorProbe(BaseModel):
+    joints: list[str] = Field(min_length=1,max_length=16)
+
+@app.post('/api/diagnostics/motors/read')
+def probe_motors(body:MotorProbe):
+    try:return runtime.probe_motors(body.joints)
+    except ValueError as exc:raise HTTPException(400,str(exc)) from exc
+
 @app.get('/api/operator/state')
 def operator_state():
     return runtime.operator_events.read()

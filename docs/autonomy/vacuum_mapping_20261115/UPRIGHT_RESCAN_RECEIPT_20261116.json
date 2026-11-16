@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-16",
+  "purpose": "upright phone rescan and assistant vs Studio wheel-control diagnosis",
+  "archive_name": "upright-rescan-control-20261116.zip",
+  "archive_bytes": 87915846,
+  "archive_sha256": "3ee58ac994844663aeddbe72fdc3e67f2723f4de5e7216c933dfaf714ab18c4b",
+  "payload_files": 1372,
+  "payload_bytes": 97874030,
+  "manifest_sha256": "c07120e290a602c69ab18ef14cc1ea8d73c6e961955abeef3b39458c88ab4625",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "phone_and_native_media_sha256": true,
+    "offline_audit_replayed": true
+  },
+  "coverage_scope": "downloaded local evidence; no claim that all vehicle files were fetched",
+  "stages": {
+    "ar": {
+      "counts": {
+        "planned": 74,
+        "registered": 52,
+        "passed": 52,
+        "failed": 0,
+        "unexecuted_or_unrecorded": 22
+      },
+      "phone_samples": 130,
+      "unique_phone_tokens": 130,
+      "phone_rgb_dimensions": {
+        "(360, 640)": 100,
+        "(480, 640)": 30
+      },
+      "rgbd_samples": 100,
+      "verified_media": 486,
+      "unregistered_wheel_changes": [
+        {
+          "tag": "spin-001",
+          "wheel_changes_raw": {
+            "9": 7,
+            "10": 3
+          },
+          "cause": "unconfirmed; not zero motion or a completed step"
+        }
+      ],
+      "depth": {
+        "frames": 100,
+        "positive_median_range_m": [
+          13.503000259399414,
+          19.502500534057617
+        ],
+        "within_0_2_to_5_m_fraction_range": [
+          0.0,
+          0.07368055555555555
+        ],
+        "source": "ARCore algorithm depth; metric accuracy unverified"
+      },
+      "photographic_yaw": {
+        "range_estimate_deg": [
+          0.0,
+          90.15958347916603
+        ],
+        "ending_estimate_deg": 90.15958347916603,
+        "metric_angle_calibrated": false,
+        "other_epochs_added": false
+      }
+    },
+    "rgb": {
+      "counts": {
+        "planned": 54,
+        "registered": 47,
+        "passed": 43,
+        "failed": 4,
+        "unexecuted_or_unrecorded": 7
+      },
+      "phone_samples": 148,
+      "unique_phone_tokens": 148,
+      "phone_rgb_dimensions": {
+        "(720, 1280)": 148
+      },
+      "rgbd_samples": 0,
+      "verified_media": 277,
+      "unregistered_wheel_changes": [],
+      "photographic_yaw": {
+        "range_estimate_deg": [
+          0.0,
+          64.2644374370575
+        ],
+        "ending_estimate_deg": 56.08305513858795,
+        "metric_angle_calibrated": false,
+        "other_epochs_added": false
+      }
+    },
+    "control": {
+      "counts": {
+        "planned": 4,
+        "registered": 3,
+        "passed": 3,
+        "failed": 0,
+        "unexecuted_or_unrecorded": 1
+      },
+      "phone_samples": 18,
+      "unique_phone_tokens": 18,
+      "phone_rgb_dimensions": {
+        "(720, 1280)": 18
+      },
+      "rgbd_samples": 0,
+      "verified_media": 27,
+      "unregistered_wheel_changes": []
+    }
+  },
+  "extra_translation": {
+    "requested_m": 0.005,
+    "target_counts": 51,
+    "powered_peak_counts": {
+      "9": 40,
+      "10": 3
+    },
+    "post_release_delta_raw": {
+      "9": 42,
+      "10": 1
+    },
+    "status": "failed; not a completed 0.5cm leg"
+  },
+  "reference_gap": {
+    "after_adjustment_raw": [
+      260,
+      1184
+    ],
+    "diagnostic_start_raw": [
+      457,
+      1224
+    ],
+    "unexplained_change_raw": [
+      197,
+      40
+    ],
+    "cause_confirmed": false
+  },
+  "software": {
+    "old_scan_raw_cap": 160,
+    "studio_web_raw_cap": 160,
+    "pid_register_writes": 0,
+    "new_policy": "feedback reduces only leading wheel speed; original expiry and final guards retained",
+    "focused_regression_tests_passed": 156,
+    "final_source_snapshot": "control-stability-20261116/source-snapshot",
+    "final_local_control_runtime_differs_from_sent_payload": true,
+    "trace_only_version_live_tests": {
+      "passed": 3,
+      "new_failure": 0,
+      "source_refusal": 1
+    },
+    "feedback_version_physical_tests": 0,
+    "feedback_deployment_result": "unknown: SSH and Studio both lost during deployment; verify existing receipt and hashes before any retry"
+  },
+  "last_verified_parked": {
+    "trial": "diag-004",
+    "wheel_positions_raw": [
+      569,
+      1300
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "stationary_window_verified": true,
+    "online_motors": 16
+  },
+  "latest_readback": {
+    "full_report_motor_count": 0,
+    "first_error": "ID 1 read failed",
+    "usb_boards_enumerated": true,
+    "does_not_prove_all_motors_offline": true,
+    "current_parked_readback_unavailable": true
+  },
+  "remaining": {
+    "new_full_circle_complete": false,
+    "metric_map_valid": false,
+    "precise_narrow_exit_verified": false,
+    "origin_return_complete": false,
+    "partial_atlas_plans_saved_to_studio": false
+  },
+  "original_map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+  "original_map_sha_current_after_disconnect_verified": false,
+  "right_shoulder_hold_retained": true,
+  "mission_retained": true,
+  "private_photos_or_logs_published": false
+}

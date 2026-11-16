@@ -97,12 +97,20 @@ class ControlRuntime:
         return resolve_ports()
 
     def scan(self):
+        # A bounded wheel stop has priority over a complete 16-motor poll.
+        # Keep the last complete report (and its original timestamp) if this
+        # scan cannot finish; never publish a fresh-looking partial report.
+        def stop_due():
+            deadline=getattr(self,'bounded_wheel_deadline',None)
+            return deadline is not None and time.perf_counter()+.025>=deadline
+        if stop_due():return False
         self._check_ports()
         self.session.open()
         ports=[]
         for name, ids in EXPECTED.items():
             motors=[]
             for motor_id in ids:
+                if stop_due():return False
                 r=read_registers(self.session.ports[name],motor_id)
                 if word(r,3)!=777:
                     raise RuntimeError(f'{name}:{motor_id} 型号不是 STS3215')
@@ -115,17 +123,54 @@ class ControlRuntime:
             ports.append({'port':name,'physical_port':getattr(self.session.ports[name],'port',name),
                           'connected':True,'error':None,'motor_count':len(motors),'motors':motors})
         self.report={'ports':ports,'updated_at':now()}
+        return True
+
+    def probe_motors(self, keys):
+        """Read named motors independently through this sole serial owner.
+
+        A full scan stops on its first failed motor. This read-only diagnostic
+        preserves each failure and does not mislabel later motors as offline.
+        """
+        allowed={f'{port}:{motor}':(port,motor) for port,ids in EXPECTED.items() for motor in ids}
+        if (not isinstance(keys,list) or not 1<=len(keys)<=16
+                or any(not isinstance(key,str) or key not in allowed for key in keys)
+                or len(set(keys))!=len(keys)):
+            raise ValueError('需要1至16个不重复的准确电机地址')
+        rows=[]
+        with self.io:
+            if (self.controller['controller']=='online' or getattr(self,'bounded_wheel_deadline',None) is not None
+                    or getattr(getattr(self,'agent',None),'active',False)
+                    or getattr(getattr(self,'servo',None),'active',False)
+                    or getattr(getattr(self,'limit_test',None),'running',False)
+                    or getattr(getattr(self,'manual_calibration',None),'active',False)):
+                raise ValueError('动作或接管中不接受逐电机诊断')
+            self._check_ports()
+            self.session.open()
+            for key in keys:
+                port,motor=allowed[key];started=time.perf_counter()
+                try:
+                    reg=read_registers(self.session.ports[port],motor)
+                    rows.append({'joint':key,'ok':True,'raw_hex':bytes(reg).hex(),
+                                 'position':word(reg,56),'goal_velocity':word(reg,46),
+                                 'torque':reg[40],'mode':reg[33],'status':reg[65],
+                                 'voltage':reg[62]/10,'temperature':reg[63],
+                                 'elapsed_s':time.perf_counter()-started})
+                except Exception as exc:
+                    rows.append({'joint':key,'ok':False,'error':str(exc),
+                                 'elapsed_s':time.perf_counter()-started})
+        return {'at':now(),'motors':rows,'configuration_writes':0,'motion_commands':0,
+                'scope':'independent named reads; does not clear faults or certify readiness'}
 
     def _monitor(self):
         while not self.stop_event.is_set():
             try:
                 with self.io:
                     self.check_watchdog()
-                    self.scan()
-                    if self.profile is None:
-                        self.capture_profile()
-                    if self.pending:
-                        self._check_feedback()
+                    if self.scan() is not False:
+                        if self.profile is None:
+                            self.capture_profile()
+                        if self.pending:
+                            self._check_feedback()
             except Exception as exc:
                 with self.io:
                     calibration=getattr(self,'manual_calibration',None)
