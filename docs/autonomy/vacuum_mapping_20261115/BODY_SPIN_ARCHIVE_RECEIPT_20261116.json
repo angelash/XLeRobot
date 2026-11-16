@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-16",
+  "purpose": "bounded body spin attempt, guarded recovery and head camera source restoration",
+  "archive_name": "body-spin-reference-20261116.zip",
+  "payload_files": 73,
+  "payload_bytes": 2879727,
+  "archive_bytes": 2525392,
+  "archive_sha256": "320a22eb32b3771f093865f71296e391b9a0a21cd4c278a140b0ed35413b8030",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "restored_source_new_images_sha256": 9
+  },
+  "current_phase": {
+    "requested_spin_pulses": 3,
+    "physically_executed_pulses": 1,
+    "failed_pulses": 1,
+    "remaining_pulses_not_executed": 2,
+    "physical_retries": 0,
+    "diagnostic_reads": 10,
+    "source_recovery_attempts": 1,
+    "source_recovery_succeeded": true,
+    "full_body_scan_complete": false,
+    "stop_reason": "person_and_chair_near_swept_area"
+  },
+  "private_source_content_published": false,
+  "independent_backup": false,
+  "scope": "frozen current task execution, source recovery and scene images; excludes all continuous capture and earlier full robot history"
+}
