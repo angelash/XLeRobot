@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-16",
+  "purpose": "station exploration initial physical execution and reusable private sensor evidence",
+  "archive_name": "station-survey-reference-20261116.zip",
+  "payload_files": 160,
+  "payload_bytes": 8955896,
+  "archive_bytes": 7192455,
+  "archive_sha256": "2ddd773d6f75fbc62d701454cc7f6e6b5e31e4a0d9c695be1822b51fcb0b59c4",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "vehicle_checkpoint_download_sha256": true,
+    "studio_media_http_sha256_count": 20,
+    "distinct_rgbd_captures": 6
+  },
+  "private_source_content_published": false,
+  "independent_backup": false,
+  "overall_robot_mapping_complete": false,
+  "scope": "frozen task-owned workstation evidence including vehicle checkpoint, original depth arrays, HTTP readbacks and helpers; excludes subsequent continuous phone captures and all earlier robot history"
+}

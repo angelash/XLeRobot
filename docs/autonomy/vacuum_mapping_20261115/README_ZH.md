@@ -7,6 +7,7 @@
 ## 阅读顺序
 
 - [驻点环扫—通路探索—闭环—返回起点](STATION_EXPLORATION_ZH.md)：2026-11-16按用户观察整理的操作状态机、覆盖／细节／回环／返程指标、当前执行分层与停止退路。
+- [本次实机执行与交接](STATION_EXECUTION_20261116_ZH.md)：首驻点18步、275度照片覆盖、3个有限底盘动作、真实深度读回及整屋任务未完成的具体原因；[私有参考归档回执](STATION_ARCHIVE_RECEIPT_20261116.json)保留验证范围。
 - [从米家6 Pro学习的做法](XIAOMI_6PRO_LESSONS_ZH.md)：地图/轨迹分离、房间与版本管理、建图任务生命周期、通知与读回、备份恢复及后续N01–N04顺序。
 - [米家6 Pro参考事实账本](XIAOMI_6PRO_REFERENCE.json)：去除家庭内容的F01–F10证据与选定MIoT字段，供后续实现定位出处。
 - [米家6 Pro参考资料归档回执](XIAOMI_6PRO_ARCHIVE_RECEIPT.json)：私有证据包的成员、长度/hash与CRC读回结果；原始家庭内容留本地，不发布。
