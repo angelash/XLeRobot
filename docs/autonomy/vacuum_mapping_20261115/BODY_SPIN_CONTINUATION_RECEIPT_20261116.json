@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-16",
+  "purpose": "continuing body scan after temporary scene stop with original guards",
+  "archive_name": "body-spin-continuation-20261116.zip",
+  "payload_files": 333,
+  "payload_bytes": 17535160,
+  "archive_bytes": 15088510,
+  "archive_sha256": "552cdeee7573bdec3cbf584cfb87f6acebf63f3d15c8c4cdcba13b203c27354e",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "studio_media_http_sha256_count": 55
+  },
+  "executed": {
+    "planned_pulses": 40,
+    "executed_pulses": 38,
+    "successful_pulses": 37,
+    "failed_pulses": 1,
+    "unexecuted_pulses": 2,
+    "full_rotation_complete": false
+  },
+  "photo_direction_coverage_degrees_estimate": 110,
+  "visual_yaw_degrees_estimate": -58.44538116455078,
+  "wheel_yaw_degrees_estimate": -127.38199218749993,
+  "temporary_wait": "illumination or usable observation restoration; mission retained",
+  "private_source_content_published": false,
+  "independent_backup": false,
+  "scope": "frozen current task workstation evidence and downloaded vehicle runs; excludes later continuous captures and all earlier robot history"
+}
