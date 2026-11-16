@@ -73,7 +73,8 @@ breaks = {'spin-009/before-cam0.jpg': 'lighting_gap_registration_unknown',
           'spin-025/before-cam0.jpg': 'after_adjust_001_new_station',
           'spin-033/before-cam0.jpg': 'after_adjust_002_new_station',
           'spin-054/before-cam0.jpg': 'after_adjust_003_new_station',
-          'spin-056/before-cam0.jpg': 'after_adjust_004_and_low_head_diagnostic_new_reference'}
+          'spin-056/before-cam0.jpg': 'after_adjust_004_and_low_head_diagnostic_new_reference',
+          'spin-059/before-cam0.jpg': 'user_wheel_reinforcement_and_changed_chassis_pose'}
 segments = []
 current = None
 
