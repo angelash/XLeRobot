@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-16",
+  "purpose": "body-scan continuation and persistent asymmetric wheel diagnostic",
+  "archive_name": "body-spin-resume-through058-20261116.zip",
+  "archive_bytes": 48738499,
+  "archive_sha256": "698980a40cba0a37831fd25b85099a767f18def04fea47a4f40c2891ed0e06b5",
+  "payload_files": 1680,
+  "payload_bytes": 63226625,
+  "manifest_sha256": "991b4359010243ad0f2fc9ec02460712f55047ce1610bdb5a1f43ccadf094899",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "atlas_source_sha256_verified": true,
+    "studio_media_http_sha256_count": 69
+  },
+  "executed": {
+    "planned_pulses": 262,
+    "executed_pulses": 245,
+    "successful_pulses": 228,
+    "failed_pulses": 17,
+    "unexecuted_pulses": 17,
+    "longest_formal_successful_continuation": 102,
+    "earlier_diagnostic_rotations_excluded": 2,
+    "recovery_actions_after_last_formal_failure": 8,
+    "full_rotation_complete": false
+  },
+  "local_adjustments": {
+    "requested_cm": [
+      1,
+      2,
+      1,
+      2
+    ],
+    "completed": 4,
+    "total_translation_legs_including_earlier_leg": 5,
+    "total_wheel_path_m_estimate": 0.07588066064394505,
+    "ground_distance_measured": false,
+    "narrow_exit_attempted": false
+  },
+  "photo_evidence": {
+    "head_source_frames": 344,
+    "independent_references": 6,
+    "new_studio_scans": [
+      {
+        "id": "b2ebdce4dbdb45b69ea0c76dcc334108",
+        "reference": "body-rgb-reference-02",
+        "view_count": 17,
+        "photo_seen_degrees_estimate": 155,
+        "photo_missing_degrees_estimate": 205,
+        "full_body_rotation_verified": false
+      },
+      {
+        "id": "7db37946f84e4ccd9dc325a8b74b416a",
+        "reference": "body-rgb-reference-03",
+        "view_count": 3,
+        "photo_seen_degrees_estimate": 55,
+        "photo_missing_degrees_estimate": 305,
+        "full_body_rotation_verified": false
+      },
+      {
+        "id": "a69b716546b4432a8757d753f7f76dd2",
+        "reference": "body-rgb-reference-04",
+        "view_count": 35,
+        "photo_seen_degrees_estimate": 245,
+        "photo_missing_degrees_estimate": 115,
+        "full_body_rotation_verified": false
+      },
+      {
+        "id": "a981eae1e9934bda8964ea2c67c50cfc",
+        "reference": "body-rgb-reference-05",
+        "view_count": 2,
+        "photo_seen_degrees_estimate": 50,
+        "photo_missing_degrees_estimate": 310,
+        "full_body_rotation_verified": false
+      },
+      {
+        "id": "023d6c6871b44866a8247268072d76ff",
+        "reference": "body-rgb-reference-06",
+        "view_count": 2,
+        "photo_seen_degrees_estimate": 50,
+        "photo_missing_degrees_estimate": 310,
+        "full_body_rotation_verified": false
+      }
+    ],
+    "representative_views": 59,
+    "studio_media_http_sha256_count": 69,
+    "reference04_rgb_yaw_range_deg_estimate": [
+      -165.36319169402122,
+      0.3755929172039032
+    ],
+    "metric_angle_calibrated": false,
+    "coverage_across_references_additive": false
+  },
+  "final_state": {
+    "parked_readback_verified": true,
+    "wheel_positions": [
+      3022,
+      367
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "mission_retained": true,
+    "blocker": "persistent directional wheel asymmetry; wheel-ground observation pending",
+    "right_lift_physical_hold_retained": true,
+    "full_room_map_verified": false,
+    "return_to_origin_verified": false
+  },
+  "private_source_content_published": false,
+  "independent_backup": false,
+  "scope": "selected downloaded experiment sources, source images, bounded receipts and analysis; not all continuous phone data or robot history",
+  "cutoff": "spin-058 and resume-atlases-02; excludes later documentation synchronization"
+}
