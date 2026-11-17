@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "purpose": "explicitly requested forward parallax acquisition under the existing bounded controller",
+  "archive_name": "motion-depth-evidence-20261117.zip",
+  "archive_bytes": 6950076,
+  "archive_sha256": "66bb27c881821c12a955f15ef3bce8e94fe7f002933b7562398a924104f70381",
+  "payload_files": 213,
+  "checks": {
+    "exact_members": true,
+    "member_sha256_length": true,
+    "crc_readback": true,
+    "phone_rgb_raw_pairs": 49,
+    "robot_photos": 18,
+    "depth_statistics_recomputed": true
+  },
+  "legs": [
+    {
+      "id": "de868dec985d443a9e122725d718d8a8",
+      "requested_m": 0.05,
+      "wheel_distance_m_estimate": 0.0491909289155228,
+      "wheel_delta_raw": {
+        "9": 510,
+        "10": -500
+      },
+      "duration_s": 3.407,
+      "stopped_by": "target"
+    },
+    {
+      "id": "496a2439583d47efb1834fc5629c03ae",
+      "requested_m": 0.05,
+      "wheel_distance_m_estimate": 0.04943444836559965,
+      "wheel_delta_raw": {
+        "9": 511,
+        "10": -504
+      },
+      "duration_s": 3.433,
+      "stopped_by": "target"
+    }
+  ],
+  "total_wheel_distance_m_estimate": 0.09862537728112244,
+  "ground_displacement_measured": false,
+  "phone": {
+    "mode": "arcore",
+    "same_native_epoch": true,
+    "all_tracking": true,
+    "samples": 55,
+    "rgb_samples": 54,
+    "median_depth_min_m": 13.511000633239746,
+    "median_depth_max_m": 25.001001358032227,
+    "depth_samples": 49,
+    "depth_unavailable": [
+      {
+        "phase": "local_starting",
+        "reason": "HTTP Error 409: Conflict"
+      },
+      {
+        "phase": "local_observing",
+        "reason": "HTTP Error 409: Conflict"
+      },
+      {
+        "phase": "local_observing",
+        "reason": "HTTP Error 409: Conflict"
+      },
+      {
+        "phase": "local_observing",
+        "reason": "HTTP Error 409: Conflict"
+      },
+      {
+        "phase": "local_observing",
+        "reason": "HTTP Error 409: Conflict"
+      },
+      {
+        "phase": "local_completed",
+        "reason": "HTTP Error 409: Conflict"
+      }
+    ],
+    "in_02_5m_fraction_max": 0.0,
+    "reported_pose_changes": [
+      {
+        "leg": "move-01",
+        "reported_pose_delta_m": [
+          -0.008567245677113533,
+          -0.0013992181047797203,
+          -0.008650163188576698
+        ],
+        "reported_delta_norm_m": 0.012254828965994231,
+        "ground_truth": false
+      },
+      {
+        "leg": "move-02",
+        "reported_pose_delta_m": [
+          0.0039208922535181046,
+          -0.009190835058689117,
+          -0.04334600456058979
+        ],
+        "reported_delta_norm_m": 0.04448281641832493,
+        "ground_truth": false
+      }
+    ],
+    "metric_validated": false
+  },
+  "final": {
+    "controller_pid": 49472,
+    "online_motors": 16,
+    "parked_verified": true,
+    "wheel_positions_raw": [
+      826,
+      3808
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "active_motion_tasks": false,
+    "right_lift_hold_retained": true,
+    "phone_left_in_arcore": true
+  },
+  "mission_statistics": {
+    "before": {
+      "translation_legs": 17,
+      "turn_attempts": 909,
+      "wheel_path_m": 0.5965739487982562
+    },
+    "after": {
+      "translation_legs": 19,
+      "turn_attempts": 909,
+      "wheel_path_m": 0.6951993260793786
+    }
+  },
+  "metric_navigation_enabled": false,
+  "private_content_published": false,
+  "independent_backup": false,
+  "cutoff": "two requested forward legs, 55 AR samples, independent final parking and additive mission statistics; before documentation sync"
+}

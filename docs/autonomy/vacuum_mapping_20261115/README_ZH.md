@@ -6,6 +6,7 @@
 
 ## 阅读顺序
 
+- [按用户指示前移并验证运动视差](MOTION_DEPTH_20261117_ZH.md)：两段累计轮估9.86厘米，55份AR元信息／49份可读数值深度，真实停车及深度仍失真的边界；[归档回执](MOTION_DEPTH_RECEIPT_20261117.json)。
 - [车载自行决策与周期／条件观察](AUTONOMOUS_DECISIONS_20261117_ZH.md)：用户再次纠偏后的本地状态机、同任务断流恢复、真实进度和事件；实时导航后端仍未连接，自动底盘不启用。[归档回执](AUTONOMOUS_DECISIONS_RECEIPT_20261117.json)。
 - [驻点环扫—通路探索—闭环—返回起点](STATION_EXPLORATION_ZH.md)：2026-11-16按用户观察整理的操作状态机、覆盖／细节／回环／返程指标、当前执行分层与停止退路。
 - [2026-11-17恢复测试与全周照片](CONTROL_RESUME_20261117_ZH.md)：预测减速版219个完整登记段通过、头部300张连续图首尾重访；手机后13批参考切换缺口与中止尾差保留，度量地图／窄出口／返程未认证。[归档回执](CONTROL_RESUME_RECEIPT_20261117.json)、[控制复算](audit_control_resumption.py)及[照片复算](audit_resumed_photo_loop.py)。
