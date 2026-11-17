@@ -94,19 +94,47 @@ def test_contact_is_durable_and_never_retried_or_followed_by_return_pose(tmp_pat
     asyncio.run(run())
 
 
-def test_source_gap_stops_inflight_move_but_recovers_while_parked(tmp_path):
+def test_source_gap_stops_inflight_move_and_replans_remaining_views_locally(tmp_path):
     async def run():
         rig=Rig();scan,mission=rig.setup(tmp_path)
         def once():
             if rig.steps==1:rig.failed_views=1
         rig.after_step=once
         await rig.start(scan,mission);await scan.task
-        assert scan.state['phase']=='needs_review'
-        assert rig.steps==1 and scan.state.get('interrupted_receipts')
+        assert scan.state['phase']=='completed' and scan.state['completed_views']==18
+        assert scan.state.get('interrupted_receipts') and scan.state['head_source_recoveries'][0]['recovered']
+        assert len([c for c in rig.calls if c[0]=='/api/servo/session'])==2
+        assert len({tuple(r['requested_head_raw']) for r in scan.state['observations']})==18
         rig.failed_views=3;rig.active=False;scan.servo_id=None;scan.cancelled=False
         scan.state['mission_id']=mission.status()['session_id']
         await scan._wait_views(seconds=1)
         assert scan.state['source_waits'][-1]['recovered']
+    asyncio.run(run())
+
+
+def test_source_failure_with_contact_never_restarts_native_session(tmp_path):
+    async def run():
+        rig=Rig();rig.contact=True;scan,mission=rig.setup(tmp_path)
+        rig.after_step=lambda:setattr(rig,'failed_views',1) if rig.steps==1 else None
+        await rig.start(scan,mission);await scan.task
+        assert scan.state['phase']=='needs_review' and rig.steps==1
+        assert len([c for c in rig.calls if c[0]=='/api/servo/session'])==1
+        assert not scan.state.get('head_source_recoveries')
+    asyncio.run(run())
+
+
+def test_unknown_motion_response_after_source_failure_cannot_be_replayed(tmp_path):
+    async def run():
+        import httpx
+        rig=Rig();scan,mission=rig.setup(tmp_path);original=scan.api
+        async def api(path,body=None,timeout=4):
+            if path=='/api/servo/step':
+                rig.failed_views=1;await asyncio.sleep(.01);raise httpx.ReadTimeout('result unknown')
+            return await original(path,body,timeout)
+        scan.api=api
+        await rig.start(scan,mission);await scan.task
+        assert scan.state['phase']=='needs_review' and scan.state['uncertain_action_error']
+        assert len([c for c in rig.calls if c[0]=='/api/servo/session'])==1
     asyncio.run(run())
 
 
@@ -211,4 +239,77 @@ def test_stop_during_start_preflight_wins_over_queued_start(tmp_path):
         await entered.wait();await scan.stop();release.set()
         with pytest.raises(ValueError,match='预检期间收到停止'):await start
         assert scan.task is None and not rig.active
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('distance',[True,-.01,0,.1,float('nan'),float('inf')])
+def test_travel_accepts_only_one_bounded_forward_leg(tmp_path,distance):
+    async def run():
+        rig=Rig();scan,mission=rig.setup(tmp_path);review=await scan.review()
+        with pytest.raises(ValueError,match='0.5—5cm'):
+            await scan.start(dict(confirmed=True,authorization='explicit forward observation move',profile='travel_leg',
+                mission_id=mission.status()['session_id'],review_id=review['review_id'],distance_m=distance))
+        assert scan.task is None
+    asyncio.run(run())
+
+
+def test_travel_references_successful_native_observation_and_submits_one_leg(tmp_path):
+    async def run():
+        rig=Rig();scan,mission=rig.setup(tmp_path)
+        scan.state={'id':'b'*32,'profile':'travel_leg','phase':'observing','running':True,'mission_id':mission.status()['session_id'],
+            'requested_distance_m':.02,'source_waits':[],'phone_epochs':[],'phone_samples':0,'phone_gaps':0}
+        (scan.root/scan.state['id']).mkdir()
+        batches=[]
+        async def native(steps):
+            batches.append(deepcopy(steps))
+            scan.state['native_receipt']={'run_id':'20000101-000000','results':[],'error':None}
+        scan._native=native
+        await scan._travel()
+        assert len(batches)==2 and batches[0]==[{'op':'snapshot','cameras':[0,1,2],'tag':'pre-move'}]
+        assert len(batches[1])==2 and batches[1][0]['op']=='travel' and batches[1][1]['op']=='snapshot'
+        assert batches[1][0]['distance_m']==.02 and batches[1][0]['observation_run_id']=='20000101-000000'
+        assert scan.state['pre_move_receipt']['run_id']=='20000101-000000'
+    asyncio.run(run())
+
+
+def test_transient_windows_pointer_lock_retries_and_keeps_per_job_result(tmp_path,monkeypatch):
+    import os
+    rig=Rig();scan,_=rig.setup(tmp_path);identifier='c'*32;(scan.root/identifier).mkdir()
+    scan.state={'id':identifier,'phase':'moving','running':True,'physical_steps':[{'confirmed':'receipt'}]}
+    real=os.replace;calls=[]
+    def replace(source,target):
+        calls.append(Path(target).name)
+        if Path(target).name=='latest.json' and calls.count('latest.json')==1:
+            assert scan.read(identifier)['physical_steps']==[{'confirmed':'receipt'}]
+            raise PermissionError('transient reader')
+        return real(source,target)
+    from pathlib import Path
+    monkeypatch.setattr(os,'replace',replace);scan._save()
+    assert calls==['result.json','latest.json','latest.json'] and not list(scan.root.rglob('*.tmp'))
+
+
+def test_concurrent_start_cannot_replace_another_preflight(tmp_path):
+    async def run():
+        rig=Rig();scan,mission=rig.setup(tmp_path);review=await scan.review()
+        entered=asyncio.Event();release=asyncio.Event()
+        async def parked():
+            entered.set();await release.wait();return await rig.parked()
+        scan.parked=parked
+        payload=dict(confirmed=True,authorization='explicit finite local scan',profile='head_layers',
+            mission_id=mission.status()['session_id'],review_id=review['review_id'])
+        first=asyncio.create_task(scan.start(payload));await entered.wait()
+        with pytest.raises(ValueError,match='正在预检'):await scan.start(payload)
+        await scan.stop();release.set()
+        with pytest.raises(ValueError,match='收到停止'):await first
+    asyncio.run(run())
+
+
+def test_storage_failure_never_prevents_original_owned_stop(tmp_path):
+    async def run():
+        rig=Rig();scan,_=rig.setup(tmp_path);scan.servo_id='native';rig.active=True
+        def failed_save():raise PermissionError('persistent storage lock')
+        scan._save=failed_save
+        await scan.stop('explicit user stop')
+        assert not rig.active and scan.cancelled
+        assert scan.state['persistence_error'] and any(path=='/api/servo/stop' for path,_ in rig.calls)
     asyncio.run(run())

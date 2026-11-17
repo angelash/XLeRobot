@@ -1,7 +1,7 @@
-"""Finite local observation jobs in Studio; no LLM, serial or translation.
+"""Finite observation/forward jobs in Studio; no LLM or serial ownership.
 
 Head layers run in one stationary-base servo session. Reviewed turn batches
-reuse the existing timed/feedback/stopping primitive in 8765. A completed job
+and one forward leg reuse the existing bounded primitives in 8765. A completed job
 returns evidence for the supervisor; it never silently starts the next batch.
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ from copy import deepcopy
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import time
 import uuid
@@ -22,6 +23,10 @@ from deployment.grasp.recovery import hardware_readiness
 from .store import atomic_json, stamp
 
 ACTIVE = {'starting', 'observing', 'moving', 'waiting_source', 'saving', 'stopping'}
+
+
+class SourceUnavailable(RuntimeError):
+    """A source guard fired; never implies permission to replay an action."""
 
 
 def head_path(origin, target, maximum=360):
@@ -45,6 +50,8 @@ class LocalScan:
         self.publish=publish
         self.client=client or httpx.AsyncClient(base_url='http://127.0.0.1:8765',trust_env=False,timeout=3)
         self.own_client=client is None;self.task=None;self.cancelled=False
+        self.starting=False
+        self.reserved_by=None
         self.stop_generation=0
         self.state={'phase':'idle','running':False};self.frames={};self.servo_id=None;self.agent_id=None
         self.stop_reason=None;self.phone_epoch=None;self.phone_token=None
@@ -59,17 +66,35 @@ class LocalScan:
 
     def _save(self):
         self.state['updated_at']=stamp()
-        atomic_json(self.root/'latest.json',self.state)
-        if self.state.get('id'):atomic_json(self.root/self.state['id']/'result.json',self.state)
+        def write(path):
+            temporary=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
+            temporary.write_text(json.dumps(self.state,ensure_ascii=False,indent=2),encoding='utf8')
+            try:
+                for delay in (0,.005,.01,.02,.04,.08):
+                    if delay:time.sleep(delay)
+                    try:os.replace(temporary,path);return
+                    except PermissionError:
+                        if delay==.08:raise
+            finally:
+                temporary.unlink(missing_ok=True)
+        # Persist the per-job result before the replaceable UI pointer. A
+        # Windows reader can transiently hold a file without delete sharing.
+        if self.state.get('id'):write(self.root/self.state['id']/'result.json')
+        write(self.root/'latest.json')
 
     def status(self):
         keys=('id','phase','running','profile','planned_views','completed_views','native_run_id',
               'planned_pulses','registered_pulses','passed_pulses','elapsed_s','timing_s',
               'source_waits','phone_epochs','phone_samples','phone_gaps','error','note',
-              'review_required','parked_verified','atlas_id','cancelled','started_at','updated_at')
+              'review_required','parked_verified','atlas_id','cancelled','started_at','updated_at',
+              'registered_translations','passed_translations','requested_distance_m')
         result={k:deepcopy(self.state[k]) for k in keys if k in self.state}
-        result.update(execution='vehicle_local_finite_job',llm_calls=0,translation_enabled=False,
+        result.update(execution='vehicle_local_finite_job',llm_calls=0,
+                      translation_enabled=self.state.get('profile')=='travel_leg',
+                      automatic_translation=False,
                       metric_map_verified=False,right_lift_hold_retained=True)
+        result['source_recoveries']=[{k:r.get(k) for k in ('attempt','at','completed_views','recovered')}
+                                     for r in self.state.get('head_source_recoveries',[])]
         return result
 
     async def api(self,path,body=None,timeout=4):
@@ -110,7 +135,7 @@ class LocalScan:
         for c,(raw,headers) in zip((0,1,2),values):
             at=float(headers['X-Captured-At']);age=time.time()-at
             if not -.1<=age<=.8 or not raw.startswith(b'\xff\xd8'):
-                raise RuntimeError('机器人相机缺少原800ms内的新图')
+                raise SourceUnavailable('机器人相机缺少原800ms内的新图')
             fresh[c]=(raw,{'camera':c,'captured_at':at,'sequence':int(headers['X-Frame-Sequence']),
                            'sha256':hashlib.sha256(raw).hexdigest()})
         self.frames=fresh
@@ -132,7 +157,7 @@ class LocalScan:
                     self.state['source_waits'].append({'at':stamp(),'reason':last,'recovered':False});logged=True
                 self.state['phase']='waiting_source';self._save()
                 if self.servo_id:await self.api('/api/servo/hold',{'session_id':self.servo_id})
-                if time.monotonic()-begun>=seconds:raise RuntimeError('相机恢复预算用完：'+last) from exc
+                if time.monotonic()-begun>=seconds:raise SourceUnavailable('相机恢复预算用完：'+last) from exc
                 await asyncio.sleep(.2)
 
     def _photos(self,tag,frames):
@@ -142,7 +167,20 @@ class LocalScan:
             shots.append({**meta,'file':name,'bytes':len(raw)})
         return shots
 
-    async def review(self):
+    def reserve(self,owner):
+        if self.reserved_by not in (None,owner) or self.starting or (self.task and not self.task.done()):
+            raise ValueError('本地执行器已被其他任务占用')
+        self.reserved_by=owner
+
+    def release(self,owner):
+        if self.reserved_by==owner:self.reserved_by=None
+
+    def _owner(self,owner):
+        if self.reserved_by is not None and owner!=self.reserved_by:
+            raise ValueError('自主任务拥有本地执行器，请先停止自主任务')
+
+    async def review(self,*,owner=None):
+        self._owner(owner)
         if self.task and not self.task.done():raise ValueError('本地批次正在执行')
         s,rows,health=await self.parked()
         servo=await self.api('/api/servo/status')
@@ -157,14 +195,27 @@ class LocalScan:
         atomic_json(folder/'review.json',review)
         return {'review_id':identifier,'photos':photos,'expires_in_s':90,'motion_commands':0}
 
-    async def start(self,value):
+    async def start(self,value,*,owner=None):
+        self._owner(owner)
+        if self.starting:raise ValueError('另一个本地任务正在预检')
+        self.starting=True
+        try:return await self._start(value)
+        finally:self.starting=False
+
+    async def _start(self,value):
         generation=self.stop_generation
         if self.task and not self.task.done():raise ValueError('本地批次正在执行')
-        allowed={'confirmed','authorization','profile','mission_id','review_id','pulses','direction'}
+        allowed={'confirmed','authorization','profile','mission_id','review_id','pulses','direction','distance_m'}
         if set(value)-allowed or value.get('confirmed') is not True or not isinstance(value.get('authorization'),str) or not 8<=len(value['authorization'])<=1000:
             raise ValueError('需要本次有限批次的明确授权')
         profile=value.get('profile')
-        if profile not in ('head_layers','turn_batch'):raise ValueError('只支持驻点分层补扫或有限旋转批次')
+        if profile not in ('head_layers','turn_batch','travel_leg'):raise ValueError('只支持分层补扫、有限转向或单段前移')
+        distance=value.get('distance_m')
+        if profile=='travel_leg':
+            if type(distance) not in (float,int) or not math.isfinite(distance) or not .005<=distance<=.05:
+                raise ValueError('每次只接受一段前进0.5—5cm轮估距离，不能倒车或续走')
+            if 'pulses' in value or 'direction' in value:raise ValueError('前移任务不接受旋转或批次参数')
+        elif 'distance_m' in value:raise ValueError('非前移任务不接受距离')
         mission=self.exploration.status()
         if not mission['enabled'] or value.get('mission_id')!=mission['session_id']:raise ValueError('探索会话已停止或改变')
         review_id=value.get('review_id','')
@@ -179,9 +230,9 @@ class LocalScan:
         current=positions(state);previous=positions(review['state'])
         if set(current)!=set(previous) or any(abs((current[k]-previous[k]+2048)%4096-2048)>3 for k in current):raise ValueError('观察后姿态已变化，需要新参考')
         if state['agent_run']['running'] or servo['active'] or servo['busy'] or state['web_control']['active'] or state['controller']['controller']!='offline' or self.busy():raise ValueError('其他执行器／操作员占用中')
-        if profile=='turn_batch':
+        if profile in ('turn_batch','travel_leg'):
             for p in ('COM3','COM4'):
-                if not(current[p+':2']<1350 and current[p+':3']>2800 and current[p+':6']<1400 and 1800<current[p+':1']<2250):raise ValueError('收臂包络已变化，不能旋转')
+                if not(current[p+':2']<1350 and current[p+':3']>2800 and current[p+':6']<1400 and 1800<current[p+':1']<2250):raise ValueError('收臂包络已变化，不能移动底盘')
         if generation!=self.stop_generation:raise ValueError('预检期间收到停止，不启动排队动作')
         latest=self.exploration.status()
         if not latest['enabled'] or latest['session_id']!=mission['session_id']:raise ValueError('预检期间探索已停止或改变')
@@ -190,10 +241,12 @@ class LocalScan:
         self.phone_epoch=None;self.phone_token=None;self.frames={}
         self.state=dict(id=identifier,phase='starting',running=True,profile=profile,mission_id=mission['session_id'],
             authorization=value['authorization'],review_id=review_id,started_at=stamp(),completed_views=0,
-            planned_views=18 if profile=='head_layers' else pulses,planned_pulses=pulses if profile=='turn_batch' else 0,
+            planned_views=18 if profile=='head_layers' else pulses if profile=='turn_batch' else 1,planned_pulses=pulses if profile=='turn_batch' else 0,
             registered_pulses=0,passed_pulses=0,source_waits=[],phone_epochs=[],phone_samples=0,phone_gaps=0,
             observations=[],physical_steps=[],timing_s={},initial_state=state,initial_parked_history=history,
-            health=health,right_lift_hold_retained=True,llm_calls=0,translation_commands=0,review_required=False)
+            health=health,right_lift_hold_retained=True,llm_calls=0,translation_commands=0,review_required=False,
+            requested_distance_m=distance if profile=='travel_leg' else None,
+            registered_translations=0,passed_translations=0)
         self._save()
         self.task=asyncio.create_task(asyncio.wait_for(self._run(direction),timeout=180),name='fieldmap-local-scan')
         return self.status()
@@ -219,7 +272,9 @@ class LocalScan:
         while True:
             self._latch()
             # No model, SSH or full-state scan in the camera watchdog.
-            await self._views()
+            try:await self._views()
+            except (httpx.HTTPError,HTTPException,RuntimeError,KeyError,ValueError) as exc:
+                raise SourceUnavailable(str(exc)) from exc
             await asyncio.sleep(.18)
 
     async def _guarded(self,operation):
@@ -243,38 +298,88 @@ class LocalScan:
                 try:self.state.setdefault('interrupted_receipts',[]).append(await asyncio.wait_for(asyncio.shield(motion),30))
                 except Exception as exc:self.state['uncertain_action_error']=str(exc)
 
-    async def _head(self):
-        begin=await self.api('/api/servo/session',{'confirmed':True,'label':'local station height layers',
+    async def _begin_head(self):
+        label='local station head '+self.state['id']
+        self.state.update(native_servo_label=label,pending_servo_start=True);self._save()
+        begin=await self.api('/api/servo/session',{'confirmed':True,'label':label,
             'lease_s':4.,'stationary_base':True},timeout=20)
-        self.servo_id=begin['session_id'];self.state['native_servo_session']=self.servo_id;self._save()
+        self.servo_id=begin['session_id'];self.state.update(native_servo_session=self.servo_id,pending_servo_start=False);self._save()
+        self.state.setdefault('head_sessions',[]).append(self.servo_id);self._save()
         if not begin.get('stationary_base') or not begin.get('wheel_park',{}).get('verified'):raise RuntimeError('原会话未认证底盘停车')
+
+    async def _recover_head_source(self,reason):
+        # Inspect the original in-flight receipt before any new session. A
+        # contact, failed/unknown response or stop is never a camera recovery.
+        receipts=self.state['physical_steps']+self.state.get('interrupted_receipts',[])
+        if (self.cancelled or self.state.get('uncertain_action_error') or self.state.get('stop_error') or
+                any(r.get('contact') or r.get('ended') or not r.get('joints') for r in receipts)):
+            raise RuntimeError('源中断伴随原动作异常／结果未知，不能自动恢复')
+        await self._stop_native('头部源中断，先结束原会话')
+        servo=await self.api('/api/servo/status')
+        if servo.get('active') or servo.get('busy'):raise RuntimeError('源恢复时原执行器尚未结束')
+        self.servo_id=None
+        attempts=self.state.setdefault('head_source_recoveries',[])
+        while len(attempts)<10:
+            self._latch();row=dict(at=stamp(),attempt=len(attempts)+1,reason=str(reason),
+                                  completed_views=self.state['completed_views'],recovered=False)
+            attempts.append(row);self.state['phase']='waiting_source';self._save()
+            try:
+                # Three advancing fresh sets reduce flicker; the original
+                # 800ms threshold is unchanged during and after recovery.
+                previous=None;advancing=0;until=time.monotonic()+8
+                while advancing<3:
+                    frames=await self._wait_views(seconds=max(.1,until-time.monotonic()))
+                    token=tuple(frames[c][1]['sequence'] for c in (0,1,2))
+                    if token!=previous:advancing+=1;previous=token
+                    if time.monotonic()>until:raise SourceUnavailable('新帧稳定等待到期')
+                    await asyncio.sleep(.1)
+            except SourceUnavailable as exc:row['wait_error']=str(exc);self._save();continue
+            state,history,health=await self.parked()
+            def positions(s):return {f'{p["port"]}:{m["id"]}':m['position'] for p in s['ports'] for m in p['motors']}
+            current,initial=positions(state),positions(self.state['initial_state'])
+            if state['server_pid']!=self.state['initial_state']['server_pid'] or current.keys()!=initial.keys():raise RuntimeError('源恢复期间控制器或电机参考改变')
+            if any(state.get('operator',{}).get(k)!=self.state['initial_state'].get('operator',{}).get(k) for k in ('epoch','seq')):
+                raise RuntimeError('源恢复期间出现操作者参考变化')
+            if any(abs((v-initial[k]+2048)%4096-2048)>3 for k,v in current.items() if k not in ('COM3:7','COM3:8')):raise RuntimeError('源恢复期间非头部姿态改变')
+            if (state['agent_run']['running'] or state['web_control']['active'] or state['controller']['controller']!='offline' or
+                    state.get('operator',{}).get('active') or state.get('joint_faults') or state.get('stall_marks') or self.busy()):
+                raise RuntimeError('源恢复期间出现接管或其他故障／任务')
+            row.update(recovered=True,current_head_raw=[current['COM3:7'],current['COM3:8']],parked_history=history,health=health)
+            self._save();await self._begin_head()
+            return {'head:7':current['COM3:7'],'head:8':current['COM3:8']}
+        raise RuntimeError('头部源恢复十次预算已用完，保留部分进度')
+
+    async def _head(self):
+        await self._begin_head()
         initial=self.state['initial_state']
         origin={f'head:{m["id"]}':m['position'] for p in initial['ports'] if p['port']=='COM3' for m in p['motors'] if m['id'] in (7,8)}
         current=dict(origin);pans=[1230,1540,1850,2160,2470,2787]
         targets=[{'head:7':pan,'head:8':tilt} for i,tilt in enumerate((2150,2450,2750)) for pan in (pans if i%2==0 else list(reversed(pans)))]
         for target in targets+[origin]:
-            self._heartbeat();await self._wait_views()
-            for part in head_path(current,target):
-                self._latch();self.state['phase']='moving';self.state['pending_target']=part;self._save()
-                entry=await self._guarded(self.api('/api/servo/step',dict(session_id=self.servo_id,targets=part,
-                    torque=450,speed_deg=18,label='local head layer'),timeout=25))
-                self.state['physical_steps'].append(entry);self._save()
-                if entry.get('contact') or entry.get('ended'):raise RuntimeError('头部受阻或会话结束，保留现场，不自动重发')
-                current=measured_head(entry)
-            if target is origin:break
-            # Save a source frame newer than the completed movement, not its preview.
-            settled_at=time.time();until=time.monotonic()+2
             while True:
-                frames=await self._wait_views(seconds=2)
-                if frames[0][1]['captured_at']>=settled_at:break
-                if time.monotonic()>=until:raise RuntimeError('动作后缺少新头图')
-                await asyncio.sleep(.06)
-            shots=self._photos(f'view-{self.state["completed_views"]:02d}',{0:frames[0]})
-            self.state['observations'].append(dict(head_raw=[current['head:7'],current['head:8']],
-                requested_head_raw=[target['head:7'],target['head:8']],joint_readback_at=entry.get('at'),shots=shots,
-                heading_deg=(current['head:7']-2015)*360/4096,pitch_deg=-(current['head:8']-2220)*360/4096))
-            self.state['completed_views']+=1
-            await self._phone_once();self._save()
+                try:
+                    self._heartbeat();await self._wait_views()
+                    for part in head_path(current,target):
+                        self._latch();self.state['phase']='moving';self.state['pending_target']=part;self._save()
+                        entry=await self._guarded(self.api('/api/servo/step',dict(session_id=self.servo_id,targets=part,
+                            torque=450,speed_deg=18,label='local head layer'),timeout=25))
+                        self.state['physical_steps'].append(entry);self._save()
+                        if entry.get('contact') or entry.get('ended'):raise RuntimeError('头部受阻或会话结束，保留现场，不自动重发')
+                        current=measured_head(entry)
+                    if target is origin:return
+                    settled_at=time.time();until=time.monotonic()+2
+                    while True:
+                        frames=await self._wait_views(seconds=2)
+                        if frames[0][1]['captured_at']>=settled_at:break
+                        if time.monotonic()>=until:raise SourceUnavailable('动作后缺少新头图')
+                        await asyncio.sleep(.06)
+                    shots=self._photos(f'view-{self.state["completed_views"]:02d}',{0:frames[0]})
+                    self.state['observations'].append(dict(head_raw=[current['head:7'],current['head:8']],
+                        requested_head_raw=[target['head:7'],target['head:8']],joint_readback_at=entry.get('at'),shots=shots,
+                        heading_deg=(current['head:7']-2015)*360/4096,pitch_deg=-(current['head:8']-2220)*360/4096))
+                    self.state['completed_views']+=1
+                    await self._phone_once();self._save();break
+                except SourceUnavailable as exc:current=await self._recover_head_source(exc)
 
     def _native_photos(self):
         receipt=self.state.get('native_receipt',{})
@@ -302,6 +407,26 @@ class LocalScan:
         for i in range(self.state['planned_pulses']):
             steps.extend([dict(op='rotate',direction=direction,duration=.65,max_raw=160),
                           dict(op='snapshot',cameras=[0,1,2],tag=f'local-{i:02d}')])
+        await self._native(steps)
+
+    async def _travel(self):
+        await self._wait_views();self._heartbeat('observing')
+        await self._native([dict(op='snapshot',cameras=[0,1,2],tag='pre-move')])
+        reference=deepcopy(self.state['native_receipt'])
+        if reference.get('error'):raise RuntimeError('原生停车观察失败，不前移')
+        self.state['pre_move_receipt']=reference;self._save()
+        # Original agent IDs have one-second resolution. Do not overwrite the
+        # just-created observation directory by submitting within that second.
+        while time.strftime('%Y%m%d-%H%M%S')<=reference['run_id']:
+            self._latch();await asyncio.sleep(.05)
+        await self._wait_views();self._heartbeat('moving')
+        await self._native([dict(op='travel',distance_m=self.state['requested_distance_m'],max_raw=160,
+            observation_run_id=reference['run_id'],clearance_confirmed=True,
+            boundary_id='mapping-'+self.state['id'],label='reviewed finite observation reposition'),
+            dict(op='snapshot',cameras=[0,1,2],tag='post-move')])
+        await self._phone_once()
+
+    async def _native(self,steps):
         # Record uncertain submissions; HTTP errors never trigger an automatic replay.
         self.state['pending_submission']=True;self._save()
         label='local scan '+self.state['id'];self.state['native_label']=label;self._save()
@@ -319,6 +444,11 @@ class LocalScan:
                 rotations=[r for r in receipt['results'] if r['op']=='rotate']
                 self.state['registered_pulses']=len(rotations)
                 self.state['passed_pulses']=sum(r['status']=='done' for r in rotations)
+                legs=[r for r in receipt['results'] if r['op']=='travel']
+                self.state['registered_translations']=len(legs)
+                self.state['passed_translations']=sum(r['status']=='done' for r in legs)
+                self.state['translation_commands']=sum(any(e['phase']=='command_ack' and e.get('value',0)
+                    for e in r.get('control_trace',r.get('rotation',{}).get('control_trace',[]))) for r in legs)
                 self._save()
                 if not receipt['running']:
                     if receipt.get('error'):raise RuntimeError(receipt['error'])
@@ -328,9 +458,11 @@ class LocalScan:
         await self._guarded(collect())
 
     async def _stop_native(self,reason):
-        if self.servo_id:
+        if self.servo_id or self.state.get('pending_servo_start'):
             status=await self.api('/api/servo/status')
-            if status.get('session_id')==self.servo_id and status.get('active'):
+            owns=(status.get('session_id')==self.servo_id if self.servo_id else
+                  status.get('label')==self.state.get('native_servo_label'))
+            if owns and status.get('active'):
                 await self.api('/api/servo/stop',{'reason':reason})
         elif self.agent_id or self.state.get('pending_submission'):
             status=await self.api('/api/agent/status')
@@ -342,7 +474,8 @@ class LocalScan:
         try:
             await self._wait_views();self.state['anchor_photos']=self._photos('anchor',self.frames)
             if self.state['profile']=='head_layers':await self._head()
-            else:await self._turn(direction)
+            elif self.state['profile']=='turn_batch':await self._turn(direction)
+            else:await self._travel()
             self.state['phase']='completed';self.state['note']='本地批次结束，请按汇总决定下一观察位'
         except (Exception,asyncio.CancelledError) as exc:
             self.state.update(phase='cancelled' if self.cancelled else 'needs_review',error=str(exc),review_required=True)
@@ -350,11 +483,14 @@ class LocalScan:
             except Exception as stop:self.state['stop_error']=str(stop)
         finally:
             if self.servo_id:
-                try:await self.api('/api/servo/end',{'session_id':self.servo_id,'reason':'local finite scan ended'})
+                try:
+                    servo=await self.api('/api/servo/status')
+                    if servo.get('active') and servo.get('session_id')==self.servo_id:
+                        await self.api('/api/servo/end',{'session_id':self.servo_id,'reason':'local finite scan ended'})
                 except Exception as exc:self.state['end_error']=str(exc)
             # Every failure is durable before any parking, media or atlas work.
             self.state['elapsed_s']=round(time.monotonic()-begun,3);self._save()
-            if self.state['profile']=='turn_batch':
+            if self.state['profile'] in ('turn_batch','travel_leg'):
                 try:self._native_photos()
                 except Exception as exc:self.state['media_error']=str(exc);self.state['review_required']=True
             try:
@@ -377,7 +513,9 @@ class LocalScan:
         # Persist before network I/O; original controller handles physical stop.
         self.stop_generation+=1;self.cancelled=True;self.state.update(cancelled=True,note=reason)
         if self.task and not self.task.done():self.state['phase']='stopping'
-        self._save();await self._stop_native(reason)
+        try:self._save()
+        except OSError as exc:self.state['persistence_error']=str(exc)
+        await self._stop_native(reason)
         return self.status()
 
     async def close(self):

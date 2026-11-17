@@ -291,6 +291,7 @@ async def lifespan(app):
     try:
         yield
     finally:
+        await app.state.fieldmap_autonomy.close()
         await app.state.local_scan.close()
         await app.state.camera_views.close()
         await asyncio.to_thread(app.state.spatial_journal.close)

@@ -92,6 +92,11 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         return scan['id']
     local_scan=LocalScan(Path(data_dir)/'local-scan',exploration,scan_camera,scan_phone,scan_busy,publish=publish_scan)
     app.state.local_scan=local_scan
+    from .autonomy import AutonomousSurvey,StudioInputs
+    autonomy=AutonomousSurvey(Path(data_dir)/'autonomy',exploration,local_scan,StudioInputs(app,local_scan))
+    app.state.fieldmap_autonomy=autonomy
+    # Close the supervisor before its owned finite executor.
+    app.add_event_handler('shutdown',autonomy.close)
     from .metric_api import install as install_metric
     install_metric(app, data_dir=data_dir, allowed_origins=allowed_origins)
     router = APIRouter(prefix=API)
@@ -131,6 +136,27 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.get('/local-scan/status')
     async def scan_status():return local_scan.status()
 
+    @router.get('/autonomy/status')
+    async def autonomy_status():return autonomy.status()
+
+    @router.post('/autonomy/start')
+    async def autonomy_start(request:Request):
+        value=await body(request)
+        try:return await autonomy.start(value)
+        except (ValueError,RuntimeError,OSError,httpx.HTTPError) as exc:raise HTTPException(409,str(exc)) from None
+
+    @router.post('/autonomy/stop')
+    async def autonomy_stop(request:Request):
+        value=await body(request)
+        if value:raise HTTPException(422,'停止请求不接收动作参数')
+        try:return await autonomy.stop()
+        except (OSError,httpx.HTTPError) as exc:raise HTTPException(503,str(exc)) from None
+
+    @router.get('/autonomy/{identifier}')
+    async def autonomy_record(identifier:str):
+        try:return autonomy.record(identifier)
+        except (OSError,ValueError):raise HTTPException(404,'自主任务不存在') from None
+
     @router.post('/local-scan/review')
     async def scan_review(request:Request):
         value=await body(request)
@@ -148,7 +174,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     async def scan_stop(request:Request):
         value=await body(request)
         if value:raise HTTPException(422,'停止请求不接收动作参数')
-        try:return await local_scan.stop()
+        try:
+            if autonomy.starting or autonomy.state.get('running'):return await autonomy.stop('用户停止本地执行')
+            return await local_scan.stop()
         except (OSError,httpx.HTTPError) as exc:raise HTTPException(503,str(exc)) from None
 
     @router.get('/local-scan/{identifier}')
@@ -258,7 +286,11 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     async def exploration_status():
         # Sync camera/controller routes share AnyIO's limited worker pool.
         # Supervision and the durable stop latch must not queue behind them.
-        return await asyncio.to_thread(exploration.status)
+        value=await asyncio.to_thread(exploration.status)
+        value['autonomy']=autonomy.status()
+        if autonomy.state.get('running'):
+            value.update(execution='vehicle_local_decisions',heartbeat_owner='vehicle_local',supervisor_connected=False)
+        return value
 
     @router.post('/exploration/start')
     async def exploration_start(request:Request):
@@ -279,6 +311,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     async def exploration_stop(request:Request):
         value=await body(request)
         if value:raise HTTPException(422,'停止请求不接收动作参数')
+        # Latch the scheduler before awaiting controller I/O.
+        try:await autonomy.stop('用户停止探索')
+        except (OSError,httpx.HTTPError):pass
         result=await asyncio.to_thread(exploration.stop,survey.controller)
         if local_scan.task and not local_scan.task.done():
             try:await local_scan.stop('用户停止探索')
@@ -350,6 +385,8 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.post('/stop')
     async def stop(request: Request):
         await body(request)
+        try:await autonomy.stop('用户停止空间观察动作')
+        except (OSError,httpx.HTTPError):pass
         if local_scan.task and not local_scan.task.done():
             try:await local_scan.stop('用户停止空间观察动作')
             except (OSError,httpx.HTTPError):pass  # Still attempt the original stop paths below.

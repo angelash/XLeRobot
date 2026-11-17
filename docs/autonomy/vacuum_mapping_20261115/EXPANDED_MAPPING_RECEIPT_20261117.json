@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "purpose": "expand observation coverage with bounded forward movement and new stations",
+  "archive_name": "expanded-mapping-evidence-20261117.zip",
+  "archive_bytes": 38412994,
+  "archive_sha256": "ebeaf858c6dec5291492daf933f78646bd9d2eba0aea5d3e40c1abbe89622f93",
+  "payload_files": 1031,
+  "payload_bytes": 67394115,
+  "manifest_sha256": "350149b562fb819a1d47824dc6bc58d28e9a020a53915b7fc42ba2f112047d4d",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "offline_jobs_audited": 24,
+    "native_photos_sha256_count": 510,
+    "phone_and_atlas_http_sha256_count": 125,
+    "source_sha256_verified": true,
+    "original_map_and_dirty_sources_preserved": true
+  },
+  "turns": {
+    "planned": 108,
+    "registered": 93,
+    "registered_passed": 93,
+    "registered_failed": 0,
+    "unexecuted_or_unregistered": 15,
+    "software_interrupted_jobs": [
+      "turn-05",
+      "turn-06"
+    ],
+    "last_snapshot_to_final_changes_raw": [
+      [
+        36,
+        33
+      ],
+      [
+        91,
+        84
+      ]
+    ],
+    "second_interruption_includes_registered_unsnapshotted_step_raw": [
+      89,
+      84
+    ],
+    "unregistered_tail_retained": true
+  },
+  "travel": {
+    "planned": 12,
+    "registered": 12,
+    "passed": 12,
+    "failed": 0,
+    "requested_wheel_distances_m": [
+      0.01,
+      0.02,
+      0.05,
+      0.05,
+      0.05,
+      0.05,
+      0.05,
+      0.05,
+      0.05,
+      0.05,
+      0.05,
+      0.05
+    ],
+    "cumulative_wheel_path_m_estimate": 0.5206932881543112,
+    "measured_ground_distance": false,
+    "net_displacement_verified": false,
+    "all_original_stop_windows_passed": true
+  },
+  "observations": {
+    "pre_move_head_views": 18,
+    "new_station_head_views": [
+      18,
+      18
+    ],
+    "source_atlases": [
+      {
+        "id": "c2f2e0752f634b7eb53cfc45f1abd3db",
+        "source": "clearance-01",
+        "view_count": 18,
+        "seen_deg": 235,
+        "missing_deg": 125
+      },
+      {
+        "id": "1b0f39f7a0384a69b8e72149b9e5ffb4",
+        "source": "station-01",
+        "view_count": 18,
+        "seen_deg": 235,
+        "missing_deg": 125
+      },
+      {
+        "id": "9bb78e2d728144b78ed9b23aa60cfc38",
+        "source": "station-02",
+        "view_count": 18,
+        "seen_deg": 235,
+        "missing_deg": 125
+      }
+    ],
+    "phone_rgb_samples": 65,
+    "phone_source_gaps": [
+      {
+        "job": "move-04",
+        "count": 1
+      }
+    ],
+    "registered_room_frame": false
+  },
+  "software": {
+    "local_job_tests_passed": 22,
+    "vehicle_related_tests_passed": 37,
+    "counts_overlap": true,
+    "source_sha256": {
+      "deployment/fieldmap/local_scan.py": "e9003e3fc938adbaab0edc673c5d09211eeceae3f3271561693d907183780809",
+      "deployment/fieldmap/test_local_scan.py": "61d27ed91c1a2781d19edf096b4663a0bf9dfe6c778f5d209f10b64fb2f467fd",
+      "fabrication/assembly/debug_console/rotation_scan.py": "bfe6bc97d2076181030ca5345898a882c5f13ebe7d5279f29e355b28e386f4dc",
+      "fabrication/assembly/debug_console/control_runtime.py": "b6351bda9ae292a0f962ddb1dbcbcbbdd89adaaf91835a73d0876d2369ed5027"
+    },
+    "serial_controller_restarted": false,
+    "servo_pid_register_writes": 0,
+    "windows_atomic_replace_retry_delays_s": [
+      0.005,
+      0.01,
+      0.02,
+      0.04,
+      0.08
+    ],
+    "forward_only_one_leg_m": [
+      0.005,
+      0.05
+    ]
+  },
+  "final_state": {
+    "controller_pid": 49472,
+    "online_motors": 16,
+    "parked_verified": true,
+    "wheel_positions_raw": [
+      3899,
+      716
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "active_tasks": false,
+    "right_lift_hold_retained": true
+  },
+  "remaining": {
+    "full_space_complete": false,
+    "trusted_metric_depth": false,
+    "continuous_localization": false,
+    "narrow_section_clearance_verified": false,
+    "origin_return_verified": false
+  },
+  "scope": "downloaded finite jobs, raw pre-move observation references, media, deployment and test receipts, source snapshots",
+  "cutoff": "turn-09; move-12; station-02; final-01; before final documentation sync and Git delivery",
+  "private_content_published": false,
+  "independent_backup": false
+}

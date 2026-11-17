@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "purpose": "vehicle-local decisions with periodic/event review; live base navigation remains unavailable",
+  "archive_name": "autonomous-exploration-evidence-20261117.zip",
+  "archive_bytes": 7509288,
+  "archive_sha256": "06079962601e708f7c1f48d9ead8c7eb785ca5108cc88e500832792b87e1c3de",
+  "payload_files": 275,
+  "payload_bytes": 12332345,
+  "manifest_sha256": "6f26a69c0747baa0a684b0ab6e5dba831a65ae387fafbee547e553278be229a8",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "source_sha256": true,
+    "native_photos": 42,
+    "phone_captures": 24,
+    "http_media": 44
+  },
+  "earlier_trials": [
+    {
+      "id": "a8e3d975f6e54ebe88f5e3b927cadc3f",
+      "phase": "latched_stop",
+      "views": 0
+    },
+    {
+      "id": "5074fd4595aa413daa46a15f5c5c2426",
+      "phase": "latched_stop",
+      "views": 6
+    }
+  ],
+  "successful_trial": {
+    "id": "6bb02b15b18c491388989a928c2a4b9d",
+    "child_id": "39b3b88e5e6c496fa6d002fdbc1b7f65",
+    "station_scans": 1,
+    "views": 18,
+    "complete_head_steps": 23,
+    "elapsed_scan_s": 66.61,
+    "elapsed_parent_to_scan_complete_s": 71.141,
+    "total_local_task_elapsed_s": 300.703,
+    "source_recoveries": 0,
+    "phone_samples": 18,
+    "llm_calls": 0,
+    "model_step_approvals": 0,
+    "base_motion_commands": 0,
+    "periodic_reports": [
+      {
+        "elapsed_s": 60.812,
+        "phase": "survey_station"
+      },
+      {
+        "elapsed_s": 121.25,
+        "phase": "waiting_navigation"
+      },
+      {
+        "elapsed_s": 181.828,
+        "phase": "waiting_navigation"
+      },
+      {
+        "elapsed_s": 242.453,
+        "phase": "waiting_hardware"
+      }
+    ],
+    "no_progress_events": [
+      {
+        "elapsed_s": 252.109,
+        "since_progress_s": 180.968
+      }
+    ],
+    "atlases": [
+      {
+        "id": "104a286739054aafb99cf9ad9aea26ef",
+        "views": 18,
+        "seen_deg": 235,
+        "missing_deg": 125
+      }
+    ]
+  },
+  "software": {
+    "workstation_tests_passed": 58,
+    "vehicle_tests_passed": 58,
+    "tests_overlap": true,
+    "serial_controller_restarted": false,
+    "source_sha256": {
+      "deployment/fieldmap/autonomy.py": "f1aeb6bb4761ce2836be945cc85c2ec61c033dcfa0772d7b1c5e8748fe87fa41",
+      "deployment/fieldmap/local_scan.py": "13844d0f80e7433ba2d441d624c868e3c97a3eaec24da0bf13c72810877c31b1",
+      "deployment/fieldmap/integration.py": "55e42a4727c947fa8f645b11ebcb413b9e85381ac26dca24b28ac15cc7b3dc18",
+      "deployment/fieldmap/test_autonomy.py": "c32486050fce3fb3474234eeb0b06f012659654a7572e49e7bcfc26ef419eb99",
+      "deployment/fieldmap/test_local_scan.py": "106fba74c693c05e3a444c696748a878e839a8520d0b76acc3538e281834956a",
+      "deployment/fieldmap/static/local-scan.js": "898596d67be7529df98a069e4fa82910e9280fdfaaf35c5e1513b62ef3157381",
+      "fabrication/assembly/debug_console/platform_app.py": "f4335c10194e3ddbf7cea27a0234967bf8adb24176f3e92f6e875e5ddded1067",
+      "fabrication/assembly/debug_console/rotation_scan.py": "bfe6bc97d2076181030ca5345898a882c5f13ebe7d5279f29e355b28e386f4dc",
+      "fabrication/assembly/debug_console/control_runtime.py": "b6351bda9ae292a0f962ddb1dbcbcbbdd89adaaf91835a73d0876d2369ed5027"
+    }
+  },
+  "final": {
+    "controller_pid": 49472,
+    "motors_online": 16,
+    "parked_verified": true,
+    "wheel_positions_raw": [
+      3899,
+      716
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "active_motion_tasks": false,
+    "exploration_intent_retained": true,
+    "right_lift_hold_retained": true
+  },
+  "remaining": {
+    "full_space_complete": false,
+    "live_navigation_backend_connected": false,
+    "automatic_translation": false,
+    "automatic_rotation": false,
+    "metric_range_verified": false,
+    "continuous_localization": false,
+    "origin_return_verified": false
+  },
+  "private_content_published": false,
+  "independent_backup": false,
+  "cutoff": "three autonomous trials; final parked readback; before final documentation sync and Git delivery"
+}

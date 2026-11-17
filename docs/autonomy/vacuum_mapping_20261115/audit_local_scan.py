@@ -34,12 +34,15 @@ def audit(folder):
                 heading_deg=(pan-2015)*360/4096,pitch_deg=-(tilt-2220)*360/4096,
                 calibrated_optical_extrinsics=False))
     rotations=[row for row in record.get('native_receipt',{}).get('results',[]) if row['op']=='rotate']
+    translations=[row for row in record.get('native_receipt',{}).get('results',[]) if row['op']=='travel']
     def wheels(state):return {str(m['id']):m['position'] for p in state['ports'] if p['port']=='COM4' for m in p['motors'] if m['id'] in (9,10)}
     before=wheels(record['initial_state']);after=wheels(record['final_state'])
     return dict(id=record['id'],profile=record['profile'],result_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         phase=record['phase'],elapsed_s=record['elapsed_s'],verified_media=len(photos),actual_head_views=measured,
         original_derived_view_metadata_retained=True,registered_pulses=len(rotations),
         passed_pulses=sum(row['status']=='done' for row in rotations),
+        registered_translations=len(translations),passed_translations=sum(row['status']=='done' for row in translations),
+        registered_wheel_distance_m_estimate=sum(row.get('wheel_distance_m_estimate',0.) for row in translations),
         native_wheel_deltas=[row.get('wheel_delta_raw') for row in rotations],
         wheel_changes_raw={k:(after[k]-before[k]+2048)%4096-2048 for k in before},
         llm_calls=record['llm_calls'],parked_verified=record['parked_verified'],
