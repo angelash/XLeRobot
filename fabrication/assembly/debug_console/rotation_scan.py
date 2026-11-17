@@ -349,11 +349,24 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
                         if (min(progress.values()) < -4 or max(progress.values())>130
                                 or abs(progress[9]-progress[10])>max(35,.30*max(progress.values()))):
                             raise RuntimeError('旋转中轮位反向、不对称或超限，已停')
-                        # Only slow the leading wheel. Never increase the slow
-                        # wheel's speed, extend expiry, or relax final guards.
+                        # Breakaway can send a formerly slow wheel past its peer
+                        # before the next sample. Predict 100ms of relative
+                        # encoder travel using each wheel's own sample times;
+                        # do not assume the servo speed register's unit factor.
+                        rates={9:0.,10:0.}
+                        if len(travel_trace)>1:
+                            previous=travel_trace[-2]
+                            for motor in (9,10):
+                                dt=powered[motor]['t']-previous['wheels'][motor]['t']
+                                if dt>.01:
+                                    rates[motor]=max(0.,(progress[motor]-previous['counts'][motor])/dt)
+                        travel_trace[-1]['encoder_rates_counts_s']=rates
+                        travel_trace[-1]['prediction_horizon_s']=.1
+                        # Only slow the wheel leading in predicted travel. Never
+                        # boost the other wheel, extend expiry or relax guards.
                         for motor,other in ((9,10),(10,9)):
-                            lead=max(0,progress[motor]-progress[other]-2)
-                            desired=(1 if command[motor]>0 else -1)*max(0,abs(command[motor])-4*lead)
+                            lead=max(0,progress[motor]-progress[other]+.1*(rates[motor]-rates[other])-2)
+                            desired=(1 if command[motor]>0 else -1)*round(max(0,abs(command[motor])-4*lead))
                             if abs(desired-applied[motor])>=8:
                                 if stopping.is_set() or clock()-started>=duration:break
                                 drive_write(runtime.session.ports['COM4'],motor,46,
@@ -444,7 +457,7 @@ def _bounded_pulse(runtime, check_abort, direction, duration, max_raw, advance=F
             'stop_trace': readbacks,
             'control_trace':control_trace,
             'powered_trace':travel_trace,'wheel_start_raw':before,
-            'balance_policy':'reduce_leading_wheel_within_original_caps',
+            'balance_policy':'reduce_predicted_leading_wheel_within_original_caps',
             'read_glitches': glitches,
             'yaw_delta_deg_estimate': math.degrees(angle), 'duration_s': duration,
             'geometry_source': 'existing_design_values_not_measured',

@@ -1,4 +1,5 @@
 """Time-based wheel dynamics, rather than instantaneous write=motion mocks."""
+import math
 import time
 import pytest
 from fabrication.assembly.debug_console.test_whole_calibration import runtime, set_word  # noqa: F401
@@ -49,6 +50,42 @@ def test_balance_cannot_hide_a_stall_or_wrong_direction(runtime,kwargs):
     assert caught.value.rotation['travel_trace']
     assert all(word(port.regs[motor],46)==0 and port.regs[motor][40]==0 for motor in (9,10))
     assert runtime.bounded_wheel_deadline is None
+
+
+@pytest.mark.parametrize('direction',[-1,1])
+def test_late_breakaway_is_braked_before_it_builds_a_large_position_lead(runtime,direction):
+    port=runtime.session.ports['COM4'];original=port.write
+    positions={9:4090.,10:4090.};velocities={9:0.,10:0.}
+    last=time.perf_counter();drive_start=None
+    for motor in positions:set_word(port.regs[motor],56,4090)
+    def write(packet):
+        nonlocal last,drive_start
+        now=time.perf_counter();dt=now-last;last=now
+        for motor in positions:
+            reg=port.regs[motor];encoded=word(reg,46)
+            desired=(encoded&0x7fff)*(-1 if encoded&0x8000 else 1) if reg[40] else 0
+            if desired and drive_start is None:drive_start=now
+            elapsed=0 if drive_start is None else now-drive_start
+            if motor==10:
+                # A finite initial delay and a transient breakaway surge. The
+                # physical plant responds over time, including after zero.
+                desired*=0 if elapsed<.35 else 1+2*math.exp(-(elapsed-.35)/.13)
+            velocities[motor]+=(desired-velocities[motor])*(1-math.exp(-dt/.025))
+            positions[motor]+=velocities[motor]*dt
+            set_word(reg,56,round(positions[motor])%4096)
+            set_word(reg,58,encode_velocity(velocities[motor]))
+        return original(packet)
+    port.write=write
+    result=bounded_rotate(runtime,lambda:None,direction=direction,duration=.65)
+    assert all(20<result['wheel_delta_raw'][motor]*direction<130 for motor in (9,10))
+    trace=result['powered_trace']
+    anticipatory=[row for row in trace if row['counts'][10]<=row['counts'][9]+5
+                  and row['encoder_rates_counts_s'][10]>row['encoder_rates_counts_s'][9]+50]
+    assert anticipatory
+    assert any(event['phase']=='balance_ack' and event['motor']==10 and (event['value']&0x7fff)<160
+               and 0<=event['t_ms']-sample['t']*1000<35
+               for sample in anticipatory for event in result['control_trace'])
+    assert all(word(port.regs[motor],46)==0 and port.regs[motor][40]==0 for motor in (9,10))
 
 
 def test_poll_yields_near_expiry_without_publishing_a_partial_report(runtime,monkeypatch):

@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "purpose": "resumed bounded wheel-control validation and upright body photographic loop",
+  "archive_name": "control-resume-evidence-20261117.zip",
+  "archive_bytes": 82191620,
+  "archive_sha256": "15f67546a09f8cf448eeb4a15390d194f7a77297aff2f51b0ff8f87725a9d46f",
+  "payload_files": 1915,
+  "payload_bytes": 122051821,
+  "manifest_sha256": "3c16b36a49ad115f83a949281542bc26f0d0452486f15156ff19b1642b4eb270",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "control_export_audited": true,
+    "source_media_sha256": true,
+    "independent_photo_loop_recomputed": true,
+    "studio_vehicle_and_workstation_http_sha256": true
+  },
+  "counts": {
+    "planned": 254,
+    "unexecuted_or_unregistered": 29,
+    "registered": 225,
+    "actual": 225,
+    "passed": 224,
+    "failed": 1
+  },
+  "predictive_registered_passes": 219,
+  "predictive_registered_failures": 0,
+  "predictive_net_wheel_difference_counts": {
+    "median": 5,
+    "max": 15
+  },
+  "original_feedback": {
+    "registered": 6,
+    "passed": 5,
+    "failed": 1
+  },
+  "unregistered_tail_changes_raw": [
+    {
+      "trial": "spin-020",
+      "deltas": {
+        "COM4:9": 6,
+        "COM4:10": 0
+      }
+    },
+    {
+      "trial": "spin-021",
+      "deltas": {
+        "COM4:9": 71,
+        "COM4:10": 68
+      }
+    }
+  ],
+  "photos": {
+    "source_frames": 300,
+    "missing_pairs": 0,
+    "body_photographic_loop_observed": true,
+    "raw_cumulative_yaw_deg_estimate": 343.20428252220154,
+    "nearest_background_revisit": {
+      "anchor": "spin-003/before-cam0.jpg",
+      "candidate": "spin-045/after-cam0.jpg",
+      "cumulative_yaw_deg_estimate": 343.20428252220154,
+      "yaw_deg": -0.9638147950172424,
+      "mad_deg": 0.08705466985702515,
+      "inliers": 240,
+      "x_span_px": 143.84091186523438,
+      "ok": true
+    },
+    "display_projection_scale_factor": 1.0489379600812876,
+    "metric_angle_calibrated": false,
+    "turn_center_drift_measured": false,
+    "studio_scan_id": "ed0639089ea148508639d634d1de4876",
+    "representative_views": 73,
+    "studio_media_per_location": 75
+  },
+  "phone": {
+    "registered_samples": 422,
+    "distinct_source_frames": 422,
+    "recorded_session_count": 1,
+    "old_reference_last_trial": "spin-032",
+    "trials_without_supplemental_frames": "spin-033 through spin-045",
+    "new_session_parked_rgb_frames": 3,
+    "sessions_silently_merged": false,
+    "trusted_depth": false,
+    "continuous_phone_full_circle": false
+  },
+  "software": {
+    "focused_regression_tests_passed": 158,
+    "source_sha256": {
+      "rotation_scan.py": "bfe6bc97d2076181030ca5345898a882c5f13ebe7d5279f29e355b28e386f4dc",
+      "control_runtime.py": "b6351bda9ae292a0f962ddb1dbcbcbbdd89adaaf91835a73d0876d2369ed5027"
+    },
+    "raw_cap": 160,
+    "max_requested_pulse_s": 0.65,
+    "pid_register_writes": 0
+  },
+  "final_state": {
+    "controller_pid": 49472,
+    "online_motors": 16,
+    "parked_window_verified": true,
+    "wheel_positions": [
+      2400,
+      2149
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "executor_active": false,
+    "exploration_phase": "guarded_stop",
+    "mission_retained": true,
+    "right_lift_hold_retained": true
+  },
+  "original_map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+  "original_map_and_unrelated_dirty_sources_unchanged": true,
+  "remaining": {
+    "physical_breakaway_root_cause_confirmed": false,
+    "metric_map_verified": false,
+    "precise_narrow_exit_verified": false,
+    "origin_return_verified": false
+  },
+  "scope": "downloaded bounded trials, metadata, static observations, source snapshots and immutable atlas readback only",
+  "cutoff": "diag-007; final-readback-01; phone-reference-02; before documentation sync and Git delivery",
+  "private_photos_logs_published": false,
+  "independent_backup": false
+}

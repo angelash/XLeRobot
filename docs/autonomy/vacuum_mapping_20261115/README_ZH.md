@@ -7,6 +7,7 @@
 ## 阅读顺序
 
 - [驻点环扫—通路探索—闭环—返回起点](STATION_EXPLORATION_ZH.md)：2026-11-16按用户观察整理的操作状态机、覆盖／细节／回环／返程指标、当前执行分层与停止退路。
+- [2026-11-17恢复测试与全周照片](CONTROL_RESUME_20261117_ZH.md)：预测减速版219个完整登记段通过、头部300张连续图首尾重访；手机后13批参考切换缺口与中止尾差保留，度量地图／窄出口／返程未认证。[归档回执](CONTROL_RESUME_RECEIPT_20261117.json)、[控制复算](audit_control_resumption.py)及[照片复算](audit_resumed_photo_loop.py)。
 - [本次实机执行与交接](STATION_EXECUTION_20261116_ZH.md)：首驻点18步、275度照片覆盖、3个有限底盘动作、真实深度读回及整屋任务未完成的具体原因；[私有参考归档回执](STATION_ARCHIVE_RECEIPT_20261116.json)保留验证范围。
 - [整车自转与恢复的现场执行](BODY_SPIN_RECOVERY_20261116_ZH.md)：第14节记录轮子加固后218次同向分段、背景重访及首驻点全周采图完成；74图闭合投影未标定，度量地图／返程未通过。[加固后回执](BODY_SPIN_REINFORCED_RECEIPT_20261116.json)、[统计复算](audit_body_spin.py)和[背景重访复算](audit_body_loop.py)。[加固前续扫回执](BODY_SPIN_RESUME_RECEIPT_20261116.json)、[首轮回执](BODY_SPIN_ARCHIVE_RECEIPT_20261116.json)和[照明等待回执](BODY_SPIN_CONTINUATION_RECEIPT_20261116.json)保留各自截止。
 - [手机摆正后的复扫与控制差异排查](UPRIGHT_RESCAN_CONTROL_20261116_ZH.md)：AR／普通彩色部分采集分开计数，比较用户实际Studio遥控与助手启停／判定，新增反馈候选和只读诊断；156项回归通过，反馈版实机验证因车载失联未完成，新整圈未完成。[本轮归档回执](UPRIGHT_RESCAN_RECEIPT_20261116.json)和[只读复算](audit_upright_rescan.py)保留来源、失败和未确认项。
