@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-17",
+  "purpose": "local finite scan execution, physical height-layer sampling and original guarded rotation",
+  "archive_name": "local-scan-evidence-20261117-v2.zip",
+  "archive_bytes": 7890114,
+  "archive_sha256": "c22064b815f51c1fb3d2bf3354382076b46319818aad12c65d40c6f4f90b836e",
+  "payload_files": 293,
+  "payload_bytes": 10880012,
+  "manifest_sha256": "48f90dea059a1ef71ad4ad1310c55471f23d2ebb422687edd2a01f9fc9bc0e04",
+  "checks": {
+    "exact_members": true,
+    "per_member_length_sha256": true,
+    "crc_readback": true,
+    "media_http_sha256_count": 166,
+    "actual_head_receipts_recomputed": true,
+    "original_map_and_dirty_control_sources_preserved": true
+  },
+  "previous_scan": {
+    "wall_s": 4705.747283,
+    "batch_wall_s": 461.254285,
+    "between_batch_s": 4244.492998,
+    "registered_rotations": 217
+  },
+  "jobs": [
+    {
+      "id": "50b844e79d3b4539a979e640b279e45e",
+      "profile": "head_layers",
+      "completed_views": 18,
+      "registered_pulses": 0,
+      "passed_pulses": 0,
+      "elapsed_s": 60.875,
+      "llm_calls": 0,
+      "phone_samples": 18,
+      "parked_verified": true
+    },
+    {
+      "id": "24b4a5ef0f2c4689a51a7cb47cd81698",
+      "profile": "turn_batch",
+      "completed_views": 12,
+      "registered_pulses": 12,
+      "passed_pulses": 12,
+      "elapsed_s": 19.296,
+      "llm_calls": 0,
+      "phone_samples": 0,
+      "parked_verified": true
+    },
+    {
+      "id": "fcabeb889cd249f3ba52b64323ecca4e",
+      "profile": "head_layers",
+      "completed_views": 18,
+      "registered_pulses": 0,
+      "passed_pulses": 0,
+      "elapsed_s": 67.031,
+      "llm_calls": 0,
+      "phone_samples": 18,
+      "parked_verified": true
+    }
+  ],
+  "atlas": {
+    "first_original": "147a52192054458e91ad2e670e9f1fb4",
+    "first_actual_encoder_correction": "8925c623d1a74307aff8eb0617a6756f",
+    "second": "420e1f39af464823b5987af362abc7b1",
+    "heading_coverage_deg": [
+      240,
+      250
+    ],
+    "heading_missing_deg": [
+      120,
+      110
+    ],
+    "different_headings_not_silently_merged": true,
+    "calibrated_optical_extrinsics": false
+  },
+  "validation": {
+    "local_job_tests_passed": 12,
+    "vehicle_related_tests_passed": 27,
+    "earlier_studio_related_tests_passed": 36,
+    "counts_overlap_do_not_add": true,
+    "vehicle_controller_pid": 49472,
+    "deployment_files_sha256_verified": 20,
+    "real_original_studio_page_progress_observed": true,
+    "automatic_geofence_verified": false
+  },
+  "final": {
+    "online_motors": 16,
+    "parked_window_verified": true,
+    "wheel_positions_raw": [
+      3361,
+      3050
+    ],
+    "wheel_goal_velocity": [
+      0,
+      0
+    ],
+    "wheel_torque": [
+      0,
+      0
+    ],
+    "active_tasks": false,
+    "right_lift_hold_retained": true,
+    "translation_commands": 0
+  },
+  "remaining": {
+    "full_metric_space_capture_complete": false,
+    "trusted_depth": false,
+    "continuous_localization": false,
+    "narrow_exit_verified": false,
+    "origin_return_verified": false
+  },
+  "scope": "downloaded bounded jobs and media, deployment/test receipts, source snapshots and immutable atlas readback",
+  "cutoff": "three completed local jobs; measured head correction; final-01; before final documentation sync and Git delivery",
+  "private_content_published": false,
+  "independent_backup": false
+}

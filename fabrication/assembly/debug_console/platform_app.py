@@ -291,6 +291,7 @@ async def lifespan(app):
     try:
         yield
     finally:
+        await app.state.local_scan.close()
         await app.state.camera_views.close()
         await asyncio.to_thread(app.state.spatial_journal.close)
         await asyncio.to_thread(app.state.phone_dense.close)
@@ -311,7 +312,7 @@ install_presence(app, data_dir=DATA/'presence', onboard_url='http://127.0.0.1:87
                  controller_url=UPSTREAM, allowed_origins=lambda: ALLOWED_ORIGINS)
 from deployment.fieldmap.integration import install as install_fieldmap, data_directory as fieldmap_directory, history_configuration
 install_fieldmap(app, data_dir=fieldmap_directory(REPO, DATA), allowed_origins=lambda: ALLOWED_ORIGINS,
-                 **history_configuration(REPO))
+                 activity_provider=lambda: service.recording, **history_configuration(REPO))
 from deployment.autonomy.integration import install as install_autonomy
 install_autonomy(app, data_dir=DATA/'autonomy', evidence_root=REPO/'fabrication/assembly/evidence',
                  allowed_origins=lambda: ALLOWED_ORIGINS)

@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import httpx
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse, RedirectResponse, Response
@@ -50,7 +51,7 @@ def history_configuration(repo):
 
 
 def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
-            history_fieldtests_root=None, history_forward_sign=None):
+            history_fieldtests_root=None, history_forward_sign=None, activity_provider=None):
     survey = Survey(data_dir)
     app.state.fieldmap = survey
     journal_root=Path(data_dir)/'journal'
@@ -62,6 +63,35 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     app.state.spatial_journal=journal
     surround=Surround(Path(data_dir)/'surround',lambda:app.state.phone_evidence,history_fieldtests_root)
     app.state.surround=surround
+    from .local_scan import LocalScan
+    async def scan_camera(camera):
+        return await app.state.camera_views.frame(camera)
+    def scan_phone():
+        service=getattr(app.state,'phone_vision',None)
+        evidence=getattr(app.state,'phone_evidence',None)
+        if service is None or evidence is None:return None
+        try:frame=service.frame('android')
+        except LookupError:return None
+        return evidence.capture('android',frame,'本地驻点扫描补充RGB／深度原值，未做度量验收')
+    def scan_busy():
+        grasp=getattr(app.state,'grasp',None)
+        return bool((activity_provider and activity_provider()) or (grasp and
+            (grasp.op or grasp.executor.active)))
+    def publish_scan(record):
+        folder=Path(data_dir)/'local-scan'/record['id'];views=[]
+        for row in record['observations']:
+            shot=row['shots'][0];raw=(folder/shot['file']).read_bytes()
+            views.append(dict(rgb=raw,heading_deg=row['heading_deg'],pitch_deg=row['pitch_deg'],
+                captured_at=shot['captured_at'],source_file=shot['file'],source_sha256=shot['sha256'],
+                head_raw=row['head_raw']))
+        scan=surround.save_views(views,label='本地分层补扫 · 高中低18视角 · 尺度未标定',
+            source_type='local_station_head_layers',provenance=dict(local_scan_id=record['id'],
+                llm_calls=0,base_drive_commands=0,metric_loop_verified=False,
+                heading_basis='head_encoder_unmeasured_camera_extrinsics',
+                previous_body_loop_not_silently_merged=True))
+        return scan['id']
+    local_scan=LocalScan(Path(data_dir)/'local-scan',exploration,scan_camera,scan_phone,scan_busy,publish=publish_scan)
+    app.state.local_scan=local_scan
     from .metric_api import install as install_metric
     install_metric(app, data_dir=data_dir, allowed_origins=allowed_origins)
     router = APIRouter(prefix=API)
@@ -97,6 +127,39 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.get('/map')
     def map_data(snapshot: str = 'current'):
         return load(snapshot)
+
+    @router.get('/local-scan/status')
+    async def scan_status():return local_scan.status()
+
+    @router.post('/local-scan/review')
+    async def scan_review(request:Request):
+        value=await body(request)
+        if value:raise HTTPException(422,'观察请求不接收动作参数')
+        try:return await local_scan.review()
+        except (ValueError,RuntimeError,OSError,httpx.HTTPError) as exc:raise HTTPException(409,str(exc)) from None
+
+    @router.post('/local-scan/start')
+    async def scan_start(request:Request):
+        value=await body(request)
+        try:return await local_scan.start(value)
+        except (ValueError,RuntimeError,OSError,httpx.HTTPError) as exc:raise HTTPException(409,str(exc)) from None
+
+    @router.post('/local-scan/stop')
+    async def scan_stop(request:Request):
+        value=await body(request)
+        if value:raise HTTPException(422,'停止请求不接收动作参数')
+        try:return await local_scan.stop()
+        except (OSError,httpx.HTTPError) as exc:raise HTTPException(503,str(exc)) from None
+
+    @router.get('/local-scan/{identifier}')
+    async def scan_record(identifier:str):
+        try:return local_scan.read(identifier)
+        except (OSError,ValueError):raise HTTPException(404,'本地扫描记录不存在') from None
+
+    @router.get('/local-scan/{identifier}/{name}')
+    async def scan_media(identifier:str,name:str):
+        try:return FileResponse(local_scan.media(identifier,name),media_type='image/jpeg')
+        except (OSError,ValueError):raise HTTPException(404,'本地扫描照片不存在') from None
 
     @router.get('/snapshots')
     def snapshots():
@@ -217,6 +280,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         value=await body(request)
         if value:raise HTTPException(422,'停止请求不接收动作参数')
         result=await asyncio.to_thread(exploration.stop,survey.controller)
+        if local_scan.task and not local_scan.task.done():
+            try:await local_scan.stop('用户停止探索')
+            except (OSError,httpx.HTTPError) as exc:result['errors'].append(str(exc))
         return Response(json.dumps(result,ensure_ascii=False),media_type='application/json',status_code=503 if result['errors'] else 200)
 
     @router.get('/body')
@@ -284,6 +350,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.post('/stop')
     async def stop(request: Request):
         await body(request)
+        if local_scan.task and not local_scan.task.done():
+            try:await local_scan.stop('用户停止空间观察动作')
+            except (OSError,httpx.HTTPError):pass  # Still attempt the original stop paths below.
         from starlette.concurrency import run_in_threadpool
         def stop_actions():
             failures = []
