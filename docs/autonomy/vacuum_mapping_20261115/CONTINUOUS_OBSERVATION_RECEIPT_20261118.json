@@ -317,5 +317,38 @@
       "wheel_ground_contacts_visible": false
     },
     "phone_has_had_stale_or_backlog": true
+  },
+  "latest_handoff": {
+    "at": "2026-11-18T17:40:38.330877+08:00",
+    "user_current_inspection": "已检查，未见接触、卡压或松动",
+    "evidence_kind": "user statement for current physical inspection; system readback for parking",
+    "unexplained_reference_change_cause": "unknown",
+    "running": false,
+    "hard_hold": "uncommanded_pose_change",
+    "motion_commands": 0,
+    "stationary_base_verified": true,
+    "controller_pid": 49472,
+    "wheel_positions": {
+      "9": 3066,
+      "10": 2768
+    },
+    "phone": {
+      "phase": "live",
+      "age_ms": 81.8,
+      "mode": "camera"
+    },
+    "map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+    "protected_sha256": {
+      "fabrication/assembly/debug_console/agent_ops.py": "e33b842f37dfb49075e58c2c872ca609e85caf8642e75efcaf1eaac571041bf7",
+      "fabrication/assembly/debug_console/test_agent_ops.py": "c1ce5193a618f19c1fbf3cb3bcda3af58c322bbd4b1e34c28dfebd7557858bef"
+    },
+    "private_archive": {
+      "filename": "continuous-observation-20261118-handoff.zip",
+      "sha256": "8ecf2cf4d4b53c4dd377d2224ff7e4ae5eab402b50f1e6671d28f24eeeab5a48",
+      "bytes": 259869,
+      "payloads": 7,
+      "crc_verified": true,
+      "member_sha256_and_lengths_verified": true
+    }
   }
 }
