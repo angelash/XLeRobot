@@ -182,11 +182,23 @@ class LocalScan:
     async def review(self,*,owner=None):
         self._owner(owner)
         if self.task and not self.task.done():raise ValueError('本地批次正在执行')
+        generation=self.stop_generation
         s,rows,health=await self.parked()
         servo=await self.api('/api/servo/status')
         if s['agent_run']['running'] or servo['active'] or servo['busy'] or s['web_control']['active'] or s['controller']['controller']!='offline' or self.busy():
             raise ValueError('其他执行器／操作员占用中')
-        frames=await self._views();identifier=uuid.uuid4().hex
+        # A cold USB collector may need longer than the demand lease. Keep
+        # touching its original shared reader while waiting, without actuators.
+        until=time.monotonic()+8
+        while True:
+            if generation!=self.stop_generation:raise ValueError('观察预检期间收到停止')
+            self._owner(owner)
+            try:frames=await self._views();break
+            except (httpx.HTTPError,HTTPException,RuntimeError,KeyError,ValueError) as exc:
+                if time.monotonic()>=until:raise ValueError('观察源预热预算用完：'+str(exc)) from exc
+                await asyncio.sleep(.2)
+        if generation!=self.stop_generation:raise ValueError('观察预检期间收到停止')
+        identifier=uuid.uuid4().hex
         folder=self.root/identifier;folder.mkdir()
         photos=[]
         for c,(raw,meta) in frames.items():
@@ -257,12 +269,13 @@ class LocalScan:
             sample=await asyncio.to_thread(self.phone)
             if sample is None:
                 self.state['phone_gaps']+=1;return
-            token=(sample['session'],sample['sequence'])
+            epoch=(sample.get('device','android'),sample['session'])
+            token=(*epoch,sample['sequence'])
             if token==self.phone_token:return
-            if token[0]!=self.phone_epoch:
-                self.state['phone_epochs'].append({'session':token[0],'first_sequence':token[1],
+            if epoch!=self.phone_epoch:
+                self.state['phone_epochs'].append({'device':epoch[0],'session':epoch[1],'first_sequence':token[2],
                     'registered_with_previous':False,'first_at':stamp()})
-                self.phone_epoch=token[0]
+                self.phone_epoch=epoch
             self.phone_token=token;self.state['phone_samples']+=1
             self.state.setdefault('phone_captures',[]).append(sample)
         except Exception as exc:

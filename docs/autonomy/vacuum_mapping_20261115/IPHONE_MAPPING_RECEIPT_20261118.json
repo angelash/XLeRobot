@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "status": "bounded_mapping_stage_complete_full_navigation_incomplete",
+  "user_statement_phone_mount": "fixed_to_chassis",
+  "head": {
+    "id": "3ea9c6c4352a4a299f7b870f33b07027",
+    "parent_id": "4bddcee713794cb9adb9842e82fc5842",
+    "execution": "vehicle_selected_station_survey",
+    "views": 18,
+    "complete_head_steps": 23,
+    "elapsed_s": 73.922,
+    "phone_samples": 18,
+    "phone_gaps": 0,
+    "atlas_id": "ca7299ad00e649dcac04d0a686d8e43f",
+    "base_commands": 0,
+    "model_step_approvals": 0
+  },
+  "body": {
+    "id": "6b6c596958c3423b8003df66831b3603",
+    "native_run_id": "20261118-111010",
+    "execution": "assistant_selected_one_finite_local_batch_not_autonomous_navigation",
+    "planned": 12,
+    "registered": 12,
+    "passed": 12,
+    "elapsed_s": 20.046,
+    "wheel_delta_sum_raw": {
+      "9": 974,
+      "10": 940
+    },
+    "maximum_segment_wheel_difference_raw": 7,
+    "wheel_yaw_estimate_deg": 42.728554687499994,
+    "model_calls_inside_batch": 0,
+    "supervised_not_self_selected": true
+  },
+  "phone": {
+    "device": "iphone",
+    "transport": "wifi",
+    "width": 240,
+    "height": 320,
+    "depth_source": "record3d_hue_video",
+    "sensor_raw_depth": false,
+    "confidence_available": false,
+    "synchronized_payloads_with_matching_source_identifiers": 50,
+    "capture_errors": 0,
+    "in_02_3m_fraction_range": [
+      0.6138802083333333,
+      0.6404166666666666
+    ],
+    "positive_median_depth_m_range": [
+      1.2118643522262573,
+      1.5262010097503662
+    ]
+  },
+  "reconstruction": {
+    "accepted": 50,
+    "input": 50,
+    "rejected": 0,
+    "vertices": 73698,
+    "triangles": 119999,
+    "pose_mode": "odometry",
+    "rgbd_rotation_magnitude_deg": 17.783771586555925,
+    "rgb_rotation": {
+      "accepted": true,
+      "matches": 139,
+      "inliers": 137,
+      "inlier_image_extent_px": [
+        143.69554138183594,
+        199.97175693511963
+      ],
+      "rotation_magnitude_deg": 20.03011013800434,
+      "rotation_matrix": [
+        [
+          0.9395130090192331,
+          0.1048854158802532,
+          -0.3260588220233468
+        ],
+        [
+          -0.10464811453528568,
+          0.9943405512118071,
+          0.018320489622535786
+        ],
+        [
+          0.32613506099135675,
+          0.0169091026203655,
+          0.9451719442729657
+        ]
+      ],
+      "inlier_median_residual_deg": 0.13470303857107127,
+      "threshold_deg": 0.8,
+      "method": "SIFT_ratio_matches_and_RANSAC_unit_bearing_rotation",
+      "limits": "Same RGB source; translation, distortion and dynamics may bias this rotation-only fit. Not ground truth."
+    },
+    "alignment_rmse_median_m": 0.014474056542160923,
+    "reported_camera_translation_m": 0.09529302281899447,
+    "published_in_existing_studio": true,
+    "metric_accuracy_verified": false,
+    "registered_robot_map": false,
+    "navigation_validated": false
+  },
+  "official_geometry": {
+    "commit": "de51ed34cfe29ba1ca6d910a8e656fff6fd949ae",
+    "assembly_wheel_diameter_in": 5,
+    "assembly_wheel_radius_m": 0.0635,
+    "software_default_wheel_radius_m": 0.05,
+    "software_default_wheelbase_m": 0.25,
+    "physical_dimensions_measured": false,
+    "geometry_changed_this_run": false,
+    "sources": [
+      {
+        "path": "docs/en/source/hardware/getting_started/assemble_2wheel.md",
+        "url": "https://raw.githubusercontent.com/Vector-Wangel/XLeRobot/de51ed34cfe29ba1ca6d910a8e656fff6fd949ae/docs/en/source/hardware/getting_started/assemble_2wheel.md",
+        "sha256": "565eb4b45eebddb65b65287bc40017854f14f7955efcdf42014897364e4f849b",
+        "bytes": 3462
+      },
+      {
+        "path": "software/src/robots/xlerobot_2wheels/config_xlerobot_2wheels.py",
+        "url": "https://raw.githubusercontent.com/Vector-Wangel/XLeRobot/de51ed34cfe29ba1ca6d910a8e656fff6fd949ae/software/src/robots/xlerobot_2wheels/config_xlerobot_2wheels.py",
+        "sha256": "a882924abf802f10ff21584c6f5c8b7e43f9b966c5cb0ec93c84436abe876c14",
+        "bytes": 4709
+      },
+      {
+        "path": "hardware/step/XLeRobot_040/XLeRobot040_dualwheelbase.step",
+        "url": "https://raw.githubusercontent.com/Vector-Wangel/XLeRobot/de51ed34cfe29ba1ca6d910a8e656fff6fd949ae/hardware/step/XLeRobot_040/XLeRobot040_dualwheelbase.step",
+        "sha256": "61cb769b2bb375c3e773db4bd4328656706b4aed7f58f28267a3a0a8d05bcd30",
+        "bytes": 1085863
+      }
+    ]
+  },
+  "checks": {
+    "workstation_related_tests": 49,
+    "vehicle_related_tests": 49,
+    "test_counts_overlap": true,
+    "javascript_syntax_passed": true,
+    "rgbd_payloads_hash_verified": 100,
+    "original_map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+    "controller_pid": 49472,
+    "controller_restart_count": 0,
+    "parked_verified": true,
+    "last_parking_check_at": "2026-11-18T11:35:53.937423+08:00",
+    "wheel_positions": [
+      1454,
+      1035
+    ],
+    "right_lift_hold_retained": true,
+    "source_warmup_deployed": true,
+    "stalled_collector_automatic_recovery_physically_accepted": false
+  },
+  "automatic_navigation": false,
+  "whole_space_completed": false,
+  "return_to_origin_completed": false,
+  "private_archive": {
+    "frozen_at": "2026-11-18T11:42:08.271672+08:00",
+    "archive": "iphone-mapping-evidence-20261118.zip",
+    "sha256": "d4bc4534926229d16654ab9877af4b0ecf6cc8f46f1a79a963d4f22d32feebc2",
+    "payloads": 734,
+    "payload_bytes": 149012611,
+    "archive_bytes": 77083934,
+    "crc_verified": true,
+    "member_hashes_and_lengths_verified": true,
+    "scope": "workstation evidence through final vehicle parking, official source lookup, 50-frame RGB-D reconstruction, RGB bearing audit and deployed code snapshot; later documentation sync and Git receipts are outside this frozen cutoff"
+  },
+  "source_cutoff_note": "workstation evidence through final vehicle parking, official source lookup, 50-frame RGB-D reconstruction, RGB bearing audit and deployed code snapshot; later documentation sync and Git receipts are outside this frozen cutoff"
+}

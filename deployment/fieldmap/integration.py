@@ -67,12 +67,10 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     async def scan_camera(camera):
         return await app.state.camera_views.frame(camera)
     def scan_phone():
+        from .phone_source import capture_phone
         service=getattr(app.state,'phone_vision',None)
         evidence=getattr(app.state,'phone_evidence',None)
-        if service is None or evidence is None:return None
-        try:frame=service.frame('android')
-        except LookupError:return None
-        return evidence.capture('android',frame,'本地驻点扫描补充RGB／深度原值，未做度量验收')
+        return capture_phone(service,evidence)
     def scan_busy():
         grasp=getattr(app.state,'grasp',None)
         return bool((activity_provider and activity_provider()) or (grasp and

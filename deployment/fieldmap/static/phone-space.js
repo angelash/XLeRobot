@@ -94,13 +94,13 @@ async function loadSelection(force=false){
       if(version!==epoch)return;
       if(force||cloudKey!==key){const view=await renderer(),data=await get(detail.surface_url);if(version!==epoch)return;if(view){await view.set(data);view.show($('phoneGeometryMode').value);if(displayedSource!==value)view.reset();}cloudKey=key;displayedSource=value;}
       if(version!==epoch)return;
-      const count=r.accepted.length,filter=r.temporal_filter;
-      write('phoneSpaceStatus',`iPhone局部彩色表面 · ${count}/${r.input_frames}帧融合 · ${r.surface_vertices.toLocaleString()}顶点 / ${r.surface_triangles.toLocaleString()}三角面 · 0.2–2.5米深度中位覆盖 ${percent(r.measured_depth_fraction_median)}${filter?' · 多帧稳定像素 '+percent(filter.supported_pixel_fraction):''}。当前已见表面，距离精度与房间配准尚未验证。`);
+      const count=r.accepted.length,filter=r.temporal_filter,moving=r.pose_mode==='odometry';
+      write('phoneSpaceStatus',`${moving?'iPhone移动扫描表面':'iPhone固定视野表面'} · ${count}/${r.input_frames}帧融合 · ${r.surface_vertices.toLocaleString()}顶点 / ${r.surface_triangles.toLocaleString()}三角面 · 0.2–2.5米深度中位覆盖 ${percent(r.measured_depth_fraction_median)}${filter?' · 多帧稳定像素 '+percent(filter.supported_pixel_fraction):''}。当前已见表面，距离精度与房间配准尚未验证。`);
       write('phoneCloudCount',r.surface_vertices.toLocaleString()+'顶点 · '+r.surface_triangles.toLocaleString()+'面 · 相机局部坐标');
       $('phoneCloudRaw').hidden=false;$('phoneCloudRaw').href=detail.mesh_url;$('phoneCloudRaw').textContent='下载彩色表面 PLY ↗';
       $('phoneDenseReport').href=detail.report_url;
       $('phoneAngularGrid').replaceChildren();$('phoneGapTargets').replaceChildren();
-      write('phoneCoverageScope','固定机位只覆盖这一个相机视锥。多帧降低噪声，不会增加背面或整屋覆盖；需要新机位并经位姿校验后才能扩展。');
+      write('phoneCoverageScope',moving?'来自移动中的多帧重叠视野，未拍方向保持未知；相机轨迹与轮估仍需交叉校验，尚未形成整屋地图或通行依据。':'固定机位只覆盖这一个相机视锥。多帧降低噪声，不会增加背面或整屋覆盖；需要新机位并经位姿校验后才能扩展。');
       const strip=$('phoneSourcePhotos');strip.replaceChildren();
       write('phoneSourcesCount',`${detail.sources.length}组源RGB-D全部保留 · 已融合${count}组 · 点击原图`);
       for(const source of detail.sources){const a=document.createElement('a');a.href=source.rgb_url;a.target='_blank';a.rel='noopener';const im=document.createElement('img');im.src=source.rgb_url;im.alt='融合来源 #'+source.sequence;im.loading='lazy';const label=document.createElement('span');label.textContent='#'+source.sequence+' · '+(source.accepted?'已融合':'未融合');a.append(im,label);strip.append(a);}

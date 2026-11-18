@@ -17,6 +17,7 @@ import uuid
 
 from deployment.grasp.recovery import hardware_readiness, wheel_observation
 from .store import stamp
+from .phone_source import phone_observation
 
 
 def replace_json(path,value):
@@ -97,8 +98,6 @@ class StudioInputs:
         p=await asyncio.to_thread(perception.status) if perception else {}
         phone=getattr(self.app.state,'phone_vision',None)
         phones=await asyncio.to_thread(phone.status) if phone else {}
-        android=phones.get('devices',{}).get('android',{})
-        meta=android.get('meta') or {}
         blockers=['continuous_localization_not_connected','sensor_to_base_extrinsics_unverified',
                   'body_footprint_not_measured','live_navigation_backend_not_connected']
         if p.get('calibration',{}).get('status')!='adopted':blockers.insert(0,'metric_ground_clearance_unvalidated')
@@ -108,11 +107,7 @@ class StudioInputs:
                     navigation_blockers=blockers,live_navigation_connected=False,
                     ownership=dict(limit_running=limits.get('running'),limit_current=current,
                                    servo_session=servo.get('session_id'),owns_servo=owns_servo,owns_agent=owns_agent),
-                    phone=dict(phase=android.get('phase'),frame_available=android.get('frame_available',False),
-                               mode=android.get('mode'),session=android.get('session'),sequence=android.get('sequence'),
-                               rgbd=meta.get('rgbd',False),tracking=meta.get('tracking'),
-                               depth_02_to_5m_fraction=meta.get('depth_02_to_5m_fraction'),
-                               metric_clearance_verified=False),
+                    phone=phone_observation(phones),
                     perception=dict(running=p.get('running',False),calibration=p.get('calibration')))
 
 
