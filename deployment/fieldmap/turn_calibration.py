@@ -35,6 +35,7 @@ class TurnCalibration(AutonomousSurvey):
         return value
 
     async def start(self,value):
+        if 'continuous' in value:raise ValueError('转角校对始终是有限试验，不接受持续重试')
         value=dict(value);review_id=value.pop('review_id',None);device=value.pop('phone_device','iphone')
         if device not in ('iphone','android'):raise ValueError('只接受已接入的iPhone或安卓来源')
         if not isinstance(review_id,str) or len(review_id)!=32 or any(c not in '0123456789abcdef' for c in review_id):

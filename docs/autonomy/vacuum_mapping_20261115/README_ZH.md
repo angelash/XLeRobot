@@ -6,6 +6,7 @@
 
 ## 阅读顺序
 
+- [长期任务、停车续轮与实际导航缺口](CONTINUOUS_OBSERVATION_20261118_ZH.md)：用户要求长期主动探索后的同一父任务续轮、原保护与实际等待状态；真实第2轮仅一次驻点扫描、0底盘提交，尚未开启无人巡游。[回执](CONTINUOUS_OBSERVATION_RECEIPT_20261118.json)及[只读复算](audit_continuous_observation.py)。
 - [iPhone没电后改用红米继续](REDMI_MAPPING_RESUME_20261118_ZH.md)：绑定安卓独立参考、完整RGB内参和可选深度检查，原800ms源门中断留证及共享取图／非阻塞写盘调整；最终分母见其[回执](REDMI_MAPPING_RESUME_RECEIPT_20261118.json)。
 - [iPhone本地转角校对与照明等待](IPHONE_TURN_CALIBRATION_20261118_ZH.md)：8组有限试验、独立留出／RGB-D交叉验证与本地暗场等待；实际6个完整登记段和中断尾差保留，单组14.62°轮估／6.60°RGB尚未采纳。[回执](IPHONE_TURN_CALIBRATION_RECEIPT_20261118.json)及[只读复算](audit_turn_calibration.py)。
 - [iPhone恢复、移动RGB-D与官方几何核对](IPHONE_MAPPING_20261118_ZH.md)：本地18视角、12段实物自转、50组移动RGB-D及73,698顶点局部表面；官方5英寸轮与软件默认值分歧、图像／轮估转角差异和未接通的导航边界。[回执](IPHONE_MAPPING_RECEIPT_20261118.json)及[只读图像／深度复算](audit_iphone_rgbd.py)。

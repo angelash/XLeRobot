@@ -1,0 +1,321 @@
+{
+  "schema": "xlerobot-continuous-observation-evidence-v2",
+  "date": "2026-11-18",
+  "private_archive": {
+    "filename": "continuous-observation-20261118-final.zip",
+    "sha256": "851df7708f64288558874e6ee446d759b5ba39f487074e84e7851e147e3a7e03",
+    "bytes": 16422275,
+    "payloads": 93,
+    "crc_verified": true,
+    "member_sha256_and_lengths_verified": true
+  },
+  "vehicle_archive": {
+    "sha256": "d6e7e96af8857ed7f951f10d01ca51bd5108ab0aafb07d12a9bef062a52e1968",
+    "bytes": 7659883,
+    "payloads": 214,
+    "crc_verified": true,
+    "member_sha256_and_lengths_verified": true,
+    "cutoff": "2026-11-18T17:21:35.173694+08:00"
+  },
+  "deployed_files": [
+    {
+      "path": "deployment/fieldmap/autonomy.py",
+      "expected": "431d480e3c05998be03f470a9a4bba654850636586a683efefb3fee2e8f2e4b4",
+      "sha256": "b8ef7628aa742c933e56e863be6087901bd866b063d48cc2ad3fea7cf97dc7c5",
+      "bytes": 26551
+    },
+    {
+      "path": "deployment/fieldmap/turn_calibration.py",
+      "expected": "a6bfa71d01ab1db6472c466a94e4e25f3ff1ecc36626f111e39ed096a5ef78e3",
+      "sha256": "d9c888ac375a6c59ff26a6cfed4456bfb2a711b576b549174c7384011b4fda84",
+      "bytes": 24147
+    },
+    {
+      "path": "deployment/fieldmap/test_continuous.py",
+      "expected": null,
+      "sha256": "d505b9b0e50e03f83bf1a538ef6ee2e4d0d37adaad42ad18888d937404f8f316",
+      "bytes": 5575
+    },
+    {
+      "path": "deployment/fieldmap/static/local-scan.js",
+      "expected": "142b768d9c8b0dd7cf600edd247fcf9d5f10b5c6f8616b8c0914abc85890900f",
+      "sha256": "d99647f5b67b5d4b0192647cde9a563c83e4ffd48a3102e290028e4816f1ed37",
+      "bytes": 7145
+    },
+    {
+      "path": "fabrication/assembly/debug_console/AGENT_CONTROL_ZH.md",
+      "expected": "f3cda98d887c38c960e176945c9ee787322903545d8eaa6597be8e7e5a9dc3ef",
+      "sha256": "93b60272ea8506d2e8a403fbc40df109a8b1dae8d5150917725b61cbdb62c083",
+      "bytes": 46247
+    },
+    {
+      "path": "fabrication/assembly/debug_console/AGENT_WORKFLOW_ZH.md",
+      "expected": "d488c620ca8054cfeeed91ec21dc400d3a3bc46b0b6f6e624bec7a7c7ea7d11d",
+      "sha256": "89b8de6ac79b26aac11ea16881d4c1b9d0cd18107a0b395c694ef6f6dbfa44a0",
+      "bytes": 17891
+    }
+  ],
+  "controller_pid_retained": 49472,
+  "workstation_related_tests": 91,
+  "vehicle_related_tests": 113,
+  "test_counts_are_overlapping_software_checks": true,
+  "javascript_syntax_verified": true,
+  "jobs": [
+    {
+      "id": "0c63db9fa9a64a45a95f012571999eee",
+      "continuous": false,
+      "phase": "budget_reached",
+      "running": false,
+      "elapsed_s": 121.234,
+      "round": null,
+      "hard_hold": null,
+      "finished_at": "2026-11-18T17:03:23.149649+08:00",
+      "interventions": [],
+      "rounds_completed": 0,
+      "station_actions_selected": 1,
+      "parked_observations": 0,
+      "child_id": "f8e4d52958b442908723fc6c877d83a0",
+      "views": 18,
+      "head_steps": 23,
+      "phone_samples": 18,
+      "phone_gaps": 0,
+      "child_elapsed_s": 69.516,
+      "atlas_id": "c952e11e13a543db94336c615b02ed01",
+      "wheel_net_raw": {
+        "9": 0,
+        "10": 0
+      }
+    },
+    {
+      "id": "f7bc695ce82c41d09d378c3f8410b669",
+      "continuous": true,
+      "phase": "latched_stop",
+      "running": false,
+      "elapsed_s": 223.625,
+      "round": 2,
+      "hard_hold": "uncommanded_pose_change",
+      "finished_at": "2026-11-18T17:10:47.020970+08:00",
+      "interventions": [
+        {
+          "sequence": 86,
+          "at": "2026-11-18T17:10:45.945055+08:00",
+          "elapsed_s": 222.547,
+          "kind": "intervention_required",
+          "reason": "uncommanded_pose_change"
+        }
+      ],
+      "rounds_completed": 1,
+      "station_actions_selected": 1,
+      "parked_observations": 3,
+      "child_id": "916ca31749834b99bad65ed8cc04bc06",
+      "views": 18,
+      "head_steps": 23,
+      "phone_samples": 18,
+      "phone_gaps": 0,
+      "child_elapsed_s": 67.906,
+      "atlas_id": "99ed06f772aa47688e08ee440dfc61e4",
+      "wheel_net_raw": {
+        "9": 0,
+        "10": 0
+      }
+    }
+  ],
+  "ongoing_task_id": null,
+  "cutoff": {
+    "at": "2026-11-18T17:21:35.173694+08:00",
+    "phase": "latched_stop",
+    "round": 2,
+    "running": false,
+    "hard_hold": "uncommanded_pose_change",
+    "stationary_base_verified": true,
+    "wheel_positions": {
+      "9": 3065,
+      "10": 2768
+    },
+    "map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+    "protected_sha256": {
+      "fabrication/assembly/debug_console/agent_ops.py": "e33b842f37dfb49075e58c2c872ca609e85caf8642e75efcaf1eaac571041bf7",
+      "fabrication/assembly/debug_console/test_agent_ops.py": "c1ce5193a618f19c1fbf3cb3bcda3af58c322bbd4b1e34c28dfebd7557858bef"
+    }
+  },
+  "cumulative_mission": {
+    "translation_legs": 19,
+    "turn_attempts": 957,
+    "wheel_path_m": 0.6951993260793786
+  },
+  "task_continues_after_cutoff": false,
+  "later_output_not_archived_here": false,
+  "base_commands_this_turn": 0,
+  "actual_roaming": false,
+  "automatic_navigation": false,
+  "metric_map_complete": false,
+  "original_stop_guards_retained": true,
+  "right_lift_hold_retained": true,
+  "user_goal_not_completed": "Continuous observation reached round 2, then stopped on an uncommanded reference change. Cause remains unknown. No unattended roaming began; live navigation inputs/backend remain absent.",
+  "preserved_first_snapshot": {
+    "private_archive": {
+      "filename": "continuous-observation-20261118.zip",
+      "sha256": "810a069fa84e7140d42ef743bf816db65b3d517aee9d59fc3e62f3212bfc1778",
+      "bytes": 7834174,
+      "payloads": 45,
+      "crc_verified": true,
+      "member_sha256_and_lengths_verified": true
+    },
+    "vehicle_archive": {
+      "sha256": "57d803a5dc747eaf87996bdea625bea1947198d1bc9425694d91f72ec4e48c7a",
+      "bytes": 7449737,
+      "payloads": 209,
+      "crc_verified": true,
+      "member_sha256_and_lengths_verified": true,
+      "cutoff": "2026-11-18T17:10:39.044470+08:00"
+    },
+    "cutoff": {
+      "at": "2026-11-18T17:10:39.044470+08:00",
+      "phase": "waiting_navigation",
+      "round": 2,
+      "running": true,
+      "stationary_base_verified": true,
+      "wheel_positions": {
+        "9": 3151,
+        "10": 2765
+      },
+      "map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+      "protected_sha256": {
+        "fabrication/assembly/debug_console/agent_ops.py": "e33b842f37dfb49075e58c2c872ca609e85caf8642e75efcaf1eaac571041bf7",
+        "fabrication/assembly/debug_console/test_agent_ops.py": "c1ce5193a618f19c1fbf3cb3bcda3af58c322bbd4b1e34c28dfebd7557858bef"
+      }
+    },
+    "task_was_running": true,
+    "represents_current_state": false
+  },
+  "stopped_task_id": "f7bc695ce82c41d09d378c3f8410b669",
+  "diagnostic": {
+    "samples": [
+      {
+        "COM3:1": -5,
+        "COM3:4": 3,
+        "COM3:5": 2,
+        "COM3:6": -1,
+        "COM4:1": -2,
+        "COM4:9": -86,
+        "COM4:10": 3
+      },
+      {
+        "COM3:1": -5,
+        "COM3:4": 3,
+        "COM3:5": 2,
+        "COM3:6": -1,
+        "COM4:1": -2,
+        "COM4:9": -86,
+        "COM4:10": 3
+      },
+      {
+        "COM3:1": -5,
+        "COM3:4": 3,
+        "COM3:5": 2,
+        "COM3:6": -1,
+        "COM4:1": -2,
+        "COM4:9": -86,
+        "COM4:10": 3
+      }
+    ],
+    "health": {
+      "ready": true,
+      "telemetry_ready": true,
+      "online_confirmed": 16,
+      "expected": 16,
+      "missing": [],
+      "all_torque": false,
+      "torque_off": [
+        "COM4:9",
+        "COM4:10"
+      ],
+      "snapshot_age_s": 0.1444535255432129,
+      "all_arm_torque": true,
+      "stationary_base_verified": true,
+      "issues": [],
+      "scope": "observed readback only; absent records do not identify a power fault"
+    },
+    "cause": "unknown",
+    "motion_commands": 0,
+    "stop_latch_preserved": true
+  },
+  "latest_followup": {
+    "cutoff": "2026-11-18T17:27:52.731105+08:00",
+    "user_answer": "不确定是否碰触",
+    "reason_unknown": true,
+    "archive": {
+      "filename": "reference-followup-01.zip",
+      "sha256": "cb577d611c6904e23781288cb159f789d8a430c40443dfe23b8de9d13b4cecd9",
+      "bytes": 32076,
+      "payloads": 1,
+      "crc_verified": true,
+      "member_sha256_and_lengths_verified": true
+    },
+    "samples": [
+      {
+        "COM3:1": -5,
+        "COM4:9": -85,
+        "COM4:10": 3
+      },
+      {
+        "COM3:1": -5,
+        "COM4:9": -85,
+        "COM4:10": 3
+      },
+      {
+        "COM3:1": -5,
+        "COM4:9": -85,
+        "COM4:10": 3
+      },
+      {
+        "COM3:1": -5,
+        "COM4:9": -85,
+        "COM4:10": 3
+      },
+      {
+        "COM3:1": -5,
+        "COM4:9": -85,
+        "COM4:10": 3
+      }
+    ],
+    "stationary_base_verified": true,
+    "controller_pid": 49472,
+    "stop_latch_preserved": true,
+    "motion_commands": 0,
+    "camera_recovery": {
+      "camera": 1,
+      "old_child_pid": 44136,
+      "controller_pid_retained": 49472,
+      "same_original_http_owner": true,
+      "control_restart": false,
+      "root_cause_fixed": false,
+      "review_id": "638ce4b6a1434d19b3d9de985925761e",
+      "photos": [
+        {
+          "camera": 0,
+          "captured_at": 1794994217.3083181,
+          "sequence": 342436,
+          "sha256": "e5a13e6121cc145d243f32b954cee2e04018622b787394cf6b98cea71a041bd3",
+          "file": "anchor-cam0.jpg"
+        },
+        {
+          "camera": 1,
+          "captured_at": 1794994217.2753203,
+          "sequence": 4,
+          "sha256": "1a17631b37dfd333052f37df43b6f0e7e9cd01d10bcd75a1206104273263214f",
+          "file": "anchor-cam1.jpg"
+        },
+        {
+          "camera": 2,
+          "captured_at": 1794994217.2883694,
+          "sequence": 365239,
+          "sha256": "700891977b703d1378395bd17a2073b5a08879fe8f6ce98a0946336bb0cee94c",
+          "file": "anchor-cam2.jpg"
+        }
+      ],
+      "wheel_ground_contacts_visible": false
+    },
+    "phone_has_had_stale_or_backlog": true
+  }
+}

@@ -11,6 +11,7 @@ from copy import deepcopy
 import json
 import math
 import os
+import shutil
 from pathlib import Path
 import time
 import uuid
@@ -110,6 +111,27 @@ class StudioInputs:
                     phone=phone_observation(phones),
                     perception=dict(running=p.get('running',False),calibration=p.get('calibration')))
 
+    def resources(self):
+        """Local resource observations only; never manufacture clearance."""
+        result={'issues':[]}
+        free=shutil.disk_usage(self.scan.root).free
+        result['free_bytes']=free
+        if free<512*1024**2:result['issues'].append('evidence_storage_low')
+        if os.name=='nt':
+            import ctypes
+            class Power(ctypes.Structure):
+                _fields_=[('ac',ctypes.c_ubyte),('flags',ctypes.c_ubyte),('percent',ctypes.c_ubyte),
+                          ('reserved',ctypes.c_ubyte),('remaining',ctypes.c_ulong),('full',ctypes.c_ulong)]
+            value=Power()
+            if ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(value)):
+                result['power']=dict(ac_line=value.ac,battery_percent=value.percent if value.percent<=100 else None)
+                if value.ac==0 and value.percent<=15:result['issues'].append('vehicle_battery_low')
+        return result
+
+    def phone_snapshot(self):
+        from .phone_source import capture_phone
+        return capture_phone(getattr(self.app.state,'phone_vision',None),getattr(self.app.state,'phone_evidence',None))
+
 
 class AutonomousSurvey:
     def __init__(self,root,exploration,scan,inputs,*,clock=time.monotonic,tick_s=1.):
@@ -141,13 +163,15 @@ class AutonomousSurvey:
     def status(self):
         keys=('id','phase','running','started_at','updated_at','finished_at','elapsed_s','note','blocked_by',
               'hard_hold','error','persistence_error','progress','child_id','event_sequence','last_summary',
-              'parked_verified','policy','source_wait_checks','latest_inputs','cancelled')
+              'parked_verified','policy','source_wait_checks','latest_inputs','cancelled','continuous',
+              'round','round_elapsed_s','round_started_at','latest_observation','resource_status')
         value={**{k:deepcopy(self.state[k]) for k in keys if k in self.state},
                 'execution':'vehicle_local_decisions','llm_calls':0,'model_step_approvals':0,
                 'automatic_translation':False,'automatic_rotation':False,
                 'navigation_backend':'not_connected','metric_map_completed':False,
                 'right_lift_hold_retained':True,'restart_replays_motion':False}
         if self.state.get('running'):value['elapsed_s']=round(self.clock()-self.begun,3)
+        value['task_lifetime']='until_stop_or_guard' if self.state.get('continuous') else 'finite'
         return value
 
     def record(self,identifier):
@@ -157,9 +181,10 @@ class AutonomousSurvey:
 
     async def start(self,value):
         if self.starting or (self.task and not self.task.done()):raise ValueError('自主任务正在执行或预检')
-        allowed={'confirmed','authorization','mission_id','max_duration_s','report_interval_s','no_progress_s'}
+        allowed={'confirmed','authorization','mission_id','max_duration_s','report_interval_s','no_progress_s','continuous'}
         if set(value)-allowed or value.get('confirmed') is not True or not isinstance(value.get('authorization'),str) or not 8<=len(value['authorization'])<=1000:
             raise ValueError('需要自主任务授权；不接收逐段目标或放行开关')
+        if type(value.get('continuous',False)) is not bool:raise ValueError('持续任务必须明确true或false')
         policy={k:value.get(k,default) for k,default in (('max_duration_s',900),('report_interval_s',60),('no_progress_s',180))}
         for key,low,high in (('max_duration_s',60,3600),('report_interval_s',30,300),('no_progress_s',60,600)):
             if type(policy[key]) not in (int,float) or not math.isfinite(policy[key]) or not low<=policy[key]<=high:
@@ -182,10 +207,12 @@ class AutonomousSurvey:
             self.preflight_after=0.;self.preflight_failures=0
             self.heartbeat_after=0.;self.heartbeat_phase=None
             self.station_scanned=False;self.base_anchor=anchor(state)
+            self.round_begun=self.begun;self.observation_after=self.begun;self.resource_after=self.begun
             (self.root/identifier).mkdir()
             self.state=dict(id=identifier,phase='starting',running=True,mission_id=mission['session_id'],
                             authorization=value['authorization'],policy=policy,started_at=stamp(),elapsed_s=0,
                             progress=dict(station_scans=0,views=0,translation_legs=0,new_area_m2=None),
+                            continuous=value.get('continuous',False),round=1,round_elapsed_s=0,round_started_at=stamp(),
                             event_sequence=0,events=[],blocked_by=[],source_wait_checks=0,parked_verified=True,
                             physical_holds=['right_lift_existing_hold'])
             self._event('started',policy=policy)
@@ -246,10 +273,21 @@ class AutonomousSurvey:
             self.state['completed_child_id']=self.state.pop('child_id')
             self.last_progress=self.clock();self.no_progress_reported=False
             self._event('station_survey_completed',job_id=child['id'],views=child['completed_views'],atlas_id=child.get('atlas_id'))
+        if self.state.get('continuous') and self.clock()>=self.resource_after:
+            provider=getattr(self.inputs,'resources',None)
+            if provider:
+                try:self.state['resource_status']=await asyncio.to_thread(provider)
+                except Exception as exc:self.state['resource_status']=dict(issues=['resource_read_unavailable'],error=str(exc)[:200])
+            self.resource_after=self.clock()+30
+        resources=self.state.get('resource_status',{})
+        if resources.get('issues'):
+            self._transition('waiting_resources',resources['issues']);return
         phase,reasons=decision(observation,self.station_scanned)
         self._transition(phase,reasons)
         if phase=='latched_stop':self._latch(reasons[0]);return
         if phase=='waiting_source':self.state['source_wait_checks']+=1
+        if self.state.get('continuous') and phase=='waiting_navigation' and self.clock()>=self.observation_after:
+            await self._observation_snapshot(observation)
         if phase=='survey_station':
             if self.clock()<self.preflight_after:return
             # Both observation creation and the decision to scan happen locally.
@@ -267,6 +305,40 @@ class AutonomousSurvey:
                 if self.preflight_failures>=10:self._latch('local_preflight_recovery_exhausted')
                 return
             self.state['child_id']=child['id'];self.state['child_registered_views']=0;self._save()
+
+    async def _observation_snapshot(self,observation):
+        """One parked source sample per summary; no new coverage or motor grant."""
+        self.observation_after=self.clock()+self.state['policy']['report_interval_s']
+        identifier=uuid.uuid4().hex;folder=self.root/self.state['id']/'observations'/identifier
+        folder.mkdir(parents=True)
+        import hashlib
+        record=dict(id=identifier,at=stamp(),round=self.state['round'],motor_commands=0,
+                    adds_explored_area=False,phone=deepcopy(observation.get('phone')),photos=[])
+        for camera,(raw,meta) in self.scan.frames.items():
+            name=f'camera-{camera}.jpg';(folder/name).write_bytes(raw)
+            record['photos'].append(dict(meta,file=name,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
+        provider=getattr(self.inputs,'phone_snapshot',None)
+        if provider:
+            try:record['phone_capture']=await asyncio.to_thread(provider)
+            except Exception as exc:record['phone_error']=str(exc)[:200]
+        replace_json(folder/'record.json',record)
+        self.state['latest_observation']={k:deepcopy(record[k]) for k in ('id','at','round','motor_commands','adds_explored_area','photos')}
+        self._event('parked_observation_saved',observation_id=identifier,new_area_m2=None)
+
+    async def _round_boundary(self):
+        # The same parent, reservation, stop generation and station reference
+        # survive a round. A new round never replays a completed child.
+        if self.scan.task and not self.scan.task.done():return
+        generation=self.generation
+        state,_,_=await self.scan.parked()
+        if self.cancelled or generation!=self.generation or not self._mission():return
+        reason=changed_anchor(self.base_anchor,anchor(state))
+        if reason:self._latch(reason);return
+        self.state['parked_verified']=True
+        self._event('round_completed',round=self.state['round'],station_reference_retained=True,
+                    new_motor_permissions=False,progress=deepcopy(self.state['progress']))
+        self.round_begun=self.clock();self.state.update(round=self.state['round']+1,round_started_at=stamp(),round_elapsed_s=0)
+        self._save()
 
     def _transition(self,phase,reasons):
         if phase!=self.state['phase'] or reasons!=self.state.get('blocked_by'):
@@ -289,7 +361,12 @@ class AutonomousSurvey:
     async def _run(self):
         try:
             while not self.cancelled and self._mission():
-                if self.clock()-self.begun>=self.state['policy']['max_duration_s']:
+                if self.state.get('continuous'):
+                    self.state['round_elapsed_s']=round(self.clock()-self.round_begun,3)
+                    if self.clock()-self.round_begun>=self.state['policy']['max_duration_s']:
+                        await self._round_boundary()
+                        if self.cancelled or not self._mission() or self.state.get('hard_hold'):break
+                elif self.clock()-self.begun>=self.state['policy']['max_duration_s']:
                     self.state.update(phase='budget_reached',note='本地时间预算到期，保留未完成任务；未宣告建图完成')
                     self._event('time_budget_reached',mapping_completed=False);break
                 await self._tick()

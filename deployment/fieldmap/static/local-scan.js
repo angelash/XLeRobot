@@ -2,7 +2,7 @@
 (() => {
   const api='/api/platform/fieldmap/local-scan';
   const phases={idle:'等待本地任务',starting:'准备扫描',observing:'检查新图',moving:'正在采集',waiting_source:'等待画面恢复',saving:'保存观察',stopping:'正在停止',completed:'本批采集完成',needs_review:'等待判断与调整',cancelled:'已停止',interrupted:'任务被中断'};
-  const autonomousPhases={starting:'自主任务准备中',survey_station:'自行补扫当前驻点',waiting_source:'等待新图，恢复后自行继续',waiting_hardware:'等待硬件读回与停车窗口',waiting_navigation:'等待可靠测距与定位接入',latched_stop:'已锁定停止，需处理具体异常',stopping:'正在停止自主任务',stopped:'自主任务已停止',budget_reached:'本地任务时间预算已到',interrupted:'重启中断，旧动作未重放'};
+  const autonomousPhases={starting:'自主任务准备中',survey_station:'自行补扫当前驻点',waiting_source:'等待新图，恢复后自行继续',waiting_hardware:'等待硬件读回与停车窗口',waiting_resources:'等待供电或归档空间恢复',waiting_navigation:'等待可靠测距与定位接入',latched_stop:'已锁定停止，需处理具体异常',stopping:'正在停止自主任务',stopped:'自主任务已停止',budget_reached:'本地任务时间预算已到',interrupted:'重启中断，旧动作未重放'};
   const reasons={metric_ground_clearance_unvalidated:'地面测距未通过',continuous_localization_not_connected:'连续定位未接通',sensor_to_base_extrinsics_unverified:'相机与底盘外参未验证',body_footprint_not_measured:'整车包络待实测',live_navigation_backend_not_connected:'实时导航后端未接通',head_source_recovery:'相机临时中断，恢复后从缺失视角继续'};
   const host=document.createElement('section');host.className='spatial-memory local-scan';
   host.innerHTML='<div><p class="eyebrow">LOCAL SCAN / 车载执行</p><h2>连续采集，按批复核。</h2><p id="local-scan-phase" role="status">正在读取本地任务…</p></div><div class="memory-actions"><strong id="local-scan-progress">—</strong><button id="local-scan-stop" disabled>停止本地批次</button><a id="local-scan-record" target="_blank" rel="noopener" hidden>查看本批证据 ↗</a></div><p class="memory-boundary" id="local-scan-note">本地完成动作、取帧与检查，批次结束或异常时再反馈。照片覆盖和可靠空间测量分别验收。</p>';
@@ -28,9 +28,9 @@
       host.querySelector('h2').textContent=a?.id?'车载自行决策，按条件回报。':'连续采集，按批复核。';
       if(a?.id&&(a.running||(a.finished_at||a.started_at)>=(s.started_at||''))){
         find('local-scan-phase').textContent=autonomousPhases[a.phase]||a.phase;
-        find('local-scan-progress').textContent=`${a.progress?.station_scans||0} 驻点 / ${a.progress?.views||0} 视角`;
+        find('local-scan-progress').textContent=`${a.continuous?'持续任务 · 第'+(a.round||1)+'轮 · ':''}${a.progress?.station_scans||0} 驻点 / ${a.progress?.views||0} 视角`;
         find('local-scan-stop').disabled=!a.running||busy;
-        find('local-scan-note').textContent=[a.note,...(a.blocked_by||[]).map(v=>reasons[v]||v),a.error,a.policy?`每${a.policy.report_interval_s}秒汇总 / ${a.policy.no_progress_s}秒无进展上报`:'',a.last_summary?`最近汇总：${a.last_summary.since_progress_s.toFixed(0)}秒无新增覆盖`:'','自主行驶尚未启用'].filter(Boolean).join(' · ');
+        find('local-scan-note').textContent=[a.note,...(a.blocked_by||[]).map(v=>reasons[v]||v),a.error,a.continuous?'任务持续至停止或保护触发，每轮核验停车后续接':'',a.policy?`每${a.policy.report_interval_s}秒汇总 / ${a.policy.no_progress_s}秒无进展上报`:'',a.last_summary?`最近汇总：${a.last_summary.since_progress_s.toFixed(0)}秒无新增覆盖`:'','自主行驶尚未启用'].filter(Boolean).join(' · ');
         find('local-scan-record').hidden=false;find('local-scan-record').href='/api/platform/fieldmap/autonomy/'+encodeURIComponent(a.id);
         find('local-scan-stop').textContent='停止自主任务';return;
       }
