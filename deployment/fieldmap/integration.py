@@ -93,8 +93,13 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     from .autonomy import AutonomousSurvey,StudioInputs
     autonomy=AutonomousSurvey(Path(data_dir)/'autonomy',exploration,local_scan,StudioInputs(app,local_scan))
     app.state.fieldmap_autonomy=autonomy
+    from .turn_calibration import TurnCalibration
+    turn_calibration=TurnCalibration(Path(data_dir)/'turn-calibration',exploration,local_scan,
+        StudioInputs(app,local_scan),lambda:getattr(app.state,'phone_vision',None))
+    app.state.fieldmap_turn_calibration=turn_calibration
     # Close the supervisor before its owned finite executor.
     app.add_event_handler('shutdown',autonomy.close)
+    app.add_event_handler('shutdown',turn_calibration.close)
     from .metric_api import install as install_metric
     install_metric(app, data_dir=data_dir, allowed_origins=allowed_origins)
     router = APIRouter(prefix=API)
@@ -133,6 +138,27 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
 
     @router.get('/local-scan/status')
     async def scan_status():return local_scan.status()
+
+    @router.get('/turn-calibration/status')
+    async def turn_calibration_status():return turn_calibration.status()
+
+    @router.post('/turn-calibration/start')
+    async def turn_calibration_start(request:Request):
+        value=await body(request)
+        try:return await turn_calibration.start(value)
+        except (ValueError,RuntimeError,OSError,httpx.HTTPError) as exc:raise HTTPException(409,str(exc)) from None
+
+    @router.post('/turn-calibration/stop')
+    async def turn_calibration_stop(request:Request):
+        value=await body(request)
+        if value:raise HTTPException(422,'停止请求不接收动作参数')
+        try:return await turn_calibration.stop('用户停止转角校对')
+        except (OSError,httpx.HTTPError) as exc:raise HTTPException(503,str(exc)) from None
+
+    @router.get('/turn-calibration/{identifier}')
+    async def turn_calibration_record(identifier:str):
+        try:return turn_calibration.record(identifier)
+        except (OSError,ValueError):raise HTTPException(404,'转角校对任务不存在') from None
 
     @router.get('/autonomy/status')
     async def autonomy_status():return autonomy.status()
@@ -173,6 +199,7 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         value=await body(request)
         if value:raise HTTPException(422,'停止请求不接收动作参数')
         try:
+            if turn_calibration.starting or turn_calibration.state.get('running'):return await turn_calibration.stop('用户停止本地执行')
             if autonomy.starting or autonomy.state.get('running'):return await autonomy.stop('用户停止本地执行')
             return await local_scan.stop()
         except (OSError,httpx.HTTPError) as exc:raise HTTPException(503,str(exc)) from None
@@ -286,7 +313,8 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
         # Supervision and the durable stop latch must not queue behind them.
         value=await asyncio.to_thread(exploration.status)
         value['autonomy']=autonomy.status()
-        if autonomy.state.get('running'):
+        value['turn_calibration']=turn_calibration.status()
+        if autonomy.state.get('running') or turn_calibration.state.get('running'):
             value.update(execution='vehicle_local_decisions',heartbeat_owner='vehicle_local',supervisor_connected=False)
         return value
 
@@ -309,7 +337,9 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     async def exploration_stop(request:Request):
         value=await body(request)
         if value:raise HTTPException(422,'停止请求不接收动作参数')
-        # Latch the scheduler before awaiting controller I/O.
+        # Latch both schedulers before another experiment can be selected.
+        try:await turn_calibration.stop('用户停止探索')
+        except (OSError,httpx.HTTPError):pass
         try:await autonomy.stop('用户停止探索')
         except (OSError,httpx.HTTPError):pass
         result=await asyncio.to_thread(exploration.stop,survey.controller)
@@ -383,6 +413,8 @@ def install(app, *, data_dir, allowed_origins=None, history_evidence_root=None,
     @router.post('/stop')
     async def stop(request: Request):
         await body(request)
+        try:await turn_calibration.stop('用户停止空间观察动作')
+        except (OSError,httpx.HTTPError):pass
         try:await autonomy.stop('用户停止空间观察动作')
         except (OSError,httpx.HTTPError):pass
         if local_scan.task and not local_scan.task.done():

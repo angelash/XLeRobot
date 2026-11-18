@@ -294,6 +294,7 @@ class AutonomousSurvey:
                     self._event('time_budget_reached',mapping_completed=False);break
                 await self._tick()
                 self._reports();self._heartbeat()
+                if self.state.get('completed_task'):break
                 if self.state.get('hard_hold'):break
                 try:await asyncio.wait_for(self.wake.wait(),timeout=self.tick_s)
                 except asyncio.TimeoutError:pass

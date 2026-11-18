@@ -13,11 +13,20 @@
     if(document.hidden)return;
     const current=++version;
     try{
-      const [response,autoResponse]=await Promise.all([fetch(api+'/status',{signal:AbortSignal.timeout(5000)}),fetch('/api/platform/fieldmap/autonomy/status',{signal:AbortSignal.timeout(5000)})]);
+      const [response,autoResponse,calResponse]=await Promise.all([fetch(api+'/status',{signal:AbortSignal.timeout(5000)}),fetch('/api/platform/fieldmap/autonomy/status',{signal:AbortSignal.timeout(5000)}),fetch('/api/platform/fieldmap/turn-calibration/status',{signal:AbortSignal.timeout(5000)})]);
       if(!response.ok)throw Error('本地任务暂不可读');
-      const s=await response.json();const a=autoResponse.ok?await autoResponse.json():null;if(current!==version)return;
+      const s=await response.json();const a=autoResponse.ok?await autoResponse.json():null,c=calResponse.ok?await calResponse.json():null;if(current!==version)return;
+      if(c?.id&&(c.running||(c.finished_at||c.started_at)>=(a?.finished_at||a?.started_at||''))&&(c.running||(c.finished_at||c.started_at)>=(s.started_at||''))){
+        const labels={calibrating:'正反向转角采集',waiting_visibility:'等待关键视图恢复，保留校对任务',checking_rgbd:'停车核对RGB-D',checking_model:'检验未参与拟合的试验',completed:'本场转角校对通过',not_adopted:'校对未采纳，证据保留'};
+        host.querySelector('h2').textContent='本地试验，自行校对。';
+        find('local-scan-phase').textContent=labels[c.phase]||autonomousPhases[c.phase]||c.phase;
+        find('local-scan-progress').textContent=`${c.completed_trials||0} / ${c.planned_trials||8} 组`;
+        find('local-scan-stop').disabled=!c.running||busy;find('local-scan-stop').textContent='停止转角校对';
+        find('local-scan-note').textContent=[c.note,c.model?.gain?`本场转角系数 ${c.model.gain.toFixed(3)}`:'',c.model?.maximum_validation_error_deg!==undefined?`独立验证最大差 ${c.model.maximum_validation_error_deg.toFixed(2)}°`:'',c.error,'只校对转角估计，空间净空与自主导航另行验证'].filter(Boolean).join(' · ');
+        find('local-scan-record').hidden=false;find('local-scan-record').href='/api/platform/fieldmap/turn-calibration/'+encodeURIComponent(c.id);return;
+      }
       host.querySelector('h2').textContent=a?.id?'车载自行决策，按条件回报。':'连续采集，按批复核。';
-      if(a?.id){
+      if(a?.id&&(a.running||(a.finished_at||a.started_at)>=(s.started_at||''))){
         find('local-scan-phase').textContent=autonomousPhases[a.phase]||a.phase;
         find('local-scan-progress').textContent=`${a.progress?.station_scans||0} 驻点 / ${a.progress?.views||0} 视角`;
         find('local-scan-stop').disabled=!a.running||busy;

@@ -130,12 +130,15 @@ class LocalScan:
 
     async def _views(self):
         # A short network timeout never turns the reception time into source age.
+        begun=time.monotonic()
         values=await asyncio.gather(*(self.camera(c) for c in (0,1,2)))
         fresh={}
         for c,(raw,headers) in zip((0,1,2),values):
             at=float(headers['X-Captured-At']);age=time.time()-at
             if not -.1<=age<=.8 or not raw.startswith(b'\xff\xd8'):
-                raise SourceUnavailable('机器人相机缺少原800ms内的新图')
+                raise SourceUnavailable('机器人相机缺少原800ms内的新图：'+json.dumps(dict(
+                    camera=c,age_ms=round(age*1000,1),sequence=int(headers['X-Frame-Sequence']),
+                    request_elapsed_ms=round((time.monotonic()-begun)*1000,1)),ensure_ascii=False))
             fresh[c]=(raw,{'camera':c,'captured_at':at,'sequence':int(headers['X-Frame-Sequence']),
                            'sha256':hashlib.sha256(raw).hexdigest()})
         self.frames=fresh

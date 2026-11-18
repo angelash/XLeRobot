@@ -1,0 +1,126 @@
+{
+  "schema": "xlerobot-iphone-turn-calibration-evidence-v1",
+  "date": "2026-11-18",
+  "private_archive": {
+    "filename": "iphone-selfcal-20261118.zip",
+    "sha256": "24dc57cf8ff3a6b1431b5cc85abd536fdb5cc099d6a8d953cf229560e0305e4b",
+    "bytes": 4744239,
+    "payloads": 97,
+    "crc_verified": true,
+    "member_sha256_and_length_verified": true
+  },
+  "nested_vehicle_archive": {
+    "sha256": "f870119faa928804b605a5ac3481dd5d44f2efc4761470a47b46126fe5c08ce9",
+    "bytes": 4288131,
+    "payloads": 166,
+    "crc_verified": true,
+    "member_lengths_and_sha256_verified": true,
+    "snapshot_at": "2026-11-18T12:51:17.488790+08:00"
+  },
+  "deployed_files": [
+    {
+      "path": "deployment/fieldmap/local_scan.py",
+      "expected": "ec38ac5579f797c1847e0bedefb56c828d9449367e9fff387b66c88607d87b44",
+      "sha256": "ec38ac5579f797c1847e0bedefb56c828d9449367e9fff387b66c88607d87b44",
+      "bytes": 34607
+    },
+    {
+      "path": "deployment/fieldmap/autonomy.py",
+      "expected": "431d480e3c05998be03f470a9a4bba654850636586a683efefb3fee2e8f2e4b4",
+      "sha256": "431d480e3c05998be03f470a9a4bba654850636586a683efefb3fee2e8f2e4b4",
+      "bytes": 21449
+    },
+    {
+      "path": "deployment/fieldmap/integration.py",
+      "expected": "819504ec3d7b8c43278e86dcd4a57890d43c5ff754e4f89cdfeabd1c8351d1f5",
+      "sha256": "819504ec3d7b8c43278e86dcd4a57890d43c5ff754e4f89cdfeabd1c8351d1f5",
+      "bytes": 23501
+    },
+    {
+      "path": "deployment/fieldmap/static/local-scan.js",
+      "expected": "4e35048cf48d33f011db0e8e8e22ccfc60d88293d463dfa3235f678a65b97aff",
+      "sha256": "4858b3b0e7b7c11391e3dc1471baf96750e118632b0b08f491e3d15812a2959e",
+      "bytes": 6865
+    },
+    {
+      "path": "deployment/fieldmap/visual_turn.py",
+      "expected": "6eecf73544ffe646bb8cccee55fff91244b0dc9d095fd32b84a1dc69d48565ea",
+      "sha256": "6eecf73544ffe646bb8cccee55fff91244b0dc9d095fd32b84a1dc69d48565ea",
+      "bytes": 6861
+    },
+    {
+      "path": "deployment/fieldmap/test_visual_turn.py",
+      "expected": "6af000666b6d4e357720511c8ea2229c057482640a94e7937bdf251e4a98ced5",
+      "sha256": "ed8fb40c9b1f3a0b19414525068a33679a7ce1552e985e042d93f0d476658f0f",
+      "bytes": 3358
+    },
+    {
+      "path": "deployment/fieldmap/turn_calibration.py",
+      "expected": "dbfb4a09396200cf5b39373cc36c9328166dd675cc67962b3b6f48e28c9dfb80",
+      "sha256": "404cb646fd21695856df8ceac67f125bd5444b9cf8fbe134bb9062b62bacf324",
+      "bytes": 20292
+    },
+    {
+      "path": "deployment/fieldmap/test_turn_calibration.py",
+      "expected": "6ebf37bdb20ee4a34b4b7bfb50c560f70622b687bd8b695cad2ddd1be1b141d9",
+      "sha256": "ec8919c8f0123e29b19ed23c4c0c9dd37f13199a2182b3eb86a9329999cb76b9",
+      "bytes": 12049
+    }
+  ],
+  "controller_pid_retained": 49472,
+  "serial_owner_restarted": false,
+  "source_only_incident_review": {
+    "parent_id": "3a8a045b7af340b5bbacd5e4f10624a0",
+    "child_id": "c5e42d0ced55418c85aa81abf99e304c",
+    "native_run_id": "20261118-123802",
+    "original_failure_records_preserved": true,
+    "physical_holds_cleared": false
+  },
+  "validation": {
+    "workstation_related_tests": 70,
+    "vehicle_related_tests": 70,
+    "javascript_syntax": true,
+    "private_archive_readback": true,
+    "tests_are_not_physical_trial_count": true
+  },
+  "physical_results": {
+    "complete_trials": 1,
+    "planned_pulses_in_two_started_children": 8,
+    "complete_registered_pulses": 6,
+    "passed_registered_pulses": 6,
+    "unregistered_tail_after_last_stop_raw": {
+      "9": -84,
+      "10": -91
+    },
+    "first_trial_design_deg": 14.62236328125,
+    "first_trial_rgb_deg": 6.602318106335756,
+    "first_trial_rgbd_frames": 13,
+    "first_trial_rgb_matches": 71,
+    "first_trial_rgb_inliers": 61
+  },
+  "cutoff": {
+    "at": "2026-11-18T12:51:17.488790+08:00",
+    "waiting_task_id": "667fd337ad6c43e6a550bfb009f1bec2",
+    "phase": "waiting_visibility",
+    "completed_trials": 0,
+    "base_submissions": 0,
+    "max_duration_s": 900,
+    "stationary_base_verified": true,
+    "wheel_positions": {
+      "9": 1423,
+      "10": 1091
+    },
+    "original_map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+    "protected_sha256": {
+      "fabrication/assembly/debug_console/agent_ops.py": "e33b842f37dfb49075e58c2c872ca609e85caf8642e75efcaf1eaac571041bf7",
+      "fabrication/assembly/debug_console/test_agent_ops.py": "c1ce5193a618f19c1fbf3cb3bcda3af58c322bbd4b1e34c28dfebd7557858bef"
+    },
+    "ongoing_snapshot": true,
+    "later_output_not_covered": true
+  },
+  "accepted_angle_model": false,
+  "geometry_parameters_written": false,
+  "metric_map_complete": false,
+  "autonomous_navigation_verified": false,
+  "actual_light_recovery_motion_verified": false
+}
