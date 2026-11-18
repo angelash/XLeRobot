@@ -2,6 +2,7 @@
 import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -163,6 +164,25 @@ def test_source_wait_before_submission_resumes_the_same_task(tmp_path):
     asyncio.run(run())
 
 
+def test_evidence_io_does_not_block_watchdogs_or_submit_after_stop(tmp_path):
+    async def run():
+        import threading,time
+        rig=TurnRig();job,scan,mission=rig.calibration(tmp_path)
+        entered=threading.Event();release=threading.Event();original=job._sample
+        def slow():
+            entered.set();release.wait(timeout=3);return original()
+        job._sample=slow
+        await rig.begin_calibration(job,scan,mission)
+        try:
+            await until(entered.is_set)
+            start=time.monotonic();await job.stop()
+            assert time.monotonic()-start<.5 and not rig.submissions
+        finally:release.set()
+        await job.task
+        assert job.state['phase']=='stopped' and not rig.submissions
+    asyncio.run(run())
+
+
 def test_dark_station_waits_without_motion_and_resumes_locally_after_lighting_returns(tmp_path):
     async def run():
         rig=TurnRig();rig.dark_views=True;job,scan,mission=rig.calibration(tmp_path)
@@ -183,6 +203,7 @@ def test_owned_depth_worker_honours_overall_budget_and_is_terminated(tmp_path,mo
         # Prepare the parked helper boundary without starting the motion loop.
         job.state.update(id='a'*32,mission_id=mission.status()['session_id'],policy=dict(max_duration_s=60))
         job.begun=0.;rig.now[0]=61.
+        monkeypatch.setattr(job,'_depth_input',lambda *args:dict(ok=True,folder=str(tmp_path)))
         folder=tmp_path/'calibration'/job.state['id']/'trials'/'000';folder.mkdir(parents=True)
         worker=tmp_path/'.venv-dense/Scripts/python.exe';worker.parent.mkdir(parents=True);worker.touch()
         class Process:
@@ -192,10 +213,60 @@ def test_owned_depth_worker_honours_overall_budget_and_is_terminated(tmp_path,mo
             def wait(self,timeout):return self.returncode
         process=Process()
         monkeypatch.setattr('deployment.fieldmap.turn_calibration.subprocess.Popen',lambda *a,**kw:process)
-        result=await job._rgbd_check(dict(index=0))
+        result=await job._rgbd_check(dict(index=0,frames=[]))
         assert result['reason']=='rgbd_budget_reached' and process.terminated
         assert not rig.submissions
     asyncio.run(run())
+
+
+def test_android_uses_full_color_intrinsics_and_retains_rgb_only_validation(tmp_path):
+    async def run():
+        rig=TurnRig();job,scan,mission=rig.calibration(tmp_path)
+        seen=[]
+        def frame(device):
+            seen.append(device);assert device=='android'
+            rig.phone_seq+=1
+            return SimpleNamespace(session='redmi-independent',sequence=rig.phone_seq,
+                rgb=image(),raw=b'',received=0.,meta=dict(width=64,height=48,rgb_width=64,rgb_height=48,
+                    rgbd=False,android_mode='arcore',camera_id='0',rotation_deg=90,
+                    rgb_intrinsics=dict(fx=90.,fy=90.,tx=32.,ty=24.),arcore_capture_session='redmi-ar'))
+        job.phone=lambda:SimpleNamespace(frame=frame,clock=lambda:0.,repo=tmp_path)
+        job.rgbd_checker=lambda row:job._rgbd_check(row)
+        review=await scan.review()
+        await job.start(dict(confirmed=True,authorization='user switched to Redmi for local self calibration',
+            mission_id=mission.status()['session_id'],review_id=review['review_id'],phone_device='android'))
+        await job.task
+        assert rig.submissions==list(PLAN) and set(seen)=={'android'}
+        assert job.state['reference']['device']=='android' and job.status()['phone_device']=='android'
+        assert not job.state['model']['accepted'] and job.state['model']['gain_validation_passed']
+        assert job.state['trials'][-1]['rgbd']['reason']=='rgbd_unavailable_rgb_angle_only'
+        assert not list((job.root/job.state['id']).rglob('*.f32'))
+    asyncio.run(run())
+
+
+def test_depth_check_rejects_implausible_ranges_and_derives_mapped_rgb_without_modifying_sources(tmp_path):
+    rig=TurnRig();job,scan,mission=rig.calibration(tmp_path)
+    folder=tmp_path/'trial';original=folder/'input';original.mkdir(parents=True)
+    rgb=cv2.imencode('.jpg',np.full((80,100,3),120,np.uint8))[1].tobytes();depth=np.ones((40,50),np.float32).tobytes()
+    import hashlib
+    frames=[]
+    for i in range(3):
+        rgb_file=f'{i}.jpg';depth_file=f'{i}.f32'
+        (original/rgb_file).write_bytes(rgb);(original/depth_file).write_bytes(depth)
+        frames.append(dict(rgb_file=rgb_file,depth_file=depth_file,rgb_sha256=hashlib.sha256(rgb).hexdigest(),
+            depth_sha256=hashlib.sha256(depth).hexdigest(),session='redmi',sequence=i+1,
+            meta=dict(width=50,height=40,intrinsics=dict(fx=45.,fy=45.,tx=25.,ty=20.),
+                depth_source='arcore_depth_mm',registration='arcore_sdk_texture_to_cpu_crop',
+                rgb_from_depth_scale_offset=[2.,2.,0.,0.])))
+    prepared=job._depth_input(folder,frames)
+    assert prepared['ok'] and (original/'0.jpg').read_bytes()==rgb
+    assert cv2.imread(str(Path(prepared['folder'])/'0.jpg')).shape[:2]==(40,50)
+    bad=tmp_path/'implausible';(bad/'input').mkdir(parents=True)
+    far=np.full((40,50),20.,np.float32).tobytes();rows=deepcopy(frames)
+    for row in rows:
+        row['depth_sha256']=hashlib.sha256(far).hexdigest()
+        (bad/'input'/row['rgb_file']).write_bytes(rgb);(bad/'input'/row['depth_file']).write_bytes(far)
+    assert job._depth_input(bad,rows)['reason']=='depth_outside_existing_rgbd_range'
 
 
 def test_studio_routes_reject_external_targets_and_generic_stop_owns_parent(tmp_path):

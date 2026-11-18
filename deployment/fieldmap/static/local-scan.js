@@ -22,7 +22,7 @@
         find('local-scan-phase').textContent=labels[c.phase]||autonomousPhases[c.phase]||c.phase;
         find('local-scan-progress').textContent=`${c.completed_trials||0} / ${c.planned_trials||8} 组`;
         find('local-scan-stop').disabled=!c.running||busy;find('local-scan-stop').textContent='停止转角校对';
-        find('local-scan-note').textContent=[c.note,c.model?.gain?`本场转角系数 ${c.model.gain.toFixed(3)}`:'',c.model?.maximum_validation_error_deg!==undefined?`独立验证最大差 ${c.model.maximum_validation_error_deg.toFixed(2)}°`:'',c.error,'只校对转角估计，空间净空与自主导航另行验证'].filter(Boolean).join(' · ');
+        find('local-scan-note').textContent=[c.phone_device==='android'?'红米 / 安卓独立参考':'iPhone独立参考',c.note,c.model?.gain?`本场转角系数 ${c.model.gain.toFixed(3)}`:'',c.model?.maximum_validation_error_deg!==undefined?`独立验证最大差 ${c.model.maximum_validation_error_deg.toFixed(2)}°`:'',c.error,'只校对转角估计，空间净空与自主导航另行验证'].filter(Boolean).join(' · ');
         find('local-scan-record').hidden=false;find('local-scan-record').href='/api/platform/fieldmap/turn-calibration/'+encodeURIComponent(c.id);return;
       }
       host.querySelector('h2').textContent=a?.id?'车载自行决策，按条件回报。':'连续采集，按批复核。';

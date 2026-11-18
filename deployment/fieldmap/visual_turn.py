@@ -8,6 +8,22 @@ import math
 import numpy as np
 
 
+def color_intrinsics(meta):
+    """Return the intrinsics of the preserved JPEG, including SDK crop/rotation."""
+    width=meta.get('rgb_width',meta['width']);height=meta.get('rgb_height',meta['height'])
+    k=meta.get('rgb_intrinsics')
+    if k is None:
+        if width==meta['width'] and height==meta['height']:k=meta.get('intrinsics')
+        elif meta.get('registration')=='arcore_sdk_texture_to_cpu_crop' and meta.get('rgb_from_depth_scale_offset'):
+            sx,sy,ox,oy=meta['rgb_from_depth_scale_offset'];d=meta['intrinsics']
+            if min(sx,sy)<=0:raise ValueError('Invalid RGB-depth scale')
+            k=dict(fx=d['fx']*sx,fy=d['fy']*sy,tx=d['tx']*sx+ox,ty=d['ty']*sy+oy)
+    if not k:raise LookupError('phone_rgb_intrinsics_unavailable')
+    k={key:float(k[key]) for key in ('fx','fy','tx','ty')}
+    if not np.isfinite(list(k.values())).all() or min(k['fx'],k['fy'])<=0:raise ValueError('Invalid RGB intrinsics')
+    return int(width),int(height),k
+
+
 def rigid_rotation(a,b):
     u,_,vt=np.linalg.svd(a.T@b)
     fix=np.eye(3);fix[2,2]=np.linalg.det(vt.T@u.T)

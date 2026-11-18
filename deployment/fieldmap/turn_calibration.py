@@ -10,7 +10,7 @@ import hashlib,json,math,time,subprocess,os
 from pathlib import Path
 
 from .autonomy import AutonomousSurvey,anchor,changed_anchor,replace_json
-from .visual_turn import rgb_turn,fit_turn_gain
+from .visual_turn import rgb_turn,fit_turn_gain,color_intrinsics
 
 PLAN=((4,1),(4,-1),(8,1),(8,-1),(12,1),(12,-1),(6,1),(6,-1))
 
@@ -27,6 +27,7 @@ class TurnCalibration(AutonomousSurvey):
         value=super().status()
         value.update(execution='vehicle_local_turn_calibration',bounded_station_experiment=True,
                      automatic_navigation=False,geometry_parameters_written=False,
+                     phone_device=self.state.get('phone_device','iphone'),
                      planned_trials=len(PLAN),completed_trials=len(self.state.get('trials',[])),
                      model=deepcopy(self.state.get('model')),closure=deepcopy(self.state.get('closure')))
         if self.state.get('trials'):value['latest_child_id']=self.state['trials'][-1]['child_id']
@@ -34,7 +35,8 @@ class TurnCalibration(AutonomousSurvey):
         return value
 
     async def start(self,value):
-        value=dict(value);review_id=value.pop('review_id',None)
+        value=dict(value);review_id=value.pop('review_id',None);device=value.pop('phone_device','iphone')
+        if device not in ('iphone','android'):raise ValueError('只接受已接入的iPhone或安卓来源')
         if not isinstance(review_id,str) or len(review_id)!=32 or any(c not in '0123456789abcdef' for c in review_id):
             raise ValueError('需要当前驻点的停车观察依据')
         review=json.loads((self.scan.root/review_id/'review.json').read_text('utf8'))
@@ -46,7 +48,7 @@ class TurnCalibration(AutonomousSurvey):
             await self.stop('观察后姿态已改变');raise ValueError('驻点参考已改变，不能执行旧试验')
         self.trial=None;self.images={};self.last_frame=None;self.group_first=None;self.group_last=None
         self.visible_samples=0;self.visible_sequence=None
-        self.state.update(review_id=review_id,trials=[],model=None,closure=None,
+        self.state.update(review_id=review_id,phone_device=device,trials=[],model=None,closure=None,
                           progress={'turn_trials':0,'native_pulses':0,'new_area_m2':None},
                           experiment='paired_4_8_12_pulses_then_independent_6_pulse_checks',
                           reference=None,source_wait_checks=0)
@@ -55,11 +57,13 @@ class TurnCalibration(AutonomousSurvey):
     def _sample(self):
         import cv2,numpy as np
         service=self.phone()
-        if service is None:raise LookupError('iPhone采集尚未接入')
-        frame=service.frame('iphone')
-        if not frame.raw or not frame.meta.get('rgbd'):raise LookupError('等待iPhone真实RGB-D新帧')
-        signature=dict(session=frame.session,width=frame.meta['width'],height=frame.meta['height'],
-                       intrinsics=deepcopy(frame.meta['intrinsics']),depth_source=frame.meta.get('depth_source'))
+        if service is None:raise LookupError('手机采集尚未接入')
+        device=self.state.get('phone_device','iphone');frame=service.frame(device)
+        width,height,k=color_intrinsics(frame.meta)
+        signature=dict(device=device,session=frame.session,width=width,height=height,intrinsics=k,
+                       capture_mode=frame.meta.get('android_mode',frame.meta.get('transport','iphone')),
+                       camera_id=frame.meta.get('camera_id'),rotation_deg=frame.meta.get('rotation_deg'),
+                       arcore_capture_session=frame.meta.get('arcore_capture_session'))
         if self.state['reference'] is None:
             self.state['reference']={**signature,'controller_pid':self.base_anchor['controller_pid']}
         elif any(self.state['reference'][k]!=v for k,v in signature.items()):
@@ -71,11 +75,13 @@ class TurnCalibration(AutonomousSurvey):
         folder.mkdir(parents=True,exist_ok=True);index=len(self.trial['frames'])
         stem=f'{index:04d}';rgb_name=stem+'.jpg';depth_name=stem+'.f32'
         if index>=90:raise RuntimeError('trial_frame_budget_exhausted')
-        (folder/rgb_name).write_bytes(frame.rgb);(folder/depth_name).write_bytes(frame.raw)
-        row=dict(index=index,session=frame.session,sequence=frame.sequence,meta=deepcopy(frame.meta),
+        (folder/rgb_name).write_bytes(frame.rgb)
+        if frame.raw:(folder/depth_name).write_bytes(frame.raw)
+        row=dict(index=index,device=device,session=frame.session,sequence=frame.sequence,meta=deepcopy(frame.meta),
                  at=time.time(),received=frame.received,source_age_ms=max(0,(service.clock()-frame.received)*1000),
-                 rgb_file=rgb_name,depth_file=depth_name,rgb_sha256=hashlib.sha256(frame.rgb).hexdigest(),
-                 depth_sha256=hashlib.sha256(frame.raw).hexdigest())
+                 rgb_file=rgb_name,depth_file=depth_name if frame.raw else None,rgb_sha256=hashlib.sha256(frame.rgb).hexdigest(),
+                 depth_sha256=hashlib.sha256(frame.raw).hexdigest() if frame.raw else None,
+                 rgb_intrinsics=k,rgb_dimensions=[width,height])
         self.trial['frames'].append(row)
         replace_json(folder/'frames.json',dict(frames=self.trial['frames'],collector_motion_commands=0,
                      motion_child_id=self.trial.get('child_id')))
@@ -141,11 +147,13 @@ class TurnCalibration(AutonomousSurvey):
                 self.base_anchor=anchor(result['final_state'])
                 self.state['parked_verified']=True
                 self.trial['settle_frames']=0;self._save();return
-        try:frame=self._sample()
+        # JPEG decode and evidence writes must not stall the shared event loop
+        # that runs the original camera/stop watchdogs during a wheel pulse.
+        try:frame=await asyncio.to_thread(self._sample)
         except LookupError:
             if child_active:
                 self._latch('phone_source_lost_during_trial');await self.scan.stop('校对手机源丢失');return
-            self._transition('waiting_source',['iphone_rgbd_required']);self.state['source_wait_checks']+=1;return
+            self._transition('waiting_source',['selected_phone_rgb_and_intrinsics_required']);self.state['source_wait_checks']+=1;return
         except RuntimeError as exc:
             self._latch(str(exc));await self.scan.stop('校对源参考变化');return
         if self.state.get('child_id'):
@@ -196,9 +204,10 @@ class TurnCalibration(AutonomousSurvey):
         self.trial=dict(index=index,id=f"{self.state['id']}-{index}",role='fit' if index<6 else 'validation',
                         pulses=pulses,direction=direction,frames=[])
         self.images={};self.last_frame=None
-        try:self._sample()
+        try:await asyncio.to_thread(self._sample)
         except LookupError:
-            self.trial=None;self._transition('waiting_source',['iphone_rgbd_required']);return
+            self.trial=None;self._transition('waiting_source',['selected_phone_rgb_and_intrinsics_required']);return
+        if self.cancelled or generation!=self.generation or not self._mission() or self._budget_reached():return
         child=await self.scan.start(dict(confirmed=True,authorization=self.state['authorization'],profile='turn_batch',
             mission_id=self.state['mission_id'],review_id=review['review_id'],pulses=pulses,direction=direction),owner=self.state['id'])
         self.trial['child_id']=child['id'];self.state['child_id']=child['id'];self.state['current_trial']=self.trial
@@ -207,7 +216,7 @@ class TurnCalibration(AutonomousSurvey):
 
     async def _finish_trial(self):
         row=self.trial;first=row['frames'][0];last=row['frames'][-1]
-        visual=await asyncio.to_thread(self.analyser,self.images[row['first_sequence']],self.images[row['last_sequence']],first['meta']['intrinsics'])
+        visual=await asyncio.to_thread(self.analyser,self.images[row['first_sequence']],self.images[row['last_sequence']],first['rgb_intrinsics'])
         self.group_last=self.images[row['last_sequence']].copy()
         design=row['direction']*sum(abs(r['yaw_delta_deg_estimate']) for r in row['rotations'])
         summary=dict(id=row['id'],role=row['role'],reference=deepcopy(self.state['reference']),
@@ -238,11 +247,13 @@ class TurnCalibration(AutonomousSurvey):
 
     async def _rgbd_check(self,row):
         folder=self.root/self.state['id']/'trials'/f"{row['index']:03d}"
+        prepared=self._depth_input(folder,row['frames'])
+        if not prepared['ok']:return prepared
         service=self.phone();repo=Path(service.repo);worker=repo/'.venv-dense/Scripts/python.exe'
         if not worker.is_file():return dict(ok=False,reason='existing_rgbd_backend_unavailable')
         env=dict(os.environ,OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1')
         with (folder/'rgbd-worker.log').open('wb') as log:
-            process=subprocess.Popen([str(worker),'-m','deployment.phone_vision.dense','--input',str(folder/'input'),
+            process=subprocess.Popen([str(worker),'-m','deployment.phone_vision.dense','--input',prepared['folder'],
                 '--output',str(folder/'rgbd'),'--pose-mode','odometry'],cwd=str(repo),env=env,stdout=log,stderr=subprocess.STDOUT,
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             deadline=time.monotonic()+120
@@ -267,6 +278,43 @@ class TurnCalibration(AutonomousSurvey):
         return dict(ok=True,rotation_magnitude_deg=angle,accepted=len(poses),input=report['input_frames'],
                     alignment_rmse_median_m=report['alignment_rmse_median_m'],metric_accuracy_verified=False,
                     registered_robot_map=False)
+
+    def _depth_input(self,folder,frames):
+        """Retain originals; derive exact SDK-mapped RGB only for RGB-D checks."""
+        import cv2,numpy as np
+        if len(frames)<3 or any(not r.get('depth_file') for r in frames):
+            return dict(ok=False,reason='rgbd_unavailable_rgb_angle_only',check_passed=False)
+        derived=folder/'rgbd-input';derived.mkdir(exist_ok=False);rows=[];signature=None
+        for frame in frames:
+            meta=deepcopy(frame['meta']);w,h=meta['width'],meta['height']
+            raw=(folder/'input'/frame['depth_file']).read_bytes()
+            rgb=(folder/'input'/frame['rgb_file']).read_bytes()
+            if hashlib.sha256(raw).hexdigest()!=frame['depth_sha256'] or hashlib.sha256(rgb).hexdigest()!=frame['rgb_sha256']:
+                raise RuntimeError('raw_calibration_input_hash_changed')
+            values=np.frombuffer(raw,dtype='<f4')
+            if len(values)!=w*h:raise RuntimeError('raw_depth_dimensions_changed')
+            if np.count_nonzero(np.isfinite(values)&(values>=.2)&(values<=2.5))<max(1000,w*h*.15):
+                return dict(ok=False,reason='depth_outside_existing_rgbd_range',check_passed=False)
+            current=(w,h,meta.get('intrinsics'),meta.get('depth_source'))
+            if signature is not None and current!=signature:
+                return dict(ok=False,reason='depth_format_changed',check_passed=False)
+            signature=current
+            color=cv2.imdecode(np.frombuffer(rgb,np.uint8),cv2.IMREAD_COLOR)
+            if color is None:raise RuntimeError('rgb_decode_failed')
+            if color.shape[:2]!=(h,w):
+                if meta.get('registration')!='arcore_sdk_texture_to_cpu_crop':
+                    return dict(ok=False,reason='rgb_depth_registration_unavailable',check_passed=False)
+                sx,sy,ox,oy=meta['rgb_from_depth_scale_offset'];x,y=np.meshgrid(np.arange(w),np.arange(h))
+                color=cv2.remap(color,(x*sx+ox).astype(np.float32),(y*sy+oy).astype(np.float32),cv2.INTER_LINEAR)
+                ok,encoded=cv2.imencode('.jpg',color,[cv2.IMWRITE_JPEG_QUALITY,95])
+                if not ok:raise RuntimeError('derived_rgb_encode_failed')
+                rgb=encoded.tobytes()
+            (derived/frame['rgb_file']).write_bytes(rgb);(derived/frame['depth_file']).write_bytes(raw)
+            rows.append({**frame,'rgb_sha256':hashlib.sha256(rgb).hexdigest(),
+                'source_rgb_sha256':frame['rgb_sha256'],'source_directory':'../input'})
+        replace_json(derived/'frames.json',dict(frames=rows,collector_motion_commands=0,
+                     purpose='independent_rgbd_check_of_preserved_sources'))
+        return dict(ok=True,folder=str(derived))
 
     def _budget_reached(self):
         return self.clock()-self.begun>=self.state['policy']['max_duration_s']

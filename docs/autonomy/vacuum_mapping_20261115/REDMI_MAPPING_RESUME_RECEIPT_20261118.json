@@ -1,0 +1,421 @@
+{
+  "schema": "xlerobot-redmi-resume-evidence-v1",
+  "date": "2026-11-18",
+  "cutoff": "2026-11-18T15:04:38.168305+08:00",
+  "private_archive": {
+    "filename": "redmi-resume-20261118.zip",
+    "bytes": 22581475,
+    "payloads": 101,
+    "sha256": "fa9896cc7209690cb2e01c95df60fc00decadb993d6e54e4267e36aed176d0a0",
+    "crc_verified": true,
+    "member_sha256_and_length_verified": true
+  },
+  "vehicle_archive": {
+    "sha256": "8f6747030c4839769302190c1edb544e323df4ec832db0dbe4817a05e8abb594",
+    "bytes": 21443067,
+    "payloads": 593,
+    "crc_verified": true,
+    "member_lengths_and_sha256_verified": true,
+    "snapshot_at": "2026-11-18T15:04:38.168305+08:00"
+  },
+  "deployed_files": [
+    {
+      "path": "fabrication/assembly/debug_console/camera_views.py",
+      "expected": "a2fc699c22b8b2991ce81cb21cf901620e1b93a6174bf60c42eb47c060e42553",
+      "sha256": "24d04447d6e94fa6f6765b21faf3c3633ec57c78413d162eedbc8dc0cd2a36d6",
+      "bytes": 4748
+    },
+    {
+      "path": "fabrication/assembly/debug_console/test_camera_views.py",
+      "expected": "50ae002c190c3abafe639888458fb10af835757c84fe1949a9b5638513f9ec43",
+      "sha256": "b325ffce6d6851c3f2f97b8f81238e8ba99fd39e20f4aa8f4136e4ef2a061bec",
+      "bytes": 5375
+    },
+    {
+      "path": "deployment/fieldmap/static/local-scan.js",
+      "expected": "142b768d9c8b0dd7cf600edd247fcf9d5f10b5c6f8616b8c0914abc85890900f",
+      "sha256": "142b768d9c8b0dd7cf600edd247fcf9d5f10b5c6f8616b8c0914abc85890900f",
+      "bytes": 6943
+    },
+    {
+      "path": "deployment/fieldmap/turn_calibration.py",
+      "expected": "420fbd1995cbbb54079fe1cb0d80c7a0d30a5e58682dc4801457192a60559cd7",
+      "sha256": "a6bfa71d01ab1db6472c466a94e4e25f3ff1ecc36626f111e39ed096a5ef78e3",
+      "bytes": 24036
+    },
+    {
+      "path": "deployment/fieldmap/visual_turn.py",
+      "expected": "b8eff914cd8b73558860abc3802bbe935e7363693f23f83c89f0fda8122dfd7b",
+      "sha256": "b8eff914cd8b73558860abc3802bbe935e7363693f23f83c89f0fda8122dfd7b",
+      "bytes": 7833
+    },
+    {
+      "path": "deployment/fieldmap/test_turn_calibration.py",
+      "expected": "5ef40e443561cfe47a61a2f7f20b4ca1ed0e5bee5097abb040a0b597467854ad",
+      "sha256": "03927eb9c1be1c9066d3b10d649087a2c79357e4d6446147df199474392a124f",
+      "bytes": 16105
+    },
+    {
+      "path": "deployment/phone_vision/arcore_stream.py",
+      "expected": "e09e1782e7038691d39674b33f610e7b3cd331a0505e431b9d2f50abf97cca56",
+      "sha256": "e09e1782e7038691d39674b33f610e7b3cd331a0505e431b9d2f50abf97cca56",
+      "bytes": 15156
+    },
+    {
+      "path": "deployment/phone_vision/test_arcore_stream.py",
+      "expected": "0d5c5b6467cab89649a4ba666f9ceba8a091da94b18a9a765915f00612a866b0",
+      "sha256": "0d5c5b6467cab89649a4ba666f9ceba8a091da94b18a9a765915f00612a866b0",
+      "bytes": 9726
+    }
+  ],
+  "controller_pid_retained": 49472,
+  "serial_owner_restarted": false,
+  "related_tests": {
+    "workstation": 104,
+    "vehicle": 104,
+    "javascript_syntax": true,
+    "not_a_physical_trial_count": true
+  },
+  "native_children": [
+    {
+      "child_id": "7e2a90ea7e2c4cb2b7963d42a5fee388",
+      "native_run_id": "20261118-144148",
+      "phase": "completed",
+      "error": null,
+      "planned_pulses": 4,
+      "registered_pulses": 4,
+      "passed_pulses": 4,
+      "encoder_change_after_last_registered_stop": {
+        "9": 0,
+        "10": 0
+      },
+      "net_encoder_change_raw": {
+        "9": 326,
+        "10": 320
+      },
+      "wrapper_native_running": false,
+      "unregistered_tail_not_a_completed_action": false,
+      "parked_verified": true,
+      "elapsed_s": 7.859
+    },
+    {
+      "child_id": "d2dcd85b451e4fc8bf2aca9ac71f1021",
+      "native_run_id": "20261118-144200",
+      "phase": "completed",
+      "error": null,
+      "planned_pulses": 4,
+      "registered_pulses": 4,
+      "passed_pulses": 4,
+      "encoder_change_after_last_registered_stop": {
+        "9": 0,
+        "10": 0
+      },
+      "net_encoder_change_raw": {
+        "9": -335,
+        "10": -336
+      },
+      "wrapper_native_running": false,
+      "unregistered_tail_not_a_completed_action": false,
+      "parked_verified": true,
+      "elapsed_s": 7.828
+    },
+    {
+      "child_id": "d966d5ad09bc4038934cb8eb87291f8e",
+      "native_run_id": "20261118-144212",
+      "phase": "needs_review",
+      "error": "机器人相机缺少原800ms内的新图：{\"camera\": 0, \"age_ms\": 802.1, \"sequence\": 191163, \"request_elapsed_ms\": 859.0}",
+      "planned_pulses": 8,
+      "registered_pulses": 6,
+      "passed_pulses": 6,
+      "encoder_change_after_last_registered_stop": {
+        "9": 43,
+        "10": 41
+      },
+      "net_encoder_change_raw": {
+        "9": 527,
+        "10": 517
+      },
+      "wrapper_native_running": false,
+      "unregistered_tail_not_a_completed_action": true,
+      "parked_verified": true,
+      "elapsed_s": 12.641
+    },
+    {
+      "child_id": "ae57d28e0e9845bcb6d13087097ab8e5",
+      "native_run_id": "20261118-145100",
+      "phase": "completed",
+      "error": null,
+      "planned_pulses": 4,
+      "registered_pulses": 4,
+      "passed_pulses": 4,
+      "encoder_change_after_last_registered_stop": {
+        "9": 0,
+        "10": 0
+      },
+      "net_encoder_change_raw": {
+        "9": 328,
+        "10": 322
+      },
+      "wrapper_native_running": false,
+      "unregistered_tail_not_a_completed_action": false,
+      "parked_verified": true,
+      "elapsed_s": 8.484
+    },
+    {
+      "child_id": "0713f01aca6f4fbe9eadf518dcdbe618",
+      "native_run_id": "20261118-145113",
+      "phase": "cancelled",
+      "error": "任务已停止或参考会话已改变",
+      "planned_pulses": 4,
+      "registered_pulses": 0,
+      "passed_pulses": 0,
+      "encoder_change_after_last_registered_stop": {},
+      "net_encoder_change_raw": {
+        "9": -49,
+        "10": -52
+      },
+      "wrapper_native_running": true,
+      "unregistered_tail_not_a_completed_action": true,
+      "parked_verified": true,
+      "elapsed_s": 3.11
+    },
+    {
+      "child_id": "40244c2873d6445da0c8e96e5c639b1a",
+      "native_run_id": "20261118-150058",
+      "phase": "completed",
+      "error": null,
+      "planned_pulses": 12,
+      "registered_pulses": 12,
+      "passed_pulses": 12,
+      "encoder_change_after_last_registered_stop": {
+        "9": 1,
+        "10": 0
+      },
+      "net_encoder_change_raw": {
+        "9": 930,
+        "10": 903
+      },
+      "wrapper_native_running": false,
+      "unregistered_tail_not_a_completed_action": false,
+      "parked_verified": true,
+      "elapsed_s": 19.547
+    }
+  ],
+  "head_surveys": [
+    {
+      "id": "feb37496dc904df1a68ac4bc0d464fde",
+      "phase": "completed",
+      "views": 18,
+      "physical_steps": 23,
+      "phone_samples": 16,
+      "phone_gaps": 2,
+      "elapsed_s": 71.141,
+      "parked_verified": true
+    }
+  ],
+  "complete_registered_rotations": 30,
+  "planned_rotations": 36,
+  "ar_diagnostic_complete_trials": [
+    {
+      "parent_id": "cf3341457b214f66a693a8abc65b4632",
+      "trials": [
+        {
+          "index": 0,
+          "frames": 16,
+          "design_angle_deg": 14.4214453125,
+          "visual": {
+            "accepted": true,
+            "reason": null,
+            "matches": 324,
+            "inliers": 310,
+            "inlier_image_extent_px": [
+              296.00164127349854,
+              472.87118911743164
+            ],
+            "inlier_median_residual_deg": 0.11781834075431218,
+            "rotation_matrix": [
+              [
+                0.9933090333879757,
+                -0.04692062230661598,
+                0.10552544428813851
+              ],
+              [
+                0.04701568642796561,
+                0.9988928889628098,
+                0.0015879575687663856
+              ],
+              [
+                -0.10548312386138547,
+                0.0033840186011299157,
+                0.9944153352591416
+              ]
+            ],
+            "rotation_magnitude_deg": 6.631895249017023,
+            "image_size": [
+              360,
+              640
+            ],
+            "intrinsics": {
+              "fx": 421.78622960291796,
+              "fy": 478.44598388671875,
+              "tx": 157.64286623152552,
+              "ty": 317.3524475097656
+            },
+            "method": "SIFT_and_RANSAC_unit_bearing_rotation",
+            "metric_accuracy_verified": false
+          },
+          "depth_02_to_3m_fraction_range": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "index": 1,
+          "frames": 16,
+          "design_angle_deg": -14.97955078125,
+          "visual": {
+            "accepted": true,
+            "reason": null,
+            "matches": 351,
+            "inliers": 341,
+            "inlier_image_extent_px": [
+              284.1161575317383,
+              462.9843215942383
+            ],
+            "inlier_median_residual_deg": 0.12714964581860388,
+            "rotation_matrix": [
+              [
+                0.9926065090505803,
+                0.048082892639491004,
+                -0.11144664026268025
+              ],
+              [
+                -0.04797693688080357,
+                0.9988418335113205,
+                0.0036338898275261357
+              ],
+              [
+                0.11149229443309296,
+                0.0017398457294853786,
+                0.9937637753605641
+              ]
+            ],
+            "rotation_magnitude_deg": 6.971778503180031,
+            "image_size": [
+              360,
+              640
+            ],
+            "intrinsics": {
+              "fx": 421.78622960291796,
+              "fy": 478.44598388671875,
+              "tx": 157.64286623152552,
+              "ty": 317.3524475097656
+            },
+            "method": "SIFT_and_RANSAC_unit_bearing_rotation",
+            "metric_accuracy_verified": false
+          },
+          "depth_02_to_3m_fraction_range": [
+            0.0,
+            0.016666666666666666
+          ]
+        }
+      ]
+    },
+    {
+      "parent_id": "1eb5396b12d84ad2ad6f71177e2c79f1",
+      "trials": [
+        {
+          "index": 0,
+          "frames": 15,
+          "design_angle_deg": 14.5107421875,
+          "visual": {
+            "accepted": true,
+            "reason": null,
+            "matches": 243,
+            "inliers": 230,
+            "inlier_image_extent_px": [
+              283.38743114471436,
+              482.20122146606445
+            ],
+            "inlier_median_residual_deg": 0.14380362859762605,
+            "rotation_matrix": [
+              [
+                0.9926477105412286,
+                -0.04947039361353499,
+                0.11046810812617788
+              ],
+              [
+                0.04956249489119949,
+                0.9987691908923272,
+                0.0019137461810505548
+              ],
+              [
+                -0.11042681674944149,
+                0.0035753992794672063,
+                0.9938778268291214
+              ]
+            ],
+            "rotation_magnitude_deg": 6.9522538249130905,
+            "image_size": [
+              360,
+              640
+            ],
+            "intrinsics": {
+              "fx": 421.78622960291796,
+              "fy": 478.44598388671875,
+              "tx": 157.64286623152552,
+              "ty": 317.3524475097656
+            },
+            "method": "SIFT_and_RANSAC_unit_bearing_rotation",
+            "metric_accuracy_verified": false
+          },
+          "depth_02_to_3m_fraction_range": [
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "ordinary_rgb": {
+    "turn_batch_saved": 49,
+    "turn_batch_gaps": 7,
+    "head_saved": 16,
+    "head_gaps": 2,
+    "depth_available": false,
+    "references_not_merged_with_ar_or_iphone": true
+  },
+  "final_stationary_base_verified": true,
+  "final_wheel_positions": {
+    "9": 3150,
+    "10": 2763
+  },
+  "map_sha256": "b6bf3a4c3e39154bb6b126051babcde54fbcf19491e9fbfc3077c1c0fb64b58f",
+  "protected_sha256": {
+    "fabrication/assembly/debug_console/agent_ops.py": "e33b842f37dfb49075e58c2c872ca609e85caf8642e75efcaf1eaac571041bf7",
+    "fabrication/assembly/debug_console/test_agent_ops.py": "c1ce5193a618f19c1fbf3cb3bcda3af58c322bbd4b1e34c28dfebd7557858bef"
+  },
+  "atlas": {
+    "id": "a1ad632e4e734bbf8cd498996b9db6c8",
+    "views": 18,
+    "seen_degrees": 240,
+    "missing_degrees": 120,
+    "http_media_sha256_verified": 18
+  },
+  "cumulative_mission": {
+    "translation_legs": 19,
+    "turn_attempts": 957,
+    "wheel_path_m": 0.6951993260793786
+  },
+  "iphone_enabled": false,
+  "android_enabled": true,
+  "android_mode": "camera",
+  "active_robot_jobs": false,
+  "model_step_approvals": 0,
+  "accepted_angle_model": false,
+  "geometry_parameters_written": false,
+  "metric_map_complete": false,
+  "autonomous_navigation_verified": false,
+  "right_lift_hold_retained": true,
+  "archive_scope": "fixed cutoff; later documentation sync and commit receipts separate"
+}

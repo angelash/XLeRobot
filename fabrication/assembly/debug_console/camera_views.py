@@ -25,6 +25,20 @@ class CameraViews:
         self.demand = {}
         self.expiry_task = None
         self.closed = False
+        self.pending = {}
+
+    async def _snapshot(self,camera):
+        # Share concurrent HTTP requests; never cache an old image or change
+        # its capture time. Cancelling one viewer cannot cancel another's read.
+        task=self.pending.get(camera)
+        if task is None or task.done():
+            task=asyncio.create_task(self.client().get(self.upstream+f'/api/camera/{camera}/snapshot',timeout=1.5))
+            self.pending[camera]=task
+            def finished(value):
+                if self.pending.get(camera) is value:self.pending.pop(camera,None)
+                if not value.cancelled():value.exception()
+            task.add_done_callback(finished)
+        return await asyncio.shield(task)
 
     def touch(self, camera):
         if self.closed:
@@ -48,7 +62,7 @@ class CameraViews:
     async def _observe(self, camera):
         while not self.closed:
             try:
-                response = await self.client().get(self.upstream + f'/api/camera/{camera}/snapshot', timeout=1.5)
+                response = await self._snapshot(camera)
                 if response.status_code == 200:
                     await asyncio.sleep(.35)
                     continue
@@ -68,7 +82,7 @@ class CameraViews:
             raise HTTPException(404, '相机编号无效')
         self.touch(camera)
         try:
-            response = await self.client().get(self.upstream + f'/api/camera/{camera}/snapshot', timeout=1.5)
+            response = await self._snapshot(camera)
         except httpx.HTTPError as exc:
             raise HTTPException(503, '相机服务暂不可达') from exc
         if response.status_code != 200:
@@ -87,9 +101,10 @@ class CameraViews:
 
     async def close(self):
         self.closed = True
-        tasks = list(self.tasks.values()) + ([self.expiry_task] if self.expiry_task else [])
+        tasks = list(self.tasks.values()) + list(self.pending.values()) + ([self.expiry_task] if self.expiry_task else [])
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self.tasks.clear()
         self.demand.clear()
+        self.pending.clear()

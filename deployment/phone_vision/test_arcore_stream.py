@@ -113,6 +113,24 @@ def test_all_zero_depth_is_rgb_only_instead_of_a_ready_depth_stream():
     assert not details['rgbd'] and not preview and not values and '暂无有效距离' in details['depth_unavailable_reason']
 
 
+@pytest.mark.parametrize('rotation,expected',[
+    (0,[8.,8.,4.,4.]),(90,[8.,8.,3.,4.]),(180,[8.,8.,3.,3.]),(270,[8.,8.,4.,3.])])
+def test_rgb_only_keeps_actual_rotated_intrinsics_without_depth(rotation,expected):
+    meta,jpeg,_=sample()
+    details,_,_,values=prepare(meta,jpeg,b'',b'',b'',rotation)
+    assert list(details['rgb_intrinsics'].values())==expected and not values
+
+
+@pytest.mark.parametrize('rotation',[0,90,180,270])
+def test_cropped_rgb_intrinsics_follow_the_same_sdk_pixel_mapping_as_depth(rotation):
+    from deployment.fieldmap.visual_turn import color_intrinsics
+    meta,jpeg,raw=sample();details,*_=prepare(meta,jpeg,raw,b'',b'',rotation)
+    sx,sy,ox,oy=details['rgb_from_depth_scale_offset'];d=details['intrinsics']
+    width,height,k=color_intrinsics(details)
+    assert (width,height)==(details['rgb_width'],details['rgb_height'])
+    assert k==dict(fx=d['fx']*sx,fy=d['fy']*sy,tx=d['tx']*sx+ox,ty=d['ty']*sy+oy)
+
+
 def test_device_clock_keeps_asymmetric_network_uncertainty():
     clock=DeviceClock();clock.observe(100.,30.,100.4)
     # Actual offset may be anywhere in [69.99,70.4]; select the oldest source.

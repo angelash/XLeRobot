@@ -71,3 +71,40 @@ def test_no_snapshot_starts_one_existing_mjpeg_route_and_idle_lease_closes_its_h
                 assert not views.tasks
             finally: await views.close()
     asyncio.run(run())
+
+
+def test_concurrent_readers_share_only_inflight_requests_and_keep_source_time():
+    async def run():
+        entered=asyncio.Event();release=asyncio.Event();calls=[]
+        async def response(request):
+            calls.append(request.url.path);entered.set();await release.wait()
+            return httpx.Response(200,content=b'\xff\xd8generated',headers={'X-Captured-At':'99.5','X-Frame-Sequence':'42'})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+            views=CameraViews(lambda:client,'http://controller',wall_clock=lambda:100.)
+            try:
+                first=asyncio.create_task(views.frame(0));second=asyncio.create_task(views.frame(0))
+                await entered.wait();await asyncio.sleep(.01)
+                assert len(calls)==1
+                first.cancel();await asyncio.gather(first,return_exceptions=True)
+                release.set();raw,headers=await second
+                assert raw.startswith(b'\xff\xd8') and headers['X-Captured-At']=='99.5'
+                await views.frame(0)
+                assert len(calls)==2  # no completed-response cache
+            finally:await views.close()
+            assert not views.pending
+    asyncio.run(run())
+
+
+def test_shutdown_cancels_only_owned_pending_camera_reads():
+    async def run():
+        entered=asyncio.Event();cancelled=asyncio.Event()
+        async def response(request):
+            entered.set()
+            try:await asyncio.Event().wait()
+            finally:cancelled.set()
+        async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+            views=CameraViews(lambda:client,'http://controller')
+            reader=asyncio.create_task(views.frame(1));await entered.wait();await views.close()
+            await asyncio.gather(reader,return_exceptions=True)
+            assert cancelled.is_set() and not views.pending
+    asyncio.run(run())

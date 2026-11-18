@@ -119,6 +119,14 @@ def prepare(meta, rgb, auto_depth, raw_depth, confidence, rotation):
         'pose_valid': meta['tracking'] == 'TRACKING',
         'rotation_deg': rotation, 'fps': 2.,
     }
+    # RGB rotation remains observable when AR tracking/depth is unavailable.
+    # These are CPU-camera intrinsics transformed with the actual image, not
+    # fabricated depth or a default focal length.
+    fx,fy=meta['focal_length'];cx,cy=meta['principal_point']
+    if rotation==90:fx,fy,cx,cy=fy,fx,ih-1-cy,cx
+    elif rotation==180:cx,cy=iw-1-cx,ih-1-cy
+    elif rotation==270:fx,fy,cx,cy=fy,fx,cy,iw-1-cx
+    details['rgb_intrinsics']={k:float(v) for k,v in zip(('fx','fy','tx','ty'),(fx,fy,cx,cy))}
     prefix = 'depth' if auto_depth else 'raw_depth'
     data = auto_depth or raw_depth
     depth = None
@@ -177,6 +185,9 @@ def prepare(meta, rgb, auto_depth, raw_depth, confidence, rotation):
             positive_depth_fraction=float((depth > 0).mean()),
             depth_02_to_5m_fraction=float(((depth >= .2) & (depth <= 5)).mean()),
         )
+        sx,sy,ox,oy=rgb_mapping
+        details['rgb_intrinsics']=dict(fx=float(fx*sx),fy=float(fy*sy),
+                                      tx=float(cx*sx+ox),ty=float(cy*sy+oy))
         # ARCore confidence applies ONLY to RAW depth, never the automatic map.
         if confidence and raw_depth:
             conf = np.frombuffer(confidence, dtype=np.uint8)
