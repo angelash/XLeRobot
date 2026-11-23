@@ -16,8 +16,9 @@ from pathlib import Path
 
 from . import protocols
 
-TRUTH_KINDS = ('tape_measure', 'marker_vision', 'ground_homography', 'llm_judgment', 'user_judgment', 'encoder')
-METRIC_TRUTH = ('tape_measure', 'marker_vision', 'ground_homography')
+# depth_plane: base motion solved from phone depth of a flat wall; metric only for a depth source that passed P1.
+TRUTH_KINDS = ('tape_measure', 'marker_vision', 'ground_homography', 'depth_plane', 'llm_judgment', 'user_judgment', 'encoder')
+METRIC_TRUTH = ('tape_measure', 'marker_vision', 'ground_homography', 'depth_plane')
 UNITS = ('m', 'deg', 'counts', 'px', 'bool', 'label', 's')
 QUALITY = ('ok', 'outlier', 'invalid')
 MODEL_KINDS = ('wheel_distance', 'wheel_rotation', 'wheel_speed', 'joint_step', 'gripper_width', 'stereo_range')
@@ -358,7 +359,7 @@ class Ledger:
                 if (kind == 'wheel_distance') != (truth['unit'] == 'm') or truth['unit'] not in ('m', 'deg'):
                     continue
                 theta = (abs(counts[0])+abs(counts[1]))/2*2*math.pi/COUNTS_PER_REV
-                data.append((theta, abs(truth['value']), ref, {'sign': 1 if truth['value'] >= 0 else -1,
+                data.append((theta, abs(truth['value']), ref, {'sign': 1 if truth['value'] >= 0 else -1, 'truth_kind': truth['kind'],
                                                                 'asymmetry': (abs(counts[0])-abs(counts[1]))/max(1e-9, (abs(counts[0])+abs(counts[1]))/2)}))
             elif kind == 'wheel_speed':
                 raw = inputs.get('max_raw') or max((abs(v) for v in (observed.get('command_raw') or {}).values()), default=None)
@@ -430,6 +431,8 @@ class Ledger:
                                                    'std_counts': math.sqrt(sum((e-sum(v)/len(v))**2 for e in v)/len(v))}
                           for (joint, direction), v in groups.items()}
             metrics = {'max_abs_mean_error_counts': max(abs(p['mean_error_counts']) for p in parameters.values()), 'n': len(data)}
+        if any(d[3].get('truth_kind') == 'depth_plane' for d in data):
+            notes.append('部分真值来自手机深度墙面解算，只有该深度源通过P1卷尺验收后才成立')
         model = {'id': uuid.uuid4().hex, 'kind': kind, 'created_at': stamp(), 'status': 'candidate', 'parameters': parameters,
                  'metrics': metrics, 'sessions': session_ids, 'samples': [d[2] for d in data], 'params': params, 'notes': notes,
                  'validations': [], 'reviews': []}

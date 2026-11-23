@@ -25,6 +25,7 @@ from starlette.background import BackgroundTask
 
 from .platform_catalog import REPO,GUIDES,CAPABILITIES,SOURCES,MEDIA,catalog
 from .upstream_teleop import UpstreamTeleop,JOINTS
+from . import access_token
 
 ROOT=Path(__file__).resolve().parent
 STATIC=ROOT/'platform_static'
@@ -58,6 +59,7 @@ def studio_origins(path=None):
 
 
 ALLOWED_ORIGINS=studio_origins()
+STUDIO_TOKEN=access_token.configured()
 
 
 def stamp():return datetime.now().astimezone().isoformat()
@@ -337,6 +339,8 @@ async def local_only(request,call_next):
     origin=request.headers.get('origin')
     if request.method not in ('GET','HEAD') and origin and origin not in ALLOWED_ORIGINS:
         return Response('Only a configured workbench origin may change state',403)
+    if not access_token.allowed(request,STUDIO_TOKEN):
+        return Response('需要访问口令：在这台设备的浏览器打开 /access 输入一次',401)
     response=await call_next(request)
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
@@ -344,6 +348,20 @@ async def local_only(request,call_next):
 
 @app.get('/')
 def index():return FileResponse(STATIC/'index.html')
+
+class AccessRequest(BaseModel):
+    token:str=Field(max_length=200)
+
+@app.get('/access')
+def access_page():return HTMLResponse(access_token.PAGE)
+
+@app.post(access_token.LOGIN)
+def access(payload:AccessRequest):
+    if not STUDIO_TOKEN:return {'required':False}
+    if not access_token.matches(payload.token,STUDIO_TOKEN):raise HTTPException(401,'口令不对')
+    response=Response(encode({'required':True,'accepted':True}),media_type='application/json')
+    response.set_cookie(access_token.COOKIE,STUDIO_TOKEN,max_age=30*86400,httponly=True,samesite='strict')
+    return response
 
 @app.get('/teleop/view')
 def web_teleop_view():

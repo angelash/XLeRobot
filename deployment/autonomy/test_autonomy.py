@@ -254,6 +254,20 @@ def test_linfit_and_wheel_model_lifecycle(tmp_path):
     assert turned['parameters']['track_m'] == pytest.approx(0.26, rel=0.02) and turned['parameters']['radius_source'].startswith('adopted:')
 
 
+def test_phone_depth_wall_truth_fits_a_candidate_that_says_what_it_rests_on(tmp_path):
+    ledger = Ledger(tmp_path)
+    rotation = ledger.create_session('W3')
+    for yaw in (10, 20, -15, 30):
+        counts = round(abs(math.radians(yaw))*0.26/2/0.065/(2*math.pi)*4096)
+        ledger.add_sample(rotation['id'], {'inputs': {'op': 'rotate'}, 'observed': {'wheel_delta_raw': {'9': counts, '10': counts}},
+                                           'truth': {'kind': 'depth_plane', 'unit': 'deg', 'value': yaw}})
+    model = ledger.fit('wheel_rotation', [rotation['id']], {'radius_m': 0.065})
+    assert model['parameters']['track_m'] == pytest.approx(0.26, rel=0.02) and model['status'] == 'candidate'
+    assert any('P1' in note for note in model['notes'])
+    with pytest.raises(ValueError):
+        ledger.review(model['id'], 'adopt', 'user')
+
+
 def test_truth_quality_and_closed_session_rules(tmp_path):
     ledger = Ledger(tmp_path)
     session = ledger.create_session('G1')
@@ -308,7 +322,7 @@ def test_protocol_catalogue_matches_document():
     from pathlib import Path
     doc = (Path(__file__).resolve().parents[2]/'docs'/'autonomy'/'LEARNING_PROTOCOLS_ZH.md').read_text(encoding='utf-8')
     ids = [p['id'] for p in protocols.PROTOCOLS]
-    assert len(ids) == len(set(ids)) == 17
+    assert len(ids) == len(set(ids)) == 19
     assert all(f'| {i} ' in doc for i in ids)
     assert {p['model_kind'] for p in protocols.PROTOCOLS if p['model_kind']} <= set(protocols.VALIDATION)
     fixture = json.loads((Path(__file__).with_name('test_protocols.json')).read_text(encoding='utf-8'))
@@ -375,7 +389,7 @@ def test_http_learning_flow_and_calibration_from_job(api):
     assert client.post(f"/api/platform/autonomy/calibrations/{saved['id']}/review", json={'action': 'adopt', 'reviewer': 'assistant'}).status_code == 422
     assert client.post(f"/api/platform/autonomy/calibrations/{saved['id']}/review", json={'action': 'adopt', 'reviewer': 'user'}).json()['status'] == 'adopted'
     overview = client.get('/api/platform/autonomy/learning').json()
-    assert len(overview['protocols']) == 17 and overview['calibrations'][0]['status'] == 'adopted'
+    assert len(overview['protocols']) == 19 and overview['calibrations'][0]['status'] == 'adopted'
     assert 'checkerboard-9x6-25mm.pdf' in overview['print_assets'] and 'data' not in overview['calibrations'][0]
 
 

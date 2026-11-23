@@ -36,6 +36,33 @@ def client(tmp_path,monkeypatch):
     with TestClient(mod.app) as c:yield c
 
 
+def test_access_token_is_off_by_default_and_when_set_asks_only_other_machines_that_change_state(client,monkeypatch):
+    from fabrication.assembly.debug_console import access_token
+    assert mod.STUDIO_TOKEN is None and access_token.configured({}) is None
+    with pytest.raises(ValueError):access_token.configured({access_token.ENV:'short'})
+    assert client.post('/api/platform/access',json={'token':'x'}).json()=={'required':False}
+    secret='s'*24
+    monkeypatch.setattr(mod,'STUDIO_TOKEN',access_token.configured({access_token.ENV:secret}))
+    # The test client is not a loopback address, so it stands for another machine.
+    assert client.get('/api/platform/library').status_code==200
+    assert client.post('/api/platform/recordings/stop').status_code==401
+    assert client.post('/api/platform/recordings/stop',headers={'X-XLeRobot-Token':'wrong'*5}).status_code==401
+    assert client.post('/api/platform/recordings/stop',headers={'X-XLeRobot-Token':secret}).status_code==409
+    # Worker routes are checked by their own token, not this one.
+    assert client.post('/api/platform/autonomy/worker/poll',json={}).status_code==401
+    assert client.post('/api/platform/autonomy/worker/poll',json={}).text!=client.post('/api/platform/recordings/stop').text
+    assert client.post('/api/platform/access',json={'token':'wrong'*5}).status_code==401
+    assert 'password' in client.get('/access').text
+    accepted=client.post('/api/platform/access',json={'token':secret})
+    assert accepted.status_code==200 and 'httponly' in accepted.headers['set-cookie'].lower()
+    assert client.post('/api/platform/recordings/stop').status_code==409
+    local=type('R',(),{'method':'POST','client':type('C',(),{'host':'127.0.0.1'})(),'url':type('U',(),{'path':'/x'})(),
+                       'headers':{},'cookies':{}})()
+    assert access_token.allowed(local,secret)
+    local.client.host='192.168.137.20'
+    assert not access_token.allowed(local,secret)
+
+
 def test_fieldmap_runs_inside_studio_with_its_navigation_and_private_data(client,tmp_path,monkeypatch):
     from deployment.fieldmap.store import atomic_json
     root=tmp_path/'fieldmap';root.mkdir()
