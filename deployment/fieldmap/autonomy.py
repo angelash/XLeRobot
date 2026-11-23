@@ -50,6 +50,13 @@ def changed_anchor(previous,current):
     return None
 
 
+def anchor_delta(previous,current):
+    """Signed encoder change per motor since the reference, kept with the stop record."""
+    if not previous:return {}
+    old,new=previous['positions'],current['positions']
+    return {k:(new[k]-old[k]+2048)%4096-2048 for k in sorted(old.keys()&new.keys()) if new[k]!=old[k]}
+
+
 def decision(observation,scanned):
     """Only local observations select the next action; no model approvals."""
     if observation.get('hard_stop'):return 'latched_stop',[observation['hard_stop']]
@@ -226,9 +233,10 @@ class AutonomousSurvey:
             self.scan.release(identifier);raise
         finally:self.starting=False
 
-    def _latch(self,reason):
+    def _latch(self,reason,**evidence):
         self.state.update(phase='latched_stop',hard_hold=reason,note=reason,blocked_by=[reason])
-        self._event('intervention_required',reason=reason)
+        # Later readbacks cannot show which motor differed at the moment the lock was set.
+        self._event('intervention_required',reason=reason,**evidence)
 
     def _mission(self):
         mission=self.exploration.status()
@@ -253,7 +261,7 @@ class AutonomousSurvey:
         self.state['latest_inputs']={k:deepcopy(observation[k]) for k in ('phone','perception','ownership','live_navigation_connected') if k in observation}
         reason=observation.get('hard_stop') or changed_anchor(self.base_anchor,observation['anchor'])
         if reason:
-            self._latch(reason)
+            self._latch(reason,reference_delta=anchor_delta(self.base_anchor,observation['anchor']))
             await self.scan.stop('自主任务停止：'+reason);return
         if self.state.get('child_id'):
             child=self.scan.status()
@@ -332,8 +340,8 @@ class AutonomousSurvey:
         generation=self.generation
         state,_,_=await self.scan.parked()
         if self.cancelled or generation!=self.generation or not self._mission():return
-        reason=changed_anchor(self.base_anchor,anchor(state))
-        if reason:self._latch(reason);return
+        current=anchor(state);reason=changed_anchor(self.base_anchor,current)
+        if reason:self._latch(reason,reference_delta=anchor_delta(self.base_anchor,current));return
         self.state['parked_verified']=True
         self._event('round_completed',round=self.state['round'],station_reference_retained=True,
                     new_motor_permissions=False,progress=deepcopy(self.state['progress']))

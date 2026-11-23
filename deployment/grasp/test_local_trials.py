@@ -600,3 +600,22 @@ def test_hough_segment_layout_works_on_both_opencv_versions(monkeypatch,shape):
     monkeypatch.setattr(cv2,'HoughLinesP',lambda *a,**k:np.array([300,0,300,479],np.int32).reshape(shape))
     image=np.full((480,640,3),185,np.uint8)
     assert candidates(image,'light')==[]
+
+
+def test_tracking_frames_from_a_later_worker_keep_earlier_approach_frames(tmp_path):
+    import time
+    from types import SimpleNamespace
+    from deployment.grasp.local_trials import Observer
+    im=np.full((480,640,3),200,np.uint8)
+    payload=iter([b'approach',b'release'])
+    obs=Observer(SimpleNamespace(root=tmp_path,get=lambda _:(im,next(payload),time.time())),'left','light')
+    def update(_):
+        obs.stop.set()
+        return {'ok':True,'score':.95,'scale':1.,'bbox':[300,250,80,90]}
+    obs.tracker.update=update
+    obs._track()
+    obs.frame_index=5;obs.stop.clear()
+    obs._track()
+    assert (tmp_path/'track-00000-cam2.jpg').read_bytes()==b'approach'
+    assert (tmp_path/'track-00005-cam2.jpg').read_bytes()==b'release'
+    assert obs.failure is None and obs.frame_index==6

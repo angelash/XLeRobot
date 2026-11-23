@@ -291,6 +291,8 @@ class Observer:
         self.samples = deque(maxlen=8)
         self.worker = None
         self.failure = None
+        # One numbering for the whole trial: a later worker must not replace earlier approach frames.
+        self.frame_index = 0
 
     def close(self):
         self.stop.set()
@@ -322,7 +324,6 @@ class Observer:
 
     def _track(self):
         try:
-            n = 0
             while not self.stop.is_set():
                 began = time.monotonic()
                 im, raw, at = self.frames.get(CAMERAS[self.side])
@@ -352,9 +353,10 @@ class Observer:
                     state.update(gray=gray, captured_at=at, sampled_at=time.monotonic())
                     self.samples.append(state)
                     self.detections.append({k: v for k, v in state.items() if k != 'gray'})
+                n = self.frame_index
                 if n % 5 == 0:
                     (self.frames.root/f'track-{n:05d}-cam{CAMERAS[self.side]}.jpg').write_bytes(raw)
-                n += 1
+                self.frame_index = n + 1
                 self.stop.wait(max(0., .1-(time.monotonic()-began)))
         except Exception as exc:
             self.failure = f'{type(exc).__name__}: {exc}'

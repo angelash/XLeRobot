@@ -111,6 +111,19 @@ def test_manual_pose_change_invalidates_station_instead_of_reusing_prior_clearan
     asyncio.run(run())
 
 
+def test_pose_change_stop_keeps_the_per_motor_difference_seen_at_the_trigger(tmp_path):
+    async def run():
+        rig=LocalRig();rig.fresh=False;job,scan,mission=rig.autonomous(tmp_path)
+        await rig.begin(job,mission);await until(lambda:job.state['phase']=='waiting_source')
+        rig.pos['COM4:9']-=86;rig.pos['COM4:10']+=3;await job.task
+        event=[e for e in job.state['events'] if e['kind']=='intervention_required'][-1]
+        assert event['reason']=='uncommanded_pose_change'
+        assert event['reference_delta']=={'COM4:10':3,'COM4:9':-86}
+        saved=[json.loads(line) for line in (job.root/job.state['id']/'events.jsonl').read_text('utf8').splitlines()]
+        assert event in saved
+    asyncio.run(run())
+
+
 def test_child_contact_is_latched_with_original_receipt_and_no_repeated_motion(tmp_path):
     async def run():
         rig=LocalRig();rig.contact=True;job,scan,mission=rig.autonomous(tmp_path)

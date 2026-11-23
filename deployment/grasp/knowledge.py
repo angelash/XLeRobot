@@ -60,12 +60,34 @@ class Knowledge:
 
     # ---- storage -----------------------------------------------------------
     def _load(self):
+        path = self.root/'knowledge.json'
+        self.set_aside = None
+        for delay in (0, .02, .05, .1):
+            if delay:
+                time.sleep(delay)
+            try:
+                raw = path.read_bytes()
+                break
+            except FileNotFoundError:
+                return self._empty()
+            except PermissionError:
+                # A transient Windows lock is not an empty store; a lasting one stops the load.
+                if delay == .1:
+                    raise
         try:
-            data = json.loads((self.root/'knowledge.json').read_text(encoding='utf-8'))
+            data = json.loads(raw.decode('utf-8'))
             if isinstance(data, dict) and data.get('version') == 1:
                 return data
-        except (OSError, ValueError):
+        except ValueError:
             pass
+        # Damaged or written by another version: the next save would replace it, so keep it beside the store.
+        kept = path.with_name(f'knowledge.unreadable-{time.strftime("%Y%m%d-%H%M%S")}-{time.time_ns() % 1000000:06d}.json')
+        path.replace(kept)
+        self.set_aside = kept.name
+        return self._empty()
+
+    @staticmethod
+    def _empty():
         return {'version': 1, 'objects': {}, 'site': {}, 'base': [], 'episodes': []}
 
     def _save(self):
@@ -216,5 +238,6 @@ class Knowledge:
                                  'attempts': s['attempts'], 'successes': s['successes'], 'by_source': s['by_source'],
                                  'agreement_n': len(agree), 'agreement_ok_rate': round(sum(a >= 0.5 for a in agree)/len(agree), 3) if agree else None}
             return {'objects': objects, 'site': dict(self.data['site']), 'base_legs': len(self.data['base']),
-                    'base_recent': self.data['base'][-5:], 'episodes': self.data['episodes'][-10:]}
+                    'base_recent': self.data['base'][-5:], 'episodes': self.data['episodes'][-10:],
+                    'set_aside': self.set_aside}
 

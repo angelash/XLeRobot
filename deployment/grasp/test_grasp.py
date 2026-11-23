@@ -374,6 +374,26 @@ def test_knowledge_learns_a_view_and_finds_it_again_after_the_object_moves(tmp_p
         k.learn('Plug!', ob.gray(), box, 'operator')
 
 
+@pytest.mark.parametrize('damaged', [b'{"version": 1, "objects": {"plug"', b'{"version": 2, "objects": {}}', b'\xff\xfe not text'])
+def test_knowledge_sets_an_unreadable_store_aside_instead_of_replacing_it(tmp_path, damaged):
+    from deployment.grasp.knowledge import Knowledge
+    (tmp_path/'knowledge.json').write_bytes(damaged)
+    k = Knowledge(tmp_path)
+    assert k.data['objects'] == {} and k.summary()['set_aside'] == k.set_aside
+    k.record('plug', True, 'operator', run='r1')
+    kept = list(tmp_path.glob('knowledge.unreadable-*.json'))
+    assert [p.name for p in kept] == [k.set_aside] and kept[0].read_bytes() == damaged
+    again = Knowledge(tmp_path)
+    assert again.set_aside is None and again.summary()['objects']['plug']['attempts'] == 1
+
+
+def test_knowledge_without_a_store_starts_empty_and_sets_nothing_aside(tmp_path):
+    from deployment.grasp.knowledge import Knowledge
+    k = Knowledge(tmp_path)
+    assert k.set_aside is None and k.summary()['set_aside'] is None
+    assert not list(tmp_path.glob('knowledge.unreadable-*'))
+
+
 def test_service_learns_after_a_large_model_box_and_then_selects_locally(service):
     service.start_cameras()
     box = [round(v) for v in service.world.bbox()]

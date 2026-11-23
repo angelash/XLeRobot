@@ -107,29 +107,30 @@ def main():
         parser.error('Epoch must be ASCII alphanumeric or hyphens')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    epoch = root/'epochs'/args.epoch
-    epoch.mkdir(parents=True, exist_ok=False)
     lock = root/'practice.lock'
     # A stale lock is deliberately not removed automatically after a crash.
+    # It is taken before the epoch folder so a refused start does not use up the epoch name.
     lock_handle = lock.open('x', encoding='utf8')
     lock_handle.write(json.dumps({'pid':os.getpid(), 'epoch':args.epoch, 'side':args.side}))
     lock_handle.close()
-    source = Path(__file__).parent
-    frozen = {name: hashlib.sha256((source/name).read_bytes()).hexdigest() for name in DEPENDENCIES}
-    for name in frozen:
-        (epoch/name).write_bytes((source/name).read_bytes())
-    protocol = {'side':args.side, 'appearance':appearance, 'experimental_grip_floor':floor,
-                'target_closures':args.target, 'request_limit':args.limit,
-                'dependencies':frozen, 'started_at':datetime.now().astimezone().isoformat(),
-                'count_rule':'every actual close phase counts once, all failures retained',
-                'stop_rule':'first unsuccessful request, changed code, timeout, stop marker, or hardware guard',
-                'llm_calls':0, 'no_automatic_recovery':True}
-    atomic_json(epoch/'protocol.json', protocol)
-    paths = sorted(set(root.glob('trials/*/result.json')) | set(root.glob('*/result.json')))
-    rows = [load_trial(p) for p in paths if json.loads(p.read_text(encoding='utf8')).get('action')=='pick']
-    started = time.monotonic()
-    reason = 'request limit'
     try:
+        epoch = root/'epochs'/args.epoch
+        epoch.mkdir(parents=True, exist_ok=False)
+        source = Path(__file__).parent
+        frozen = {name: hashlib.sha256((source/name).read_bytes()).hexdigest() for name in DEPENDENCIES}
+        for name in frozen:
+            (epoch/name).write_bytes((source/name).read_bytes())
+        protocol = {'side':args.side, 'appearance':appearance, 'experimental_grip_floor':floor,
+                    'target_closures':args.target, 'request_limit':args.limit,
+                    'dependencies':frozen, 'started_at':datetime.now().astimezone().isoformat(),
+                    'count_rule':'every actual close phase counts once, all failures retained',
+                    'stop_rule':'first unsuccessful request, changed code, timeout, stop marker, or hardware guard',
+                    'llm_calls':0, 'no_automatic_recovery':True}
+        atomic_json(epoch/'protocol.json', protocol)
+        paths = sorted(set(root.glob('trials/*/result.json')) | set(root.glob('*/result.json')))
+        rows = [load_trial(p) for p in paths if json.loads(p.read_text(encoding='utf8')).get('action')=='pick']
+        started = time.monotonic()
+        reason = 'request limit'
         for n in range(args.limit):
             holds = root/'ARM_HOLDS.json'
             if holds.exists():

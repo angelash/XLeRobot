@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from . import protocols, resources
+from . import lessons, protocols, resources
 from .compute import AuthError, ComputeFabric
 from .learning import Ledger
 from .reflex import Reflex
@@ -26,7 +26,7 @@ RUN_FILE = re.compile(r'^[A-Za-z0-9_.-]{1,96}\.(jpg|jpeg|png)$')
 TOKEN_HEADER = 'x-autonomy-token'
 
 
-def install(app, *, data_dir, evidence_root=None, allowed_origins=None, start=True):
+def install(app, *, data_dir, evidence_root=None, allowed_origins=None, start=True, lessons_path=None):
     data_dir = Path(data_dir)
     fabric = ComputeFabric(data_dir/'compute', start=start)
     ledger = Ledger(data_dir/'learning', evidence_root)
@@ -234,6 +234,13 @@ def install(app, *, data_dir, evidence_root=None, allowed_origins=None, start=Tr
     async def review_calibration(item_id: str, request: Request):
         p = await body(request, 20_000)
         return await run_in_threadpool(guard, ledger.review_calibration, item_id, p.get('action'), p.get('reviewer'), p.get('note', ''))
+
+    # ---- lessons ---------------------------------------------------------
+    @router.get('/lessons')
+    def lesson_search(q: str = '', limit: int = 8, any_term: bool = False, since: str = ''):
+        """Read-only search of the pending lessons file; it changes no rule and no status."""
+        return guard(lambda: lessons.report(q[:200], limit=limit, any_term=any_term, since=since or None,
+                                            path=lessons_path))
 
     app.include_router(router)
     app.mount(PAGE+'/assets', StaticFiles(directory=STATIC), name='autonomy-assets')

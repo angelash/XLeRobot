@@ -100,3 +100,30 @@ def test_persistent_arm_hold_prevents_new_trials_after_physical_failures(tmp_pat
     saved=json.loads((root/'right-progress.json').read_text('utf8'))
     assert saved['counts']['requests']==0 and saved['reason'].startswith('arm held')
     assert not (root/'practice.lock').exists()
+
+
+def test_setup_failure_releases_the_lock_it_took(tmp_path,monkeypatch):
+    from deployment.grasp import practice
+    import sys,pytest
+    root=tmp_path/'practice';(root/'trials'/'old-001').mkdir(parents=True)
+    (root/'trials'/'old-001'/'result.json').write_text('{"action":"pick"',encoding='utf8')
+    def forbidden(*a,**kw):raise AssertionError('unreadable history must not run a subprocess')
+    monkeypatch.setattr(practice.subprocess,'run',forbidden)
+    monkeypatch.setattr(sys,'argv',['practice','--root',str(root),'--side','left',
+                                  '--epoch','left-setup','--confirmed'])
+    with pytest.raises(ValueError):practice.main()
+    assert not (root/'practice.lock').exists()
+    assert (root/'epochs'/'left-setup'/'protocol.json').exists()
+    assert (root/'trials'/'old-001'/'result.json').read_text('utf8')=='{"action":"pick"'
+
+
+def test_start_refused_by_a_held_lock_keeps_the_lock_and_the_epoch_name(tmp_path,monkeypatch):
+    from deployment.grasp import practice
+    import sys,pytest
+    root=tmp_path/'practice';root.mkdir()
+    (root/'practice.lock').write_text('{"pid":1,"epoch":"other","side":"right"}',encoding='utf8')
+    monkeypatch.setattr(sys,'argv',['practice','--root',str(root),'--side','left',
+                                  '--epoch','left-next','--confirmed'])
+    with pytest.raises(FileExistsError):practice.main()
+    assert json.loads((root/'practice.lock').read_text('utf8'))['epoch']=='other'
+    assert not (root/'epochs'/'left-next').exists()
