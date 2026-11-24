@@ -1,4 +1,5 @@
 import json
+import threading
 import pytest
 from deployment.demos import sync
 
@@ -70,6 +71,26 @@ def test_a_slow_state_read_shows_as_a_low_rate_with_skipped_slots(tmp_path):
     rows, report = Rig(state_s=.15).take(tmp_path)
     assert not report['usable_for_training'] and report['achieved_fps'] < 8 and report['late_fraction'] > .9
     assert [r['tick'] for r in rows[:3]] == [0, 2, 4]
+
+
+def test_frame_age_is_taken_when_the_frame_arrives_not_after_a_slow_state_read(tmp_path):
+    # Seen on the vehicle 2026-11-24: a ~280 ms status read made every 10-30 ms snapshot look 200-340 ms old.
+    rig, fetched, main = Rig(state_s=.15), threading.Semaphore(0), threading.current_thread()
+
+    def wall():
+        value = rig.wall()
+        if threading.current_thread() is not main:     # a camera reader stamping its arrival
+            fetched.release()
+        return value
+
+    def state():                                       # the slow read starts only after all three frames arrived
+        for _ in range(3):
+            assert fetched.acquire(timeout=5)
+        return rig.state()
+    rows = sync.record(tmp_path, state=state, frame=rig.frame, clock=rig.clock, wall=wall, sleep=rig.sleep, fps=15, seconds=2)
+    report = sync.quality(rows, 15)
+    assert all(report['cameras'][c]['age_ms_median'] < 100 for c in '012')
+    assert report['state_ms_p95'] >= 150 and not report['usable_for_training']
 
 
 def test_stop_and_bad_arguments(tmp_path):

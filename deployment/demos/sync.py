@@ -33,13 +33,17 @@ def record(folder, *, state, frame, cameras=(0, 1, 2), fps=15, seconds=10, clock
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     period, start, last, rows, tick = 1/fps, clock(), {}, [], 0
+
+    def received(camera):
+        # Age is taken when this frame arrives, so a slow state read in the same tick is not counted against it.
+        return frame(camera), wall()
     with ThreadPoolExecutor(len(cameras)) as pool, (folder/'frames.jsonl').open('w', encoding='utf-8') as out:
         while clock()-start < seconds and not stop():
             wait = start+tick*period-clock()
             if wait > 0:
                 sleep(wait)
             began = clock()
-            pending = {camera: pool.submit(frame, camera) for camera in cameras}
+            pending = {camera: pool.submit(received, camera) for camera in cameras}
             try:
                 status, error = state(), None
             except Exception as exc:    # a failed read is a recorded fact of the take, not a reason to lose it
@@ -48,7 +52,7 @@ def record(folder, *, state, frame, cameras=(0, 1, 2), fps=15, seconds=10, clock
                    'state_error': error, 'state': {k: status[k] for k in STATE_KEYS if k in status}, 'cameras': {}}
             for camera, future in pending.items():
                 try:
-                    jpeg, captured, sequence = future.result()
+                    (jpeg, captured, sequence), arrived = future.result()
                 except Exception as exc:
                     row['cameras'][str(camera)] = {'missing': str(exc) or type(exc).__name__}
                     continue
@@ -58,7 +62,7 @@ def record(folder, *, state, frame, cameras=(0, 1, 2), fps=15, seconds=10, clock
                     (folder/name).write_bytes(jpeg)
                     last[camera] = sequence
                 row['cameras'][str(camera)] = {'sequence': sequence, 'captured_at': captured, 'new': new, 'file': name,
-                                               'age_ms': round((row['wall']-captured)*1000, 1)}
+                                               'age_ms': round((arrived-captured)*1000, 1)}
             out.write(json.dumps(row, ensure_ascii=False)+'\n')
             rows.append(row)
             tick = max(tick+1, int((clock()-start)/period))     # a slot already past is skipped, not bunched up
