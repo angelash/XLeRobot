@@ -19,6 +19,8 @@ from . import spatial_probe
 USES={'grasp':{'range_m':(.25,.70),'abs_m':.01,'rel':0.,'stations':3},
       'near_obstacle':{'range_m':(.30,1.50),'abs_m':.02,'rel':.03,'stations':3},
       'room':{'range_m':(1.50,3.00),'abs_m':0.,'rel':.05,'stations':2}}
+REASONS={'no_surface':'没有平面','few_valid_pixels':'有效像素不足','tilted':'倾斜过大',
+         'not_one_flat_surface':'中央不是单一平面，可能跨了台阶或边缘'}
 
 
 def fit_plane(points):
@@ -95,14 +97,25 @@ def station(truth_m,frames):
     return out
 
 
-def evaluate(stations,*,uses=USES,min_valid=.5,max_tilt_deg=20.):
-    """Per-use verdicts from tape stations; 'not_tested' means too few stations in that range, not a failure."""
+def evaluate(stations,*,uses=USES,min_valid=.5,max_tilt_deg=20.,max_plane_rms_m=.008,plane_rms_rel=.005):
+    """Per-use verdicts from tape stations; 'not_tested' means too few stations in that range, not a failure.
+
+    A station is readable only when its central window is one flat surface. A large plane residual means the
+    window spans two surfaces (a step between boxes, a wall edge) and the fitted distance belongs to neither.
+    Depth noise grows with range, so the allowed residual is max(max_plane_rms_m, plane_rms_rel * distance).
+    """
     import numpy as np
     stations=sorted(stations,key=lambda s:s['truth_m'])
     for s in stations:
-        s['readable']=bool(s['measured_m'] is not None and s['valid_fraction']>=min_valid and s['tilt_deg']<=max_tilt_deg)
+        s['readable']=bool(s['measured_m'] is not None and s['valid_fraction']>=min_valid and s['tilt_deg']<=max_tilt_deg
+                           and s['plane_rms_m']<=max(max_plane_rms_m,plane_rms_rel*s['measured_m']))
+        s['unreadable_reason']=None if s['readable'] else (
+            'no_surface' if s['measured_m'] is None else 'few_valid_pixels' if s['valid_fraction']<min_valid else
+            'tilted' if s['tilt_deg']>max_tilt_deg else 'not_one_flat_surface')
     readable=[s for s in stations if s['readable']]
     report={'stations':stations,'uses':{},'correction':None,'thresholds_status':'proposed_not_reviewed',
+            'readable_rule':{'min_valid_fraction':min_valid,'max_tilt_deg':max_tilt_deg,'max_plane_rms_m':max_plane_rms_m,
+                             'plane_rms_rel':plane_rms_rel,'status':'proposed_not_reviewed'},
             'readable_range_m':[readable[0]['truth_m'],readable[-1]['truth_m']] if readable else None,
             'truth':'user tape measure, perpendicular from the phone front glass to the surface',
             'motion_enabled':False,'robot_commands':0}
@@ -164,8 +177,9 @@ def text(result):
         for s in part['stations']:
             if s['measured_m'] is None:lines.append(f'  卷尺 {s["truth_m"]*100:6.1f} cm  没有读到平面（{s["frames"]} 帧）');continue
             lines.append(f'  卷尺 {s["truth_m"]*100:6.1f} cm  读数 {s["measured_m"]*100:6.1f} cm  误差 {s["error_m"]*100:+5.1f} cm  '
-                         f'有效像素 {s["valid_fraction"]:.0%}  倾斜 {s["tilt_deg"]:.0f}°  帧间差 {s["repeat_m"]*1000:.0f} mm'
-                         +('' if s['readable'] else '  不计入'))
+                         f'有效像素 {s["valid_fraction"]:.0%}  倾斜 {s["tilt_deg"]:.0f}°  帧间差 {s["repeat_m"]*1000:.0f} mm  '
+                         f'平面残差 {s["plane_rms_m"]*1000:.1f} mm'
+                         +('' if s['readable'] else '  不计入（'+REASONS.get(s.get('unreadable_reason'),'不可读')+'）'))
         for name,use in part['uses'].items():
             verdict={'passed':'通过','failed':'未通过','not_tested':f'未测够（需 {use["required_stations"]} 个距离）'}[use['verdict']]
             lines.append(f'  用途 {name}（{use["range_m"][0]}–{use["range_m"][1]} m）：{verdict}')

@@ -79,6 +79,29 @@ def test_too_few_distances_is_not_tested_and_an_unreadable_distance_fails_its_ra
     assert result['readable_range_m']==[1.6,2.]
 
 
+def stepped(near,far,pitch_deg=-16):
+    """Two stacked boxes: the upper half of the view is a face `far`, the lower half a face `near`."""
+    depth=wall(near,pitch_deg=pitch_deg);depth[:80,:]=wall(far,pitch_deg=pitch_deg)[:80,:]
+    return depth
+
+
+def test_a_window_across_a_step_is_not_read_as_one_surface():
+    # Seen on the vehicle 2026-11-24: a 7 cm step between two boxes gave a low-tilt plane 4 cm off the tape.
+    mixed=station(.5,[measure(stepped(.5,.57,pitch_deg=-16).tobytes(),META) for _ in range(3)])
+    assert mixed['tilt_deg']<20 and abs(mixed['error_m'])>.03 and mixed['plane_rms_m']>.012
+    result=evaluate([mixed]+stations([.3,.7],pitch_deg=-16,noise=.002))
+    assert not mixed['readable'] and mixed['unreadable_reason']=='not_one_flat_surface'
+    assert [s['truth_m'] for s in result['stations'] if s['readable']]==[.3,.7]
+    assert result['uses']['grasp']['verdict']=='failed' and result['uses']['grasp']['failed_truth_m']==[.5]
+    assert result['readable_rule']['status']=='proposed_not_reviewed'
+
+
+def test_range_noise_on_a_far_flat_wall_stays_readable():
+    far=station(2.5,[measure(wall(2.5,noise=.01,seed=i).tobytes(),META) for i in range(3)])
+    result=evaluate([far])
+    assert far['plane_rms_m']>.008 and far['readable'] and result['readable_range_m']==[2.5,2.5]
+
+
 def save(folder,truth_m,source,depth):
     folder.mkdir(parents=True)
     (folder/'000-raw.f32').write_bytes(depth.tobytes())
