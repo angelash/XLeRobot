@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PICO VR遥控 · XLeRobot Studio</title>
+<link rel="stylesheet" href="/assets/vr.css">
+</head>
+<body>
+<main class="vr-shell">
+  <header class="vr-head">
+    <div>
+      <p class="eyebrow">IMMERSIVE TELEOPERATION</p>
+      <h1>PICO VR 遥控</h1>
+      <p class="lead">左摇杆开车，右摇杆转头；按住握把，同侧手臂跟随手柄；扳机控制夹爪。</p>
+    </div>
+    <a class="button" href="/vr/" target="_blank" rel="noopener" id="open-tab">在新标签打开 ↗</a>
+  </header>
+
+  <section class="card" aria-labelledby="ready-title">
+    <h2 id="ready-title">准备情况</h2>
+    <ul class="checks">
+      <li id="check-secure"><span class="dot"></span><b>安全连接</b><span data-text>检查中…</span></li>
+      <li id="check-xr"><span class="dot"></span><b>WebXR 沉浸模式</b><span data-text>检查中…</span></li>
+      <li id="check-robot"><span class="dot"></span><b>机器人控制服务</b><span data-text>检查中…</span></li>
+    </ul>
+    <p class="hint" id="secure-help" hidden>浏览器只在 HTTPS 页面开放 VR。请用 <code id="https-url">https://…:8770/vr/</code> 打开本页；首次打开若提示证书不受信任，可<a href="/vr/ca.crt">下载本地根证书</a>安装，或在提示页选择继续访问。</p>
+  </section>
+
+  <section class="card" aria-labelledby="mode-title">
+    <h2 id="mode-title">模式与参数</h2>
+    <div class="row">
+      <label class="toggle"><input type="radio" name="mode" value="preview" checked> 预演（不连机器人，只在VR里看映射）</label>
+      <label class="toggle"><input type="radio" name="mode" value="robot"> 实机</label>
+    </div>
+    <label class="confirm"><input type="checkbox" id="confirm"> 我已看清机器人周围，手臂和底盘运动范围内无人；需要时我会按 <b>B</b> 急停</label>
+    <div class="grid">
+      <label>速度比例 <output id="scale-out">50%</output><input type="range" id="scale" min="0.2" max="1" step="0.05" value="0.5"></label>
+      <label>手臂位移比例 <output id="ratio-out">1.0×</output><input type="range" id="ratio" min="0.25" max="2" step="0.05" value="1"></label>
+      <label class="toggle"><input type="checkbox" id="orient" checked> 夹爪俯仰／旋转跟随手腕</label>
+      <label>按键编号
+        <select id="scheme"><option value="standard">WebXR 标准（默认）</option><option value="xlevr">上游 XLeVR 编号</option></select>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="button primary" id="enter" disabled>进入 VR</button>
+      <button class="button danger" id="stop" disabled>结束实机控制</button>
+    </div>
+    <p class="status" id="status" role="status">等待检查完成</p>
+  </section>
+
+  <section class="card" aria-labelledby="map-title">
+    <h2 id="map-title">手柄映射</h2>
+    <table class="map">
+      <tr><th>左摇杆</th><td>前后：前进／后退；左右：左转／右转。松开立即停车</td></tr>
+      <tr><th>左摇杆按下</th><td>底盘快／慢档切换（慢档 50%）</td></tr>
+      <tr><th>右摇杆</th><td>左右：头部转向；前推抬头，后拉低头</td></tr>
+      <tr><th>右摇杆按下</th><td>手臂精细模式（位移比例减半）</td></tr>
+      <tr><th>左／右 握把</th><td>按住：同侧机械臂跟随手柄。按下瞬间自动对齐，松开手臂停住；松开挪手再按下即重新对齐</td></tr>
+      <tr><th>左／右 扳机</th><td>按深浅控制夹爪开合；夹到物体保持轻夹，松开扳机张开</td></tr>
+      <tr><th>X 或 A 短按</th><td>重新校准：以现在面对的方向为正前方，并把画面摆到眼前（握把按住时无效）</td></tr>
+      <tr><th>Y</th><td>只把画面重新摆到眼前</td></tr>
+      <tr><th>X + A 同时按住 1.5 秒</th><td>开启实机控制（需选择“实机”并勾选上面的确认）</td></tr>
+      <tr><th>B</th><td>急停：结束实机控制，关节保持、底盘停车</td></tr>
+    </table>
+    <p class="hint">摘下头显、追踪丢失、按系统键离开或页面切走时停止；断网后 650 毫秒未收到新输入即触发停止，实际停车延迟待实机验收。停止后松开 X/A 再重新长按开启。实体 Xbox 手柄任何输入也会结束 VR 控制。</p>
+  </section>
+</main>
+<script src="/assets/vr-mapping.js"></script>
+<script src="/assets/vr.js"></script>
+</body>
+</html>

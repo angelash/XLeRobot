@@ -338,3 +338,36 @@ def test_guided_calibration_proxy_only_exposes_explicit_actions(client):
     assert client.post('/api/limit-test/upright',json={'side':'left','action':'record'}).status_code==200
     assert requests[-1].url.path=='/api/limit-test/upright'
     assert client.get('/static/manual-pose.js').status_code==200
+
+
+def test_vr_page_is_a_studio_module_and_its_input_goes_to_the_controller_session(client,tmp_path,monkeypatch):
+    assert 'id="vr-page"' in client.get('/').text and 'xr-spatial-tracking' in client.get('/').text
+    script=client.get('/assets/studio.js').text
+    assert "['vr','VR遥控'" in script and "vr:'/vr/'" in script
+    page=client.get('/vr/')
+    assert page.status_code==200 and 'vr-mapping.js' in page.text and 'xr-spatial-tracking' in page.headers['permissions-policy']
+    assert client.get('/vr',follow_redirects=False).headers['location']=='/vr/'
+    for asset in ('vr.js','vr-mapping.js','vr.css'):assert client.get('/assets/'+asset).status_code==200
+    requests=[]
+    def upstream(request):
+        requests.append(request);return httpx.Response(200,json={'active':True,'mode':'vr','seq':0})
+    mod.service.client=httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+    body={'session_id':'a'*32,'seq':0,'base':[0,0],'head':[0,0],'arms':{},'grip':{}}
+    assert client.post('/api/web/vr-input',json=body).status_code==200
+    assert str(requests[-1].url)=='http://127.0.0.1:8765/api/web/vr-input' and requests[-1].headers['origin']==mod.UPSTREAM
+    assert client.post('/api/web/vr-input',json=body,headers={'Origin':'https://foreign.example'}).status_code==403
+    assert client.post('/api/web/start',json={'confirmed':True,'mode':'vr'},headers={'Origin':'https://127.0.0.1:8770'}).status_code==200
+
+
+def test_vr_certificate_route_serves_only_a_configured_public_ca(client,tmp_path,monkeypatch):
+    from fabrication.assembly.debug_console import studio_tls
+    config=tmp_path/'studio-network.json'
+    monkeypatch.setattr(studio_tls,'NETWORK',config)
+    monkeypatch.setattr(studio_tls.tls_settings,'__defaults__',(config,))
+    assert client.get('/vr/ca.crt').status_code==404
+    ca=tmp_path/'ca.crt';ca.write_text('-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n')
+    config.write_text(json.dumps({'tls':{'cert':str(ca),'key':str(tmp_path/'k'),'ca':str(ca)}}),encoding='utf-8')
+    served=client.get('/vr/ca.crt')
+    assert served.status_code==200 and served.content==ca.read_bytes() and 'attachment' in served.headers['content-disposition']
+    ca.write_text('-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n')
+    assert client.get('/vr/ca.crt').status_code==404

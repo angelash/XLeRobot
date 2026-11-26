@@ -86,8 +86,13 @@ if ($rule) {
 } else {
     New-NetFirewallRule -Name $name -DisplayName 'XLeRobot Studio - approved controller addresses' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8770 -LocalAddress $ListenAddress -RemoteAddress $ClientAddress -Profile Any | Out-Null
 }
-$config = [ordered]@{listen_host='0.0.0.0';public_origin=$origin;allowed_origins=@($origin);client_addresses=@($ClientAddress)}
 $path = Join-Path $repo '.local-deploy\studio-network.json'
+# Keep an existing same-port HTTPS section (PICO WebXR) and allow its origin too.
+$previous = if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+$origins = @($origin)
+if ($previous -and $previous.tls) { $origins += 'https://'+$ListenAddress+':8770' }
+$config = [ordered]@{listen_host='0.0.0.0';public_origin=$origin;allowed_origins=$origins;client_addresses=@($ClientAddress)}
+if ($previous -and $previous.tls) { $config.tls = $previous.tls }
 New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
 if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination ($path+'.before-'+(Get-Date -Format 'yyyyMMddHHmmss')) }
 [System.IO.File]::WriteAllText($path,($config | ConvertTo-Json -Depth 4),(New-Object System.Text.UTF8Encoding($false)))

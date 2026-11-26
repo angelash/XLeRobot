@@ -967,7 +967,7 @@ class OriginalRuntime(ControlRuntime):
         # accepted the goal, so the fault handler must attempt a hold here.
         self.moving[key]=target
         speed=axis['grip_raw_s'] if i==6 else axis['joint_rate_deg_s']*4096/360
-        if self.control_profile=='web':speed=min(speed,100 if i==6 else 12*4096/360)
+        if self.control_profile=='web':speed=min(speed,self.web_control.goal_speed_cap(i))
         write_register(p,i,46,min(1000,max(60,int(speed))),2)
         write_register(p,i,42,target,2)
         self.feedback_window.setdefault(key,{'origin':pos,'at':time.monotonic()})
@@ -1053,7 +1053,8 @@ class OriginalRuntime(ControlRuntime):
         direction=1 if expected>pos else -1;limit=e.get('max') if direction>0 else e.get('min')
         self.stall_marks[f'{port}:{i}']={'position':pos,'target':expected,'direction':direction,
                                          'soft_limit':limit,'time':now()}
-        if self.control_profile=='web':
+        # A VR gripper closing on an object falls through to the light squeeze below.
+        if self.control_profile=='web' and not self.web_control.squeeze_on_stall(key,pos,expected):
             self.web_control.stop(f'{label}编码器反馈受阻，已结束网页控制，请观察后重新开启')
             return
         self.feedback_window.pop(key,None)

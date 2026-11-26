@@ -26,7 +26,10 @@ if ($listener) {
     if ($listener -and $health.version -ne '1.0-studio') { throw '8770被其他服务占用；不会强制释放。' }
 }
 if (-not $listener) {
-    $process = Start-Process -FilePath $python -ArgumentList @('-m','uvicorn','fabrication.assembly.debug_console.platform_app:app','--host',$ListenHost,'--port','8770','--log-level','warning') -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput (Join-Path $consoleDir 'platform.stdout.log') -RedirectStandardError (Join-Path $consoleDir 'platform.stderr.log') -PassThru
+    # With a tls section, the same port also answers HTTPS (needed for WebXR on PICO).
+    # The application string stays on the command line for stop/deploy identity checks.
+    $serverArgs = if ($network -and $network.tls) { @('-m','fabrication.assembly.debug_console.studio_tls','fabrication.assembly.debug_console.platform_app:app') } else { @('-m','uvicorn','fabrication.assembly.debug_console.platform_app:app') }
+    $process = Start-Process -FilePath $python -ArgumentList ($serverArgs + @('--host',$ListenHost,'--port','8770','--log-level','warning')) -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput (Join-Path $consoleDir 'platform.stdout.log') -RedirectStandardError (Join-Path $consoleDir 'platform.stderr.log') -PassThru
     Set-Content -LiteralPath (Join-Path $consoleDir 'platform.pid') -Value $process.Id -Encoding ascii
     $healthy = $false
     foreach ($attempt in 1..20) {

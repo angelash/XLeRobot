@@ -69,9 +69,9 @@ class SpatialJournal:
     def accepted_input(self,path,body,result):
         """Nonblocking sanitized command receipt. Control response never waits on disk."""
         if not self.enabled() or not path.startswith('/api/web/'):return
-        fields={k:body[k] for k in ('seq','actions','arm','scale','confirmed') if k in body}
+        fields={k:body[k] for k in ('seq','actions','arm','scale','confirmed','mode','base') if k in body}
         value={'at':stamp(),'op':'input','channel':'web','path':path,'request':fields,
-               'result':{k:result[k] for k in ('active','seq','actions','arm','scale','reason') if k in result},
+               'result':{k:result[k] for k in ('active','seq','actions','arm','scale','reason','mode') if k in result},
                'accepted':True,'effect_verified':False}
         try:self.pending.put_nowait(value)
         except queue.Full:self.dropped+=1

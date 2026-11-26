@@ -1,5 +1,5 @@
 """Exact browser command routes installed into the existing controller app."""
-from typing import Literal
+from typing import Annotated, Literal, Optional
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class Start(BaseModel):
     model_config = ConfigDict(extra='forbid')
     confirmed: bool = False
+    mode: Literal['keys', 'vr'] = 'keys'
 
 
 class Ref(BaseModel):
@@ -20,6 +21,44 @@ class Input(Ref):
     actions: list[str] = Field(default_factory=list, max_length=20)
     arm: Literal['left', 'right', 'both'] = 'left'
     scale: float = Field(default=.5, ge=.2, le=1, allow_inf_nan=False)
+
+
+Unit = Annotated[float, Field(ge=-1, le=1, allow_inf_nan=False)]
+Metre = Annotated[float, Field(ge=-1, le=1, allow_inf_nan=False)]
+Angle = Annotated[float, Field(ge=-180, le=180, allow_inf_nan=False)]
+Trigger = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+
+
+class Hand(BaseModel):
+    """A held grip: displacement and orientation change since the client's anchor."""
+    model_config = ConfigDict(extra='forbid')
+    engage: int = Field(ge=0, le=2**31 - 1, strict=True)
+    pos: tuple[Metre, Metre, Metre]
+    pitch: Angle = 0.
+    roll: Angle = 0.
+    orient: bool = True
+
+
+class Hands(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    left: Optional[Hand] = None
+    right: Optional[Hand] = None
+
+
+class Triggers(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    left: Optional[Trigger] = None
+    right: Optional[Trigger] = None
+
+
+class VRInput(Ref):
+    seq: int = Field(ge=0, strict=True)
+    base: tuple[Unit, Unit] = (0., 0.)
+    head: tuple[Unit, Unit] = (0., 0.)
+    arms: Hands = Field(default_factory=Hands)
+    grip: Triggers = Field(default_factory=Triggers)
+    scale: float = Field(default=.5, ge=.2, le=1, allow_inf_nan=False)
+    ratio: float = Field(default=1., ge=.25, le=2, allow_inf_nan=False)
 
 
 def install(app, runtime):
@@ -37,7 +76,7 @@ def install(app, runtime):
     @app.post('/api/web/start')
     def start(payload: Start):
         try:
-            return channel().start(payload.confirmed)
+            return channel().start(payload.confirmed, payload.mode)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -45,6 +84,15 @@ def install(app, runtime):
     def input_state(payload: Input):
         try:
             return channel().input(**payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post('/api/web/vr-input')
+    def vr_input(payload: VRInput):
+        data = payload.model_dump()
+        try:
+            return channel().vr_input(data['session_id'], data['seq'], data['base'], data['head'],
+                                      data['arms'], data['grip'], data['scale'], data['ratio'])
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 

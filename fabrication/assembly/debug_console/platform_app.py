@@ -18,7 +18,7 @@ import ipaddress
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
@@ -35,7 +35,9 @@ ID_RE=re.compile(r'^[a-f0-9]{32}$')
 FILE_LOCK=threading.RLock()
 STATE_LABELS={'integrated':'平台已接入','adaptation':'示例待适配','guide':'图文流程','reference':'社区参考'}
 LOCAL_ORIGINS=frozenset(('http://127.0.0.1:8770','http://localhost:8770',
-                         'http://127.0.0.1:18770','http://localhost:18770'))
+                         'http://127.0.0.1:18770','http://localhost:18770',
+                         # Same-port HTTPS (studio_tls) for WebXR on a headset via adb reverse.
+                         'https://127.0.0.1:8770','https://localhost:8770'))
 
 
 def studio_origins(path=None):
@@ -368,6 +370,29 @@ def web_teleop_view():
     return FileResponse(STATIC/'web-teleop.html', headers={
         'Content-Security-Policy': "frame-ancestors 'self'", 'X-Frame-Options': 'SAMEORIGIN'})
 
+@app.get('/vr/')
+def vr_view():
+    # Top-level WebXR page; Studio may also embed it with xr-spatial-tracking allowed.
+    return FileResponse(STATIC/'vr.html', headers={
+        'Content-Security-Policy': "frame-ancestors 'self'", 'X-Frame-Options': 'SAMEORIGIN',
+        'Permissions-Policy': 'xr-spatial-tracking=(self)'})
+
+@app.get('/vr')
+def vr_redirect():return RedirectResponse('/vr/')
+
+@app.get('/vr/ca.crt')
+def vr_certificate():
+    # Only the public local CA from studio-network.json; private keys are never served.
+    from .studio_tls import tls_settings
+    try:settings=tls_settings()
+    except (OSError,ValueError) as exc:raise HTTPException(404,'HTTPS未配置') from exc
+    path=(settings or {}).get('ca')
+    if not path or not Path(path).is_file():raise HTTPException(404,'HTTPS未配置或未提供本地根证书')
+    data=Path(path).read_bytes()
+    if b'PRIVATE KEY' in data or b'-----BEGIN CERTIFICATE-----' not in data:raise HTTPException(404,'根证书文件无效')
+    return Response(data,media_type='application/x-x509-ca-cert',
+                    headers={'Content-Disposition':'attachment; filename="xlerobot-studio-ca.crt"'})
+
 @app.get('/api/platform/catalog')
 def get_catalog():return catalog()
 
@@ -497,7 +522,7 @@ async def camera_live(camera:int):
 PROXY_GET={'original/status','status','events','log/download'}
 PROXY_GET.add('web/status')
 PROXY_POST={'original/start','original/pause','controller/start','controller/stop','controller/resume','controller/heartbeat','controller/select','controller/settings','control-settings','torque','calibration/read','hardware/prepare','limit-test/start','limit-test/stop','limit-test/upright','manual-pose'}
-PROXY_POST.update(('web/start','web/input','web/stop'))
+PROXY_POST.update(('web/start','web/input','web/vr-input','web/stop'))
 PROXY_POST.update('whole-calibration/'+a for a in ('start','resume','recover','merge-checkpoint','capture','capture-item','delete-item','clear-captures','rewind','base-test','base-confirm','wheels','apply','apply-ranges','cancel'))
 
 async def proxy(request,path,stream=False):
