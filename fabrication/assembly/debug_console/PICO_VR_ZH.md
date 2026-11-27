@@ -86,6 +86,18 @@ adb install -r D:\Robot\pico-vr\xlerobot-pico-vr-20261126\pico\XLeRobotVR.apk
 ```
 
    安装后在 PICO 资源库的“未知来源”里找到 **XLeRobot VR**。
+
+   需要拔线操作时，可在USB调试已授权后切换到Wi-Fi ADB。先用`adb devices -l`找准头显USB编号，再执行（地址换成头显当前热点地址；2026-11-27实测为`192.168.137.124`）：
+
+```powershell
+adb -s <头显USB编号> tcpip 5555
+adb connect 192.168.137.124:5555
+adb -s 192.168.137.124:5555 get-state
+adb -s 192.168.137.124:5555 shell getprop ro.product.model
+```
+
+   返回`device`且型号为`Pico Neo 3`，并核对无线端与USB端为同一设备后即可拔线。之后安装、启动和检查都显式加`-s 192.168.137.124:5555`，避免操作同机手机／平板。保持同一Wi-Fi；头显重启后TCP调试可能需重新用USB开启，未测试重启保持性。Wi-Fi ADB不会自动关闭头显休眠或安全边界。
+
 2. 打开 XLeRobot VR，填机器人地址（默认 `192.168.137.150`）：
    - ① 检测连接：显示 Studio、控制服务和 HTTPS 是否就绪；
    - ② 安装机器人证书：显示证书 SHA-256，与车载安装程序输出的指纹核对一致后确认安装；
