@@ -51,6 +51,14 @@ class Triggers(BaseModel):
     right: Optional[Trigger] = None
 
 
+class Jog(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    side: Literal['left', 'right']
+    joint: int = Field(ge=1, le=5, strict=True)
+    value: Unit
+    engage: int = Field(ge=1, le=2**31 - 1, strict=True)
+
+
 class VRInput(Ref):
     seq: int = Field(ge=0, strict=True)
     base: tuple[Unit, Unit] = (0., 0.)
@@ -59,6 +67,7 @@ class VRInput(Ref):
     grip: Triggers = Field(default_factory=Triggers)
     scale: float = Field(default=.5, ge=.2, le=1, allow_inf_nan=False)
     ratio: float = Field(default=1., ge=.25, le=2, allow_inf_nan=False)
+    jog: Optional[Jog] = None
 
 
 def install(app, runtime):
@@ -72,6 +81,13 @@ def install(app, runtime):
     @app.get('/api/web/status')
     def status():
         return channel().snapshot()
+
+    @app.get('/api/web/vr-readiness')
+    def vr_readiness():
+        try:
+            return channel().vr_readiness()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post('/api/web/start')
     def start(payload: Start):
@@ -92,7 +108,7 @@ def install(app, runtime):
         data = payload.model_dump()
         try:
             return channel().vr_input(data['session_id'], data['seq'], data['base'], data['head'],
-                                      data['arms'], data['grip'], data['scale'], data['ratio'])
+                                      data['arms'], data['grip'], data['scale'], data['ratio'], data['jog'])
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 

@@ -38,10 +38,14 @@ def wrap(deg):
 def anchor(lift, elbow, wrist):
     """Geometry of the arm at grip time; raises ValueError outside the model."""
     x, z = forward(lift, elbow)
-    lift2, elbow2 = inverse(x, z)
+    reason = '当前折叠姿态不在跟随模型内，先用逐关节调整，再松开重握'
+    try:
+        lift2, elbow2 = inverse(x, z)
+    except ValueError as exc:
+        raise ValueError(reason) from exc
     # The IK has one branch; a pose it cannot reproduce must not be followed.
     if abs(lift2 - lift) > 1 or abs(elbow2 - elbow) > 1:
-        raise ValueError('当前折叠姿态不在跟随模型内，请先用键盘或手柄把手臂伸开一些')
+        raise ValueError(reason)
     total = lift + elbow + wrist
     psi = PSI_OFFSET - total
     tip = (x + TOOL_M * math.cos(math.radians(psi)), z + TOOL_M * math.sin(math.radians(psi)))

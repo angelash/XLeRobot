@@ -96,8 +96,27 @@
   }
   function clamp(v,limit){return Math.max(-limit,Math.min(limit,v));}
 
+  // Shared 3D arm skeleton for the three schematic views. Body coordinates are
+  // forward/left/up. Shoulder spacing is illustrative, not robot calibration.
+  function armPoints(side,a){
+    const lateral=side==='left'?.16:-.16, angle=a.pan*RAD, c=Math.cos(angle), s=Math.sin(angle);
+    const inBody=(x,z)=>[x*c,lateral+x*s,z];
+    const alpha=(90-a.lift)*RAD-O1;
+    const elbow=[L1*Math.cos(alpha),L1*Math.sin(alpha)];
+    const wrist=forward(a.lift,a.elbow), jaw=jawPoint(a.lift,a.elbow,a.wrist);
+    return [[0,lateral,0],inBody(PAN_OFFSET,0),inBody(PAN_OFFSET+elbow[0],elbow[1]),
+      inBody(PAN_OFFSET+wrist[0],wrist[1]),inBody(PAN_OFFSET+jaw[0],jaw[1])];
+  }
+  function project(point,view){
+    const [forward,left,up]=point;
+    if(view==='front')return [-left,-up];
+    if(view==='side')return [forward,-up];
+    if(view==='top')return [-left,-forward];
+    throw new Error('未知视图');
+  }
+
   const api={SCHEMES,PSI_OFFSET,TOOL,PAN_OFFSET,forward,inverse,anchor,follow,jawPoint,wrap,
-             deadzone,readPad,drive,head,rotate,yaw,toBody,orientation,clamp};
+             deadzone,readPad,drive,head,rotate,yaw,toBody,orientation,clamp,armPoints,project};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.VRMapping=api;
 })(typeof self!=='undefined'?self:this);

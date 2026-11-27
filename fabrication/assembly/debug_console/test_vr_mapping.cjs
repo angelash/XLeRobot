@@ -67,4 +67,12 @@ const app = fs.readFileSync(path.join(__dirname, 'platform_static/vr.js'), 'utf8
 assert.ok(app.includes("'/api/web/vr-input'") && app.includes("mode: 'vr'"));
 assert.ok(!app.includes('AbortSignal.timeout('), 'older headset browsers lack AbortSignal.timeout');
 new Function(app);
+// All views use one 3D skeleton. A pan changes top/front positions, not height.
+const q = {lift: 0, elbow: 40, wrist: -30, pan: 0};
+const straight = M.armPoints('left', q), turned = M.armPoints('left', {...q, pan: 30});
+near(straight[4][1], .16); near(turned[4][2], straight[4][2]);
+assert.ok(turned[4][1] > straight[4][1]);
+assert.deepStrictEqual(M.project([.2, .1, .3], 'front'), [-.1, -.3]);
+assert.deepStrictEqual(M.project([.2, .1, .3], 'side'), [.2, -.3]);
+assert.deepStrictEqual(M.project([.2, .1, .3], 'top'), [-.1, -.2]);
 console.log('VR mapping PASS: kinematics parity, buttons, sticks, body frame, orientation, page');

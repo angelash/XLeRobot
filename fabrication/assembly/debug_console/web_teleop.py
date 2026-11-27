@@ -19,6 +19,7 @@ from .temperature_guard import confirm_temperature, normal_temperature
 from .torque_control import EXPECTED, read_registers, word
 from .upstream_teleop import UpstreamTeleop, forward, inverse, neutral
 from . import vr_kinematics
+from . import vr_policy
 
 LEASE_S = .65
 MAX_SESSION_S = 1200
@@ -35,6 +36,7 @@ VR_MAX_GRIP_RAW_S = 400
 # Stick values are stepped so the wheel direction/ratio windows see stable commands.
 VR_BASE_STEP = .25
 VR_HEAD_DEADZONE = .05
+VR_JOG_RATE_DEG_S = 6.
 
 
 class WebTeleop:
@@ -55,11 +57,12 @@ class WebTeleop:
         self.voltage_bad = {}
         self._thread = None
         self.mode = 'keys'
+        self.vr_disabled = {}
         self.tick_ms = None
         self._reset_vr()
 
     def _reset_vr(self):
-        self.vr = {'base': (0., 0.), 'head': (0., 0.), 'arms': {}, 'grip': {}, 'ratio': 1.}
+        self.vr = {'base': (0., 0.), 'head': (0., 0.), 'arms': {}, 'grip': {}, 'ratio': 1., 'jog': None}
         self.vr_arms = {side: {'state': 'idle', 'reason': None} for side in ('left', 'right')}
         self.vr_grip = {side: {'active': False, 'target': None, 'hold': None, 'reason': None}
                         for side in ('left', 'right')}
@@ -74,8 +77,66 @@ class WebTeleop:
                 'arms': {s: {k: v.get(k) for k in ('state', 'reason', 'engage')} for s, v in self.vr_arms.items()},
                 'grip': {s: {'active': g['active'], 'holding': g['hold'] is not None, 'reason': g['reason']}
                          for s, g in self.vr_grip.items()},
-                'ratio': self.vr['ratio'], 'tick_ms': self.tick_ms}
+                'ratio': self.vr['ratio'], 'tick_ms': self.tick_ms, 'disabled': dict(self.vr_disabled),
+                'jog': self.vr['jog']}
         return result
+
+    def vr_readiness(self):
+        """Read current cached motor inventory and references; never prepare torque."""
+        r = self.runtime
+        with r.io:
+            disabled = vr_policy.read()
+            motors = r.motors()
+            complete = set(motors) == {(p, i) for p, ids in EXPECTED.items() for i in ids}
+            busy = (self.active or r.controller['controller'] == 'online' or r.agent.active
+                    or r.manual_pose_active or r.limit_test.running or r.manual_calibration.active
+                    or r.native_menu.status()['busy'])
+            channels = {}
+            def unavailable(port, ids):
+                # Preparation blocks belong to the previous session. This is a
+                # fresh read-only eligibility check, including persistent holds.
+                for i in ids:
+                    if f'{port}:{i}' in r.service_blocked:
+                        return r.service_blocked[f'{port}:{i}']
+                    m = motors.get((port, i))
+                    wheel = port == 'COM4' and i in (9, 10)
+                    if (not m or m['mode'] != (1 if wheel else 0) or
+                            (not wheel and (m['max'] - m['min'] < 24 or not m['min'] <= m['position'] <= m['max']))):
+                        return '设备范围或当前位置未就绪'
+                return None
+            for side in ('left', 'right'):
+                port = r.arm_ports()[side]
+                reason = disabled.get(side)
+                refs = {i: r.reference(port, i) for i in (2, 3, 4, 6)}
+                follow_reason = reason or unavailable(port, range(1, 6))
+                grip_reason = reason or unavailable(port, (6,))
+                joints = {i: reason or unavailable(port, (i,)) for i in range(1, 6)}
+                if not follow_reason:
+                    if not all(refs[i] for i in (2, 3, 4)):
+                        follow_reason = '此臂运动学参考未就绪'
+                    else:
+                        q = {i: refs[i]['reference_deg'] + (motors[(port, i)]['position'] - refs[i]['reference_raw'])
+                             * refs[i]['direction'] * 360 / 4096 for i in (2, 3, 4)}
+                        try:
+                            vr_kinematics.anchor(q[2], q[3], q[4])
+                        except ValueError as exc:
+                            follow_reason = str(exc)
+                if not grip_reason and (not refs[6] or refs[6].get('closed_raw') == refs[6].get('open_raw')):
+                    grip_reason = '夹爪开合端点未确认'
+                enabled = not follow_reason or not grip_reason or any(v is None for v in joints.values())
+                channels[side] = {'enabled': enabled, 'reason': reason or (None if enabled else follow_reason),
+                                  'follow_ready': not bool(follow_reason), 'follow_reason': follow_reason,
+                                  'grip_ready': not bool(grip_reason), 'grip_reason': grip_reason,
+                                  'joints': {str(i): {'enabled': v is None, 'reason': v,
+                                             'position': motors.get((port, i), {}).get('position')}
+                                             for i, v in joints.items()}}
+            for name, port, ids in (('head', 'COM3', (7, 8)), ('base', 'COM4', (9, 10))):
+                reason = disabled.get(name) or unavailable(port, ids)
+                channels[name] = {'enabled': not bool(reason), 'reason': reason}
+            return {'can_start': complete and not busy and any(c['enabled'] for c in channels.values()),
+                    'reason': '已有控制或任务占用' if busy else '需两块控制板与16电机完整应答' if not complete else None,
+                    'channels': channels, 'prepares_current_pose_on_start': True,
+                    'active': self.active, 'read_only': True}
 
     def start(self, confirmed=False, mode='keys'):
         r = self.runtime
@@ -91,13 +152,17 @@ class WebTeleop:
                 raise ValueError('摆位、助手任务或手柄启动仍在进行')
             if r.gamepad.get('connected') and not neutral(r.gamepad):
                 raise ValueError('请松开手柄所有输入；手柄输入会结束网页控制')
+            disabled = vr_policy.read() if mode == 'vr' else {}
+            if len(disabled) == len(vr_policy.CHANNELS):
+                raise ValueError('VR所有通道均被限制，请先处理所示原因')
             r.capture_profile()
             motors = r.motors()
             if set(motors) != {(p, i) for p, ids in EXPECTED.items() for i in ids}:
                 raise ValueError('需要两块原控制板和16颗电机完整应答')
             if any(motors[('COM4', i)]['goal_velocity'] for i in (9, 10)):
                 raise ValueError('双轮目标非零，请先完成停车')
-            prepared = r.prepare_hardware(True)
+            prepared = (r.prepare_hardware(True, excluded=vr_policy.motors(disabled, r.arm_ports()))
+                        if mode == 'vr' else r.prepare_hardware(True))
             self.blocked = {f"{m['port']}:{m['id']}": m['reason'] for m in prepared['blocked']}
             if not prepared['ready']:
                 raise ValueError('没有设备完成当前位置保持')
@@ -115,6 +180,7 @@ class WebTeleop:
             self.base_window = None
             self.voltage_bad = {}
             self.mode = mode; self._reset_vr(); self.tick_ms = None
+            self.vr_disabled = disabled
             self.started = self.last_input = self.last_tick = self.clock()
             self.active = True
             self.reason = ('VR控制已开启：按住握把让同侧手臂跟随，扳机控制夹爪' if mode == 'vr'
@@ -155,7 +221,7 @@ class WebTeleop:
             return self.snapshot()
 
     def vr_input(self, session_id, seq, base=(0., 0.), head=(0., 0.), arms=None, grip=None,
-                 scale=.5, ratio=1.):
+                 scale=.5, ratio=1., jog=None):
         """Replace the complete VR state. Hand poses are displacements from the
         client's grip anchor; the robot-side anchor is taken on the next tick."""
         r = self.runtime
@@ -170,12 +236,22 @@ class WebTeleop:
             numbers = [*base, *head, scale, ratio, *grip.values()]
             for a in arms.values():
                 numbers += [*a['pos'], a['pitch'], a['roll']]
+            if jog is not None:
+                if (not isinstance(jog, dict) or set(jog) != {'side', 'joint', 'value', 'engage'}
+                        or jog['side'] not in ('left', 'right')
+                        or type(jog['joint']) is not int or not 1 <= jog['joint'] <= 5
+                        or type(jog['engage']) is not int or jog['engage'] < 1):
+                    raise ValueError('逐关节输入格式错误')
+                numbers.append(jog['value'])
+                if arms or any(base):
+                    raise ValueError('逐关节调整不能同时跟随手部或驾驶底盘')
             if (set(arms) | set(grip)) - {'left', 'right'} or not all(
                     isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in numbers):
                 raise ValueError('VR输入格式错误')
             if (len(base) != 2 or len(head) != 2 or any(abs(x) > 1 for x in (*base, *head))
                     or not .2 <= scale <= 1 or not .25 <= ratio <= 2
                     or any(not 0 <= g <= 1 for g in grip.values())
+                    or (jog is not None and abs(jog['value']) > 1)
                     or any(len(a['pos']) != 3 or abs(a['pitch']) > 180 or abs(a['roll']) > 180
                            or isinstance(a['engage'], bool) or not isinstance(a['engage'], int)
                            or a['engage'] < 0 for a in arms.values())):
@@ -186,7 +262,8 @@ class WebTeleop:
                        'arms': {k: {'engage': a['engage'], 'pos': tuple(float(x) for x in a['pos']),
                                     'pitch': float(a['pitch']), 'roll': float(a['roll']),
                                     'orient': bool(a.get('orient', True))} for k, a in arms.items()},
-                       'grip': {k: float(v) for k, v in grip.items()}, 'ratio': float(ratio)}
+                       'grip': {k: float(v) for k, v in grip.items()}, 'ratio': float(ratio),
+                       'jog': dict(jog) if jog is not None else None}
             # A released drive stick stops the wheels now, not on the next tick.
             if not any(self.vr['base']) and r.wheels_commanded:
                 r._drive_base(0, 0)
@@ -196,6 +273,8 @@ class WebTeleop:
     def goal_speed_cap(self, i):
         """Upper bound for the servo speed register written by a web or VR goal."""
         if self.mode == 'vr':
+            if self.vr['jog'] is not None and i != 6:
+                return VR_JOG_RATE_DEG_S * 4096 / 360
             return VR_MAX_GRIP_RAW_S if i == 6 else VR_MAX_RATE_DEG_S * 4096 / 360
         return 100 if i == 6 else 12 * 4096 / 360
 
@@ -250,6 +329,8 @@ class WebTeleop:
         started = time.perf_counter()
         try:
             if self.mode == 'vr':
+                if vr_policy.read() != self.vr_disabled:
+                    raise ValueError('VR通道限制已变化，请重新核对后开启')
                 self._apply_vr(dt)
             else:
                 self._apply(dt)
@@ -280,7 +361,7 @@ class WebTeleop:
             self.voltage_bad.pop(key, None)
         return data
 
-    def _rate(self, port, i, value, dt, touched, gripper=False):
+    def _rate(self, port, i, value, dt, touched, gripper=False, rate_cap=None):
         r = self.runtime
         if not value:
             return
@@ -294,6 +375,8 @@ class WebTeleop:
             direction = 1 if ref['closed_raw'] > ref['open_raw'] else -1
         # Per-axis settings remain an upper bound; browser speed is lower.
         cap = 12. if self.mode == 'keys' else VR_MAX_RATE_DEG_S
+        if rate_cap is not None:
+            cap = min(cap, rate_cap)
         speed = min(cap, cfg['joint_rate_deg_s']) if i != 6 else min(100., cfg['grip_raw_s']) * 360 / 4096
         r._direct(port, i, value * speed * self.scale * direction, dt)
 
@@ -363,16 +446,32 @@ class WebTeleop:
 
     def _apply_vr(self, dt):
         r = self.runtime; v = self.vr; touched = set()
-        self._rate('COM3', 7, v['head'][0], dt, touched)
-        self._rate('COM3', 8, -v['head'][1], dt, touched)
+        if 'head' not in self.vr_disabled:
+            cap = VR_JOG_RATE_DEG_S if v['jog'] is not None else None
+            self._rate('COM3', 7, v['head'][0], dt, touched, rate_cap=cap)
+            self._rate('COM3', 8, -v['head'][1], dt, touched, rate_cap=cap)
         for side, port in r.arm_ports().items():
-            self._vr_arm(side, port, v['arms'].get(side), dt, touched)
-            self._vr_grip(side, port, v['grip'].get(side), dt, touched)
+            if side in self.vr_disabled:
+                self.vr_arms[side] = {'state': 'unavailable', 'reason': self.vr_disabled[side]}
+                continue
+            if v['jog'] is not None:
+                self.vr_arms[side] = {'state': 'idle', 'reason': None}
+                if v['jog']['side'] == side:
+                    i = v['jog']['joint']
+                    reason = self._unusable(port, (i,))
+                    self.vr_arms[side] = {'state': 'unavailable' if reason else 'adjusting', 'reason': reason}
+                    if not reason:
+                        self._rate(port, i, v['jog']['value'], dt, touched, rate_cap=VR_JOG_RATE_DEG_S)
+                self._vr_grip(side, port, None, dt, touched)
+            else:
+                self._vr_arm(side, port, v['arms'].get(side), dt, touched)
+                self._vr_grip(side, port, v['grip'].get(side), dt, touched)
         for key in list(r.moving):
             if key not in touched:
                 r._hold_one(key); r.direct_targets.pop(key, None)
         drive, turn = v['base']
-        self._base(drive * -.04 * self.scale, turn * .25 * self.scale)
+        self._base(0. if 'base' in self.vr_disabled else drive * -.04 * self.scale,
+                   0. if 'base' in self.vr_disabled else turn * .25 * self.scale)
 
     def _unusable(self, port, ids):
         r = self.runtime

@@ -1,5 +1,6 @@
 """VR session tests: real STS packets on the fake bus, never hardware."""
 import math
+import json
 
 import pytest
 from fastapi import FastAPI
@@ -11,16 +12,18 @@ from fabrication.assembly.debug_console.test_original_teleop import pad
 from fabrication.assembly.debug_console.torque_control import word
 from fabrication.assembly.debug_console.web_teleop import WebTeleop, LEASE_S, VR_MAX_RATE_DEG_S
 from fabrication.assembly.debug_console.web_teleop_api import install
+from fabrication.assembly.debug_console import vr_policy
 
 ANGLES = {2: 0., 3: 40., 4: -30.}
 
 
 @pytest.fixture
-def vr(runtime):
+def vr(runtime, monkeypatch, tmp_path):
     clock = [100.]
     runtime.gamepad = {'connected': False}
     control = runtime.web_control = WebTeleop(runtime, clock=lambda: clock[0], threaded=False)
     control.test_clock = clock
+    monkeypatch.setattr(vr_policy, 'PATH', tmp_path / 'vr-policy.json')
     return control
 
 
@@ -302,3 +305,94 @@ def test_api_routes_validate_vr_payloads(vr):
     assert client.post('/api/web/start', json={'confirmed': True, 'mode': 'gamepad'}).status_code == 422
     status = client.get('/api/web/status').json()
     assert status['mode'] == 'vr' and 'session_id' not in status
+
+
+def policy(disabled):
+    vr_policy.PATH.write_text(json.dumps({'schema': 1, 'disabled': disabled}), encoding='utf-8')
+
+
+def test_readiness_is_read_only_and_shows_channel_exclusions(vr):
+    policy({'right': 'right shoulder physical hold', 'base': 'uncommanded_pose_change'})
+    vr.runtime.scan()
+    before = writes(vr.runtime)
+    app = FastAPI(); install(app, lambda: vr.runtime)
+    status = TestClient(app).get('/api/web/vr-readiness').json()
+    assert status['read_only'] and status['can_start']
+    assert status['channels']['head']['enabled']
+    assert not status['channels']['right']['enabled'] and not status['channels']['base']['enabled']
+    assert writes(vr.runtime) == before
+
+
+def test_folded_readiness_distinguishes_follow_from_grip_and_joint_control(vr):
+    r = vr.runtime; r.scan()
+    references(r, angles={2: -105.02264757982617, 3: 97.91373294197406, 4: 3.427734375})
+    before = writes(r)
+    c = vr.vr_readiness()['channels']['left']
+    assert c['enabled'] and not c['follow_ready'] and '折叠姿态' in c['follow_reason']
+    assert c['grip_ready'] and all(j['enabled'] for j in c['joints'].values())
+    assert writes(r) == before
+
+
+def test_joint_adjustment_moves_only_selected_joint_slowly_and_releases_to_hold(vr):
+    token = start(vr); r = vr.runtime; feed = Feed(vr, token)
+    references(r, angles={2: -105., 3: 98., 4: 3.4})
+    feed(3, jog={'side': 'left', 'joint': 2, 'value': 1., 'engage': 1}, scale=1.)
+    assert 2050 < goal(r, 2) <= 2050 + 6 * .3 * 4096 / 360 + 1
+    assert word(r.session.ports['COM3'].regs[2], 46) <= 6 * 4096 / 360
+    assert all(goal(r, i) == 2050 for i in (1, 3, 4, 5, 6))
+    assert vr.snapshot()['vr']['arms']['left']['state'] == 'adjusting'
+    feed(); held = goal(r, 2); before = writes(r)
+    feed(3)
+    assert goal(r, 2) == held and writes(r) == before and not r.wheels_commanded
+
+
+def test_jog_does_not_override_arm_exclusions(vr):
+    policy({'right': 'right physical hold', 'base': 'old stop latch'})
+    token = start(vr); r = vr.runtime; before = len(r.session.ports['COM4'].writes)
+    status = Feed(vr, token)(3, jog={'side': 'right', 'joint': 2, 'value': 1., 'engage': 1})
+    assert status['active'] and status['vr']['arms']['right']['state'] == 'unavailable'
+    assert len(r.session.ports['COM4'].writes) == before
+
+
+@pytest.mark.parametrize('patch', [
+    {'arms': {'left': hand(1)}}, {'base': (1., 0.)},
+    {'jog': {'side': 'left', 'joint': 6, 'value': 1., 'engage': 1}},
+    {'jog': {'side': 'left', 'joint': 2, 'value': 1., 'engage': 0}},
+    {'jog': {'side': 'left', 'joint': 2, 'value': float('nan'), 'engage': 1}},
+])
+def test_jog_rejects_invalid_or_mixed_commands_before_renewing_lease(vr, patch):
+    token = start(vr); r = vr.runtime; before = writes(r)
+    state = {'jog': {'side': 'left', 'joint': 2, 'value': .5, 'engage': 1}, **patch}
+    with pytest.raises(ValueError):
+        vr.vr_input(token, 0, **state)
+    assert vr.seq == -1 and writes(r) == before
+
+
+def test_restricted_arm_and_base_receive_no_torque_or_goal_writes(vr):
+    policy({'right': 'right shoulder physical hold', 'base': 'uncommanded_pose_change'})
+    for i in (1, 2, 3, 4, 5, 6, 9, 10):
+        vr.runtime.session.ports['COM4'].regs[i][40] = 0
+    token = start(vr); r = vr.runtime
+    # Fake fixture maps right to COM4, containing the wheels too.
+    assert not r.session.ports['COM4'].writes
+    feed = Feed(vr, token)
+    feed(3, arms={'right': hand(1, (.05, 0, 0))}, grip={'right': 1.}, base=(1., 1.), head=(.5, 0.))
+    assert vr.active and r.session.ports['COM3'].writes
+    assert not r.session.ports['COM4'].writes
+    assert all(r.session.ports['COM4'].regs[i][40] == 0 for i in (1, 2, 3, 4, 5, 6, 9, 10))
+    assert vr.snapshot()['vr']['arms']['right']['state'] == 'unavailable'
+
+
+def test_policy_change_during_vr_stops_instead_of_expanding_channels(vr):
+    policy({'base': 'old stop latch'})
+    start(vr); policy({})
+    vr.test_clock[0] += .1; vr.tick()
+    assert not vr.active and '通道限制已变化' in vr.reason
+
+
+@pytest.mark.parametrize('bad', ['{}', '{"schema":1,"disabled":{"base":""}}', '{"schema":1,"disabled":{"unknown":"blocked"}}'])
+def test_invalid_policy_refuses_before_hardware_preparation(vr, bad):
+    vr_policy.PATH.write_text(bad, encoding='utf-8')
+    with pytest.raises(ValueError, match='限制文件'):
+        vr.start(True, 'vr')
+    assert not any(writes(vr.runtime))

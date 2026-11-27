@@ -183,17 +183,22 @@ class OriginalRuntime(ControlRuntime):
                 if blocked:raise ValueError('检修关节禁止开启扭矩：'+', '.join(blocked)+'；请使用“准备实机”跳过待检项')
             return super().torque(enabled,selection)
 
-    def prepare_hardware(self,confirmed):
+    def prepare_hardware(self,confirmed,excluded=None):
         """Explicitly latch present positions before enabling usable servos."""
         with self.io:
             self._require_not_calibrating()
             if not confirmed:raise ValueError('请确认机械臂已支撑且周围可做小幅动作')
             if self.controller['controller']=='online':raise ValueError('先结束当前接管，再准备实机')
+            excluded=excluded or {}
+            if not set(excluded)<={(port,i) for port,ids in EXPECTED.items() for i in ids}:
+                raise ValueError('未知的实机准备排除项')
             self.capture_profile();ready=[];blocked=[]
             for port in self.report['ports']:
                 name=port['port'];p=self.session.ports[name]
                 for motor in port['motors']:
                     i=motor['id'];wheel=name=='COM4' and i in (9,10)
+                    if (name,i) in excluded:
+                        blocked.append({'port':name,'id':i,'reason':excluded[(name,i)]});continue
                     if f'{name}:{i}' in self.service_blocked:
                         blocked.append({'port':name,'id':i,'reason':self.service_blocked[f'{name}:{i}']});continue
                     if wheel:

@@ -36,7 +36,7 @@ sys.path.insert(0, str(REPO))
 CONSOLE = 'fabrication/assembly/debug_console/'
 FILES = [
     CONSOLE + name for name in (
-        'web_teleop.py', 'web_teleop_api.py', 'original_runtime.py', 'vr_kinematics.py',
+        'web_teleop.py', 'web_teleop_api.py', 'original_runtime.py', 'vr_kinematics.py', 'vr_policy.py',
         'studio_tls.py', 'studio_cert.py', 'platform_app.py', 'platform_catalog.py', 'start-platform.ps1',
         'platform_static/vr.html', 'platform_static/vr.js', 'platform_static/vr-mapping.js', 'platform_static/vr.css',
         'platform_static/index.html', 'platform_static/studio.js', 'platform_static/diagrams.js',

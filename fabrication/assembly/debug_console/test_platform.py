@@ -352,6 +352,8 @@ def test_vr_page_is_a_studio_module_and_its_input_goes_to_the_controller_session
     def upstream(request):
         requests.append(request);return httpx.Response(200,json={'active':True,'mode':'vr','seq':0})
     mod.service.client=httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+    assert client.get('/api/web/vr-readiness').status_code==200
+    assert str(requests[-1].url)=='http://127.0.0.1:8765/api/web/vr-readiness'
     body={'session_id':'a'*32,'seq':0,'base':[0,0],'head':[0,0],'arms':{},'grip':{}}
     assert client.post('/api/web/vr-input',json=body).status_code==200
     assert str(requests[-1].url)=='http://127.0.0.1:8765/api/web/vr-input' and requests[-1].headers['origin']==mod.UPSTREAM

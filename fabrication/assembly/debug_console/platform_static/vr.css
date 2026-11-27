@@ -26,6 +26,8 @@ select{padding:5px 6px;font:inherit}
 .button:disabled{opacity:.45;cursor:not-allowed}
 .status{margin:12px 0 0;color:var(--muted)}
 .status.bad{color:var(--bad)}
+#preview-views{display:block;width:100%;height:auto;margin-top:16px;background:#11161c;border-radius:8px}
+#live-channels{white-space:pre-line}
 .hint{color:var(--muted);font-size:14px;margin:10px 0 0}
 code{font:13px ui-monospace,Consolas,monospace;background:#eef1f4;padding:1px 4px;border-radius:4px}
 .map{width:100%;border-collapse:collapse}
