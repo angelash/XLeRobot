@@ -10,12 +10,12 @@ if (typeof importScripts === 'function' && typeof document === 'undefined')
     const g = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
     g.fillStyle = '#11161c'; g.fillRect(0, 0, W, H);
     g.font = 'bold 30px "Microsoft YaHei", "Segoe UI", sans-serif'; g.fillStyle = '#e8edf2';
-    g.fillText('双臂三视图 · 预演', 24, 42);
+    g.fillText(options.live ? '双臂三视图 · 实机目标与反馈' : '双臂三视图 · 预演', 24, 42);
     g.font = '24px "Microsoft YaHei", "Segoe UI", sans-serif';
     g.fillStyle = '#60a5fa'; g.fillText('左臂', W - 280, 42);
     g.fillStyle = '#fb923c'; g.fillText('右臂', W - 180, 42);
     const views = [['front', '正视 · 左右／上下'], ['side', '侧视 · 前后／上下'], ['top', '俯视 · 左右／前后']];
-    const models = Object.fromEntries(['left', 'right'].map(side => [side, Model.arm(side, sim[side])]));
+    const models = Object.fromEntries(['left', 'right'].map(side => [side, sim[side] ? Model.arm(side, sim[side]) : null]));
     const gap = 16, boxW = (W - 4 * gap) / 3, boxH = H - 170;
     const depth = (p,view) => view === 'front' ? p[0] : view === 'side' ? -p[1] : p[2];
     function solid(faces, pixel, view, overlay = false) {
@@ -52,6 +52,7 @@ if (typeof importScripts === 'function' && typeof document === 'undefined')
       g.stroke();
       const pixel = p => { const q = M.project(p, view); return [ox + q[0] * scale, oy + q[1] * scale]; };
       for (const side of ['left', 'right']) {
+        if (!models[side]) continue;
         solid(models[side].faces, pixel, view, view === 'side' && side === 'right');
         if (view === 'side' && side === 'right') {
           const pts = models[side].points.slice(0,4).map(pixel);
@@ -59,13 +60,24 @@ if (typeof importScripts === 'function' && typeof document === 'undefined')
           pts.forEach((p,n) => n ? g.lineTo(...p) : g.moveTo(...p)); g.stroke(); g.setLineDash([]);
         }
       }
+      if (options.live) for (const side of ['left', 'right']) {
+        const measured = sim.measured?.[side];
+        if (!measured) continue;
+        const points = M.armPoints(side, measured).map(pixel);
+        g.strokeStyle = options.feedbackFresh ? '#f1f5f9' : '#94a3b8'; g.lineWidth = 3;
+        g.setLineDash([5, 4]); g.beginPath();
+        points.forEach((p, n) => n ? g.lineTo(...p) : g.moveTo(...p)); g.stroke(); g.setLineDash([]);
+        for (const p of points.slice(1)) { g.beginPath(); g.arc(...p, 4, 0, Math.PI * 2); g.stroke(); }
+      }
       g.restore(); g.fillStyle = '#aebccd';
       g.font = '20px "Microsoft YaHei", "Segoe UI", sans-serif';
       g.fillText(view === 'side' ? '网格 5 cm · 右臂虚线叠加' : '网格 5 cm', x + 16, y + boxH - 296);
       g.fillStyle = '#1a242f'; g.fillRect(x + 12, y + boxH - 282, boxW - 24, 210);
       g.fillStyle = '#cbd5e1'; g.fillText('夹爪放大 · 黄面是顶部', x + 20, y + boxH - 256);
       for (const [n,side] of ['left','right'].entries()) {
-        const model = models[side], center = model.points[3].map((v,k) => (v+model.points[4][k])/2);
+        const model = models[side];
+        if (!model) continue;
+        const center = model.points[3].map((v,k) => (v+model.points[4][k])/2);
         const projected = M.project(center,view), zoom = 1020;
         const cx = x + boxW * (n ? .74 : .26), cy = y + boxH - 160;
         const zoomPixel = p => { const q = M.project(p,view); return [cx+(q[0]-projected[0])*zoom,cy+(q[1]-projected[1])*zoom]; };
@@ -77,14 +89,20 @@ if (typeof importScripts === 'function' && typeof document === 'undefined')
       for (const [n,side] of ['left','right'].entries()) {
         const model=models[side], a=sim[side];
         g.fillStyle=side === 'left' ? '#60a5fa' : '#fb923c';
+        if (!model) {
+          g.fillText(`${n ? '右' : '左'}：等待有效标定／编码器反馈`, x + 16, y + boxH - 46 + n*28);
+          continue;
+        }
         const angle = v => (v > 0 ? '+' : '') + v.toFixed(0) + '°';
         g.fillText(`${n ? '右' : '左'}：张开 ${Math.round((1-a.grip)*100)}%　俯仰 ${angle(model.pitch)}　旋转 ${angle(model.roll)}`, x + 16, y + boxH - 46 + n*28);
       }
       g.font = '24px "Microsoft YaHei", "Segoe UI", sans-serif';
     }
     g.fillStyle = '#cbd5e1'; g.font = '23px "Microsoft YaHei", "Segoe UI", sans-serif';
-    g.fillText(`头部 水平 ${sim.head[0].toFixed(0)}° 俯仰 ${sim.head[1].toFixed(0)}°　底盘 ${sim.base[0].toFixed(2)} m / ${sim.base[1].toFixed(2)} m`, 24, H - 64);
-    g.fillStyle = '#aebccd'; g.fillText(options.jogMode ? `左臂逐关节 ${options.jointLabel} · 模型示意，非实机位置／碰撞判定` :
+    g.fillText(options.live ? `实色：已发送目标　白线：编码器反馈　${options.feedbackFresh ? '反馈正常' : '反馈过期／未知，等待更新'}` :
+      `头部 水平 ${sim.head[0].toFixed(0)}° 俯仰 ${sim.head[1].toFixed(0)}°　底盘 ${sim.base[0].toFixed(2)} m / ${sim.base[1].toFixed(2)} m`, 24, H - 64);
+    g.fillStyle = '#aebccd'; g.fillText(options.live ? '肩转／腕旋转相对本次参考；几何尺寸为示意，请与视频核对' :
+      options.jogMode ? `左臂逐关节 ${options.jointLabel} · 模型示意，非实机位置／碰撞判定` :
       '握把跟随 · 松开重置　模型示意，非实机位置／碰撞判定', 24, H - 24);
   }
 

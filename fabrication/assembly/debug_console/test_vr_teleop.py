@@ -261,7 +261,7 @@ def test_drive_stick_matches_keyboard_forward_and_release_zeroes_immediately(vr)
 def test_head_stick_turns_and_releases_to_hold(vr):
     token = start(vr); feed = Feed(vr, token); r = vr.runtime
     feed(3, head=(1., 0.), scale=1)
-    assert goal(r, 7) > 2050
+    assert goal(r, 7) < 2050  # VR right input uses the corrected physical pan sign.
     feed(head=(0., 0.), scale=1)
     assert ('COM3', 7) not in r.moving
     feed(3, head=(0., 1.), scale=1)
@@ -323,14 +323,58 @@ def test_readiness_is_read_only_and_shows_channel_exclusions(vr):
     assert writes(vr.runtime) == before
 
 
-def test_folded_readiness_distinguishes_follow_from_grip_and_joint_control(vr):
+def test_real_folded_pose_is_ready_without_preparing_or_changing_branch(vr):
     r = vr.runtime; r.scan()
     references(r, angles={2: -105.02264757982617, 3: 97.91373294197406, 4: 3.427734375})
     before = writes(r)
     c = vr.vr_readiness()['channels']['left']
-    assert c['enabled'] and not c['follow_ready'] and '折叠姿态' in c['follow_reason']
+    assert c['enabled'] and c['follow_ready'] and c['follow_reason'] is None
     assert c['grip_ready'] and all(j['enabled'] for j in c['joints'].values())
     assert writes(r) == before
+
+
+def test_real_folded_pose_grip_is_jump_free_and_can_follow_forward(vr):
+    r = vr.runtime
+    # This test verifies the solver over 1 cm, independently of the generic
+    # fake fixture's narrow +/-22 degree joint limits. Production uses the
+    # existing measured device envelopes, unchanged by the VR solver.
+    for i in (2, 3, 4):
+        for addr, value in ((9, 1000), (11, 3500)):
+            r.session.ports['COM3'].regs[i][addr:addr + 2] = [value & 255, value >> 8]
+    token = start(vr); feed = Feed(vr, token)
+    folded = {2: -105.02264757982617, 3: 97.91373294197406, 4: 3.427734375}
+    references(r, angles=folded)
+    before = writes(r)
+    feed(3, arms={'left': hand(1)}, scale=1)
+    assert writes(r) == before
+    assert vr.vr_arms['left']['state'] == 'following'
+    feed(35, arms={'left': hand(1, (.01, 0, 0))}, scale=1)
+    actual = [folded[i] + (goal(r, i) - 2050) * 360 / 4096 for i in (2, 3, 4)]
+    old_jaw, new_jaw = vk.jaw_point(*folded.values()), vk.jaw_point(*actual)
+    assert abs(new_jaw[0] - old_jaw[0] - .01) < .002
+    assert abs(new_jaw[1] - old_jaw[1]) < .002
+    assert all(r.envelopes[('COM3', i)]['min'] <= goal(r, i) <= r.envelopes[('COM3', i)]['max']
+               for i in (2, 3, 4))
+
+
+def test_feedback_uses_cached_encoders_and_distinguishes_sent_targets(vr):
+    token = start(vr); r = vr.runtime; feed = Feed(vr, token)
+    r.scan()
+    # A stationary fake servo must remain visible at its measured pose even
+    # when a different command target has been sent. No display code writes.
+    r.session.ports['COM3'].follow = False
+    feed(arms={'left': hand(1)}, scale=1)
+    feed(arms={'left': hand(1, (.01, 0, 0))}, scale=1)
+    before = writes(r)
+    data = vr.snapshot()['vr']['feedback']
+    assert data['source'] == 'encoder_cache' and data['sampled_at'] == r.report['updated_at']
+    left = data['arms']['left']
+    assert left['measured']['lift'] == ANGLES[2]
+    assert left['target']['lift'] != left['measured']['lift']
+    assert data['age_ms'] is not None and data['targets_are_sent_commands']
+    assert writes(r) == before
+    r.kinematic_profile = {'joints': {}}
+    assert vr.pose_feedback()['arms']['left']['measured'] is None
 
 
 def test_joint_adjustment_moves_only_selected_joint_slowly_and_releases_to_hold(vr):

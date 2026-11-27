@@ -16,21 +16,23 @@
     const a=(90-lift)*RAD-O1, b=(elbow+90)*RAD-O2;
     return [L1*Math.cos(a)+L2*Math.cos(a-b), L1*Math.sin(a)+L2*Math.sin(a-b)];
   }
-  function inverse(x,z){
+  function inverse(x,z,lift=0){
     const r=Math.hypot(x,z);
     if(!(Math.abs(L1-L2)+1e-6<r&&r<L1+L2-1e-6))throw new Error('末端超出二连杆工作空间');
     const b=Math.acos(Math.max(-1,Math.min(1,(r*r-L1*L1-L2*L2)/(2*L1*L2))));
-    const a=Math.atan2(z,x)+Math.atan2(L2*Math.sin(b),L1+L2*Math.cos(b));
-    if(!(-.1<=a+O1&&a+O1<=3.45)||!(-.2<=b+O2&&b+O2<=Math.PI))throw new Error('末端逆解超过上游模型关节范围');
+    let a=Math.atan2(z,x)+Math.atan2(L2*Math.sin(b),L1+L2*Math.cos(b));
+    const reference=(90-lift)*RAD-O1;
+    a+=2*Math.PI*Math.round((reference-a)/(2*Math.PI));
+    if(!(-.1<=a+O1&&a+O1<=3.45))throw new Error('末端逆解超过上游模型肩部范围');
     return [90-(a+O1)*DEG,(b+O2)*DEG-90];
   }
   function wrap(deg){return ((deg+180)%360+360)%360-180;}
   function anchor(lift,elbow,wrist){
-    const [x,z]=forward(lift,elbow), [l2,e2]=inverse(x,z);
+    const [x,z]=forward(lift,elbow), [l2,e2]=inverse(x,z,lift);
     if(Math.abs(l2-lift)>1||Math.abs(e2-elbow)>1)throw new Error('当前折叠姿态不在跟随模型内');
     const sum=lift+elbow+wrist, psi=PSI_OFFSET-sum;
     const tip=[x+TOOL*Math.cos(psi*RAD), z+TOOL*Math.sin(psi*RAD)];
-    return {x,z,sum,psi,tip,reach:PAN_OFFSET+tip[0]};
+    return {x,z,sum,psi,tip,reach:PAN_OFFSET+tip[0],lift};
   }
   function follow(g,delta,pitch=0){
     if(delta.some(d=>Math.abs(d)>MAX_DELTA))throw new Error('手柄位移超过0.6米');
@@ -39,7 +41,7 @@
     let wx=tipX-TOOL*Math.cos(psi*RAD), wz=tipZ-TOOL*Math.sin(psi*RAD);
     const reach=Math.hypot(wx,wz), low=Math.abs(L1-L2)+1e-3, high=L1+L2-1e-3, edge=!(low<=reach&&reach<=high);
     if(edge){const s=Math.min(high,Math.max(low,reach))/reach;wx*=s;wz*=s;}
-    const [lift,elbow]=inverse(wx,wz);
+    const [lift,elbow]=inverse(wx,wz,g.lift);
     return {pan,lift,elbow,wrist:PSI_OFFSET-psi-lift-elbow,edge};
   }
   function jawPoint(lift,elbow,wrist){

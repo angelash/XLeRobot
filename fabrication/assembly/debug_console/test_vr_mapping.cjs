@@ -24,6 +24,14 @@ const up = M.follow(g, [0, 0, .05]), jaw0 = M.jawPoint(0, 40, -30), jaw1 = M.jaw
 near(jaw1[0], jaw0[0]); near(jaw1[1] - jaw0[1], .05);
 assert.throws(() => M.follow(g, [.7, 0, 0]), /0.6/);
 assert.throws(() => M.anchor(0, 175, 0));
+// The actual folded arm uses the same elbow branch. A calibration offset
+// must not reject it, and gripping without displacement must not unfold it.
+const folded = [-105.02264757982617, 97.91373294197406, 3.427734375];
+const foldedAnchor = M.anchor(...folded), foldedStill = M.follow(foldedAnchor, [0, 0, 0]);
+[foldedStill.lift, foldedStill.elbow, foldedStill.wrist].forEach((q, i) => near(q, folded[i]));
+const foldedForward = M.follow(foldedAnchor, [.01, 0, 0]);
+const foldedJaw0 = M.jawPoint(...folded), foldedJaw1 = M.jawPoint(foldedForward.lift, foldedForward.elbow, foldedForward.wrist);
+near(foldedJaw1[0] - foldedJaw0[0], .01); near(foldedJaw1[1], foldedJaw0[1]);
 
 // Buttons: xr-standard and the upstream XLeVR order; the active stick pair wins.
 const button = (pressed, value = pressed ? 1 : 0) => ({pressed, value});

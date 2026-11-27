@@ -22,6 +22,8 @@
   let jogMode = false, jogJoint = 2, jogToggleFired = false, soloXSince = null, inputReady = true;
   const hands = {left: newHand(), right: newHand()};
   const sim = {left: simArm(), right: simArm(), head: [0, 0], base: [0, 0, 0]};
+  const liveModel = {left: null, right: null, head: [0, 0], base: [0, 0, 0], measured: {}};
+  let feedback = null, feedbackReceived = 0;
   const cams = {};
   let lastPads = {left: [], right: []};
   let previewWorker = null, previewBitmap = null, previewVersion = 0, previewKey = null;
@@ -63,6 +65,7 @@
     $('screenY-out').textContent = Math.round(settings.screenY * 100) + ' cm'; save();
   }
   function chooseMode(mode) {
+    if (xr) { flash('先退出 VR，再在页面选择模式；B 只停止实机'); return; }
     if (control || starting) stopControl('切换模式，已结束实机控制');
     settings.mode = mode; confirmInVR = false; $('confirm').checked = false;
     for (const input of document.querySelectorAll('input[name=mode]')) input.checked = input.value === mode;
@@ -76,6 +79,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || '暂未取得实机可用状态');
       readiness = data;
+      acceptFeedback(data.feedback);
       $('live-channels').textContent = Object.entries(data.channels).map(([key, c]) => {
         const name = ({left: '左臂', right: '右臂', head: '头部', base: '底盘'})[key];
         if (!c.enabled) return `${name}：${c.reason}`;
@@ -89,6 +93,8 @@
   function refreshButtons() {
     $('enter').disabled = !xrSupported || !!xr;
     $('stop').disabled = !control && !(robot && robot.active && robot.mode === 'vr');
+    $('choose-robot').disabled = !!xr;
+    for (const input of document.querySelectorAll('input[name=mode]')) input.disabled = !!xr;
   }
   async function checkReady() {
     const secure = window.isSecureContext;
@@ -101,7 +107,7 @@
       setCheck('check-xr', xrSupported ? 'ok' : 'warn', xrSupported ? '支持沉浸式 VR' : '浏览器不支持沉浸式 VR（桌面浏览器正常；请在头显里打开）');
     }
     refreshButtons();
-    status(xrSupported ? '可以进入 VR。X+A 长按切换实机待确认，松开后再长按开启；B 返回预演。' : '在 PICO 浏览器里打开本页后进入 VR');
+    status(xrSupported ? '先在本页选择实机或预演，再进入 VR。实机长按 X+A 开启；B 只停止，保留实机画面。' : '在 PICO 浏览器里打开本页后进入 VR');
   }
   async function pollRobot() {
     if (control) return;
@@ -112,6 +118,7 @@
         throw new Error(typeof detail === 'string' && detail ? detail : 'HTTP ' + response.status);
       }
       robot = await response.json();
+      acceptFeedback(robot.vr?.feedback);
       const mine = robot.active && robot.mode === 'vr';
       setCheck('check-robot', robot.active && !mine ? 'warn' : 'ok',
         robot.active ? (mine ? 'VR控制进行中（另一页面或本页）' : '键盘网页控制进行中，VR不能同时开启') : '在线，未开启控制。' + (robot.reason || ''));
@@ -150,6 +157,7 @@
         return;
       }
       control = {id: data.session_id, seq: 0}; robot = data; robotNote = data.reason;
+      acceptFeedback(data.vr?.feedback);
       pulse(['left', 'right'], .6, 120); flash('实机控制已开启');
     } catch (e) { if (starting === attempt) { robotNote = '开启失败：' + e.message; flash(robotNote, true); } }
     finally { if (starting === attempt) starting = null; refreshButtons(); }
@@ -160,7 +168,9 @@
     confirmInVR = false;
     for (const h of Object.values(hands)) h.engage = 0;
     robotNote = reason;
-    if (id) post('/api/web/stop', {session_id: id}, {keepalive: true}).then(d => { robot = d; }).catch(() => {});
+    if (id) post('/api/web/stop', {session_id: id}, {keepalive: true}).then(d => {
+      robot = d; acceptFeedback(d.vr?.feedback);
+    }).catch(() => {});
     else if (robot?.active && robot.mode === 'vr' && !xr) flash('本页没有持有该会话；请在开启它的页面或头显里结束');
     refreshButtons();
   }
@@ -193,6 +203,8 @@
         if (control !== session) return;
         const before = robot?.vr?.arms || {};
         robot = data; robotNote = data.reason;
+        acceptFeedback(data.vr?.feedback);
+        if (!data.active) { stopControl(data.reason || '实机控制已停止'); return; }
         for (const side of ['left', 'right'])
           if (data.vr?.arms?.[side]?.state === 'boundary' && before[side]?.state !== 'boundary') pulse([side], .3, 40);
       })
@@ -340,9 +352,11 @@
     if (combo && !combo.fired && now - combo.since >= COMBO_MS) {
       combo.fired = true;
       if (hands.left.pad.secondary || hands.right.pad.secondary) return;
-      if (settings.mode === 'preview' || (!$('confirm').checked && !confirmInVR)) {
-        chooseMode('robot'); confirmInVR = true; mustRelease = true;
-        flash('已选择实机。确认周围无人，松开 X/A 后再同时长按开启');
+      if (settings.mode !== 'robot') {
+        mustRelease = true; flash('预演不切换实机；退出 VR 后在页面选择实机');
+      } else if (!$('confirm').checked && !confirmInVR) {
+        confirmInVR = true; mustRelease = true;
+        flash('确认周围无人，松开 X/A 后再同时长按开启实机');
       } else {
         if (confirmInVR) { $('confirm').checked = true; confirmInVR = false; }
         startControl();
@@ -354,9 +368,7 @@
     const short = key => released(key) && now - (hands[side].since[key] || 0) < SHORT_MS;
     if (side === 'right' && pad.secondary && !previous.secondary) {
       stopControl('已按 B 急停'); flash('已急停：关节保持，底盘停车', true);
-      chooseMode('preview');
       jogMode = false; inputReady = false;
-      resetSim();
     }
     if (side === 'left' && pad.secondary && !previous.secondary) screenAdjusted = false;
     if (side === 'left' && released('secondary')) {
@@ -410,6 +422,45 @@
     sim.head[0] = M.clamp(sim.head[0] + p.head[0] * 30 * dt, 90); sim.head[1] = M.clamp(sim.head[1] + p.head[1] * 30 * dt, 60);
     const v = p.base[0] * .2 * settings.scale, w = p.base[1] * .8 * settings.scale;
     sim.base[2] += w * dt; sim.base[0] += v * Math.cos(sim.base[2]) * dt; sim.base[1] += v * Math.sin(sim.base[2]) * dt;
+  }
+
+  // Live projections are built from the controller's sent targets and cached
+  // encoders. Offline hand simulation must never masquerade as robot feedback.
+  function acceptFeedback(data) {
+    if (!data || data.source !== 'encoder_cache') return;
+    feedback = data; feedbackReceived = performance.now();
+    const valid = pose => pose && ['lift', 'elbow', 'wrist', 'pan', 'roll', 'grip'].every(k => Number.isFinite(pose[k]));
+    for (const side of ['left', 'right']) {
+      const a = data.arms?.[side];
+      liveModel.measured[side] = valid(a?.measured) ? {...a.measured} : null;
+      liveModel[side] = valid(a?.target) ? {...a.target} : null;
+    }
+    if (Array.isArray(data.head) && data.head.every(Number.isFinite)) liveModel.head = [...data.head];
+  }
+  function feedbackAge() {
+    return Number.isFinite(feedback?.age_ms) ? feedback.age_ms + performance.now() - feedbackReceived : null;
+  }
+  function displayModel() { return settings.mode === 'robot' ? liveModel : sim; }
+  function previewOptions() {
+    const age = feedbackAge();
+    return {jogMode, jointLabel: JOINTS[jogJoint], live: settings.mode === 'robot',
+      feedbackFresh: age !== null && age < 1500};
+  }
+  function panelLayout() {
+    if (settings.mode === 'robot') return [
+      {name: 'head', at: [-.68, .28, -1.9], size: [.98, .735]},
+      {name: 'preview', at: [.65, .22, -1.9], size: [1.36, .7933]},
+      {name: 'left', at: [-1.02, -.45, -1.9], size: [.56, .42]},
+      {name: 'right', at: [-.36, -.45, -1.9], size: [.56, .42]},
+      {name: 'status', at: [.12, -1.14, -1.9], size: [1.5, .9]},
+    ];
+    return [
+      {name: 'head', at: [0, .82, -1.8], size: [.64, .48]},
+      {name: 'left', at: [-1.0, -.6, -1.45], size: [.56, .42]},
+      {name: 'right', at: [1.0, -.6, -1.45], size: [.56, .42]},
+      {name: 'status', at: [0, -1.12, -1.6], size: [1.2, .9]},
+      {name: 'preview', at: [0, 0, -1.8], size: [1.65, .9625]},
+    ];
   }
 
   // ---------- cameras ----------
@@ -484,13 +535,6 @@
     const textures = {head: texture(), left: texture(), right: texture(), status: texture(), preview: texture()};
     const statusCanvas = document.createElement('canvas'); statusCanvas.width = 1024; statusCanvas.height = 768;
     let statusDrawn = 0, uploadedPreview = -1;
-    const panels = [
-      {name: 'head', at: [0, 0, -1.6], size: [1.28, .96]},
-      {name: 'left', at: [-1.0, -.6, -1.45], size: [.56, .42]},
-      {name: 'right', at: [1.0, -.6, -1.45], size: [.56, .42]},
-      {name: 'status', at: [0, -.8, -1.3], size: [.88, .44]},
-      {name: 'preview', at: [0, 0, -1.8], size: [1.65, .9625]},
-    ];
     const bind = (b, stride) => {
       gl.bindBuffer(gl.ARRAY_BUFFER, b);
       gl.enableVertexAttribArray(attr('p')); gl.vertexAttribPointer(attr('p'), 3, gl.FLOAT, false, stride, 0);
@@ -531,12 +575,8 @@
           gl.uniformMatrix4fv(loc('P'), false, view.projectionMatrix);
           gl.uniformMatrix4fv(loc('V'), false, view.transform.inverse.matrix);
           bind(quad, 20); gl.uniform1f(loc('u'), 1);
-          for (const panel of panels) {
-            const preview = settings.mode === 'preview';
-            if (panel.name === 'preview' && !preview) continue;
-            let at = panel.at, size = panel.size;
-            if (preview && panel.name === 'head') { at = [0, .82, -1.8]; size = [.64, .48]; }
-            if (panel.name === 'status') { at = [0, -1.12, -1.6]; size = [1.2, .9]; }
+          for (const panel of panelLayout()) {
+            const {at, size} = panel;
             gl.bindTexture(gl.TEXTURE_2D, textures[panel.name]);
             const screen = mat.mul(placement, mat.translate(settings.screenX, settings.screenY, 0));
             gl.uniformMatrix4fv(loc('W'), false, mat.mul(screen, mat.mul(mat.translate(...at), mat.scale(...size, 1))));
@@ -569,7 +609,7 @@
     const head = preview ? '预演模式（不连机器人）' : control ? '实机控制中' : '实机控制未开启';
     g.fillText(head, 28, 52);
     g.font = '24px system-ui, sans-serif'; g.fillStyle = control ? '#86efac' : '#fbbf24';
-    const hint = preview ? '三视图在正前方；长按 X+A 选择实机' : (robotNote || '确认周围无人后长按 X+A 开启；B 急停');
+    const hint = preview ? '离线预演；退出 VR 后在页面选择实机' : (robotNote || '确认周围无人后长按 X+A 开启；B 急停');
     wrapText(g, hint, 28, 90, W - 56, 30);
     g.fillStyle = '#cbd5e1'; g.font = '23px system-ui, sans-serif';
     const lines = [];
@@ -599,10 +639,12 @@
       }
       if (jogMode) lines.push(`当前编码器 ${readiness?.channels?.left?.joints?.[jogJoint]?.position ?? '—'} · 最大目标速率 6°/s × 速度比例 · 松开保持`);
       lines.push(`往返 ${rtt ?? '—'} ms　服务端 ${robot?.vr?.tick_ms ?? '—'} ms`);
+      const age = feedbackAge();
+      lines.push(`三视图：实色为已发送目标，白线为编码器；反馈 ${age === null ? '未知' : Math.round(age) + 'ms'}`);
     }
     lines.push(`底盘 ${gear === 1 ? '快档' : '慢档'}　手臂比例 ${(settings.ratio * (fine ? .5 : 1)).toFixed(2)}×　速度 ${Math.round(settings.scale * 100)}%`);
     lines.push('画面帧龄 ' + ['head', 'left', 'right'].map(n => `${({head: '头', left: '左', right: '右'})[n]} ${cams[n]?.error ? '无' : cams[n]?.age != null ? Math.round(cams[n].age + performance.now() - cams[n].receivedAt) + 'ms' : '—'}`).join('　'));
-    lines.push('Y 按视线摆屏；Y＋右摇杆上下左右调屏；B 停止并返回预演');
+    lines.push('Y 摆屏；Y＋右摇杆调屏；B 只停止，保留当前模式');
     lines.push(`按键 左[${lastPads.left.join(',')}] 右[${lastPads.right.join(',')}]`);
     let y = 158;
     for (const line of lines) { y = wrapText(g, line, 28, y, W - 56, 28) + 34; }
@@ -622,7 +664,7 @@
     return y;
   }
   function drawPreview(canvas) {
-    window.VRPreview.draw(canvas, sim, {jogMode, jointLabel: JOINTS[jogJoint]});
+    window.VRPreview.draw(canvas, displayModel(), previewOptions());
   }
   function startPreviewWorker() {
     if (previewWorker || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return;
@@ -646,12 +688,13 @@
   function updatePreview() {
     if (document.hidden || previewRender.pending) return;
     const pose = side => {
-      const a = sim[side];
-      return {lift:a.lift, elbow:a.elbow, wrist:a.wrist, pan:a.pan, roll:a.roll, grip:a.grip, anchor:!!a.anchor};
+      const a = displayModel()[side];
+      return a ? {lift:a.lift, elbow:a.elbow, wrist:a.wrist, pan:a.pan, roll:a.roll, grip:a.grip, anchor:!!a.anchor} : null;
     };
+    const model = displayModel();
     const job = {width:preview2d.width, height:preview2d.height,
-      sim:{left:pose('left'), right:pose('right'), head:[...sim.head], base:[...sim.base]},
-      options:{jogMode, jointLabel:JOINTS[jogJoint]}};
+      sim:{left:pose('left'), right:pose('right'), head:[...model.head], base:[...model.base], measured: model.measured},
+      options:previewOptions()};
     const key = JSON.stringify(job);
     if (key === previewKey) return;
     previewKey = key;
@@ -670,7 +713,7 @@
   setInterval(() => { pollRobot(); pollReadiness(); }, 1500);
   const preview2d = $('preview-views');
   drawPreview(preview2d); previewVersion++; startPreviewWorker(); updatePreview(); setInterval(updatePreview, 200);
-  window.XLeRobotVR = {hands, sim, settings, payload, drawStatus, drawPreview,
+  window.XLeRobotVR = {hands, sim, settings, payload, drawStatus, drawPreview, displayModel, panelLayout,
     state: () => ({control: !!control, robot, robotNote, readiness, confirmInVR, jogMode, jogJoint, inputReady,
-      previewRender:{...previewRender}, xrActive: !!xr, placement: placement ? Array.from(placement) : null})};
+      feedbackAgeMs: feedbackAge(), previewRender:{...previewRender}, xrActive: !!xr, placement: placement ? Array.from(placement) : null})};
 })();

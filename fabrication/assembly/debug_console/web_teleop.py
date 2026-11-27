@@ -13,6 +13,7 @@ import math
 import threading
 import time
 import uuid
+from datetime import datetime
 
 from .control_runtime import now
 from .temperature_guard import confirm_temperature, normal_temperature
@@ -59,6 +60,7 @@ class WebTeleop:
         self.mode = 'keys'
         self.vr_disabled = {}
         self.tick_ms = None
+        self.display_origins = {}
         self._reset_vr()
 
     def _reset_vr(self):
@@ -78,8 +80,54 @@ class WebTeleop:
                 'grip': {s: {'active': g['active'], 'holding': g['hold'] is not None, 'reason': g['reason']}
                          for s, g in self.vr_grip.items()},
                 'ratio': self.vr['ratio'], 'tick_ms': self.tick_ms, 'disabled': dict(self.vr_disabled),
-                'jog': self.vr['jog']}
+                'jog': self.vr['jog'], 'feedback': self.pose_feedback()}
         return result
+
+    def pose_feedback(self):
+        """Display only: cached encoder samples and targets already sent.
+
+        No extra serial reads or preparation on the input/lease path. Pan,
+        roll and head angles are relative to this runtime's first sample;
+        the plane joints use verified calibration. Unknowns remain null.
+        """
+        r = self.runtime
+        motors = r.motors()
+        sampled_at = r.report.get('updated_at')
+        try:
+            age_ms = max(0., (datetime.now().astimezone() - datetime.fromisoformat(sampled_at)).total_seconds() * 1000)
+        except (TypeError, ValueError):
+            age_ms = None
+        def raw(port, i, target):
+            m = motors.get((port, i))
+            if not m:
+                return None
+            return r.moving.get((port, i), m['position']) if target and self.active else m['position']
+        def relative(port, i, target, sign=1):
+            value = raw(port, i, target)
+            if value is None:
+                return None
+            origin = self.display_origins.setdefault((port, i), motors[(port, i)]['position'])
+            return sign * (value - origin) * r.settings.axis(port, i)['direction'] * 360 / 4096
+        def arm(port, target):
+            pose = {'pan': relative(port, 1, target, -1), 'roll': relative(port, 5, target)}
+            for i, name in ((2, 'lift'), (3, 'elbow'), (4, 'wrist'), (6, 'grip')):
+                ref, value = r.reference(port, i), raw(port, i, target)
+                if not ref or value is None:
+                    return None
+                if i == 6:
+                    span = ref.get('closed_raw', 0) - ref.get('open_raw', 0)
+                    if not span:
+                        return None
+                    pose[name] = max(0., min(1., (value - ref['open_raw']) / span))
+                else:
+                    pose[name] = ref['reference_deg'] + (value - ref['reference_raw']) * ref['direction'] * 360 / 4096
+            return pose if all(v is not None and math.isfinite(v) for v in pose.values()) else None
+        arms = {side: {'measured': arm(port, False), 'target': arm(port, True)}
+                for side, port in r.arm_ports().items()}
+        return {'source': 'encoder_cache', 'sampled_at': sampled_at,
+                'age_ms': round(age_ms, 1) if age_ms is not None else None, 'arms': arms,
+                'head': [relative('COM3', i, False, -1) for i in (7, 8)],
+                'relative_axes': ['pan', 'roll', 'head'], 'targets_are_sent_commands': True}
 
     def vr_readiness(self):
         """Read current cached motor inventory and references; never prepare torque."""
@@ -136,7 +184,7 @@ class WebTeleop:
             return {'can_start': complete and not busy and any(c['enabled'] for c in channels.values()),
                     'reason': '已有控制或任务占用' if busy else '需两块控制板与16电机完整应答' if not complete else None,
                     'channels': channels, 'prepares_current_pose_on_start': True,
-                    'active': self.active, 'read_only': True}
+                    'active': self.active, 'read_only': True, 'feedback': self.pose_feedback()}
 
     def start(self, confirmed=False, mode='keys'):
         r = self.runtime
@@ -448,7 +496,9 @@ class WebTeleop:
         r = self.runtime; v = self.vr; touched = set()
         if 'head' not in self.vr_disabled:
             cap = VR_JOG_RATE_DEG_S if v['jog'] is not None else None
-            self._rate('COM3', 7, v['head'][0], dt, touched, rate_cap=cap)
+            # The installed head pan direction is reversed for the VR view.
+            # Correct only this input path; do not mutate shared axis settings.
+            self._rate('COM3', 7, -v['head'][0], dt, touched, rate_cap=cap)
             self._rate('COM3', 8, -v['head'][1], dt, touched, rate_cap=cap)
         for side, port in r.arm_ports().items():
             if side in self.vr_disabled:

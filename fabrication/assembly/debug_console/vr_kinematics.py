@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 
-from .upstream_teleop import L1, L2, O1, O2, forward, inverse
+from .upstream_teleop import L1, L2, O1, O2, forward
 
 # Lift axis sits ahead of the pan axis: simulation/xlerobot URDF, Pitch joint origin.
 PAN_OFFSET_M = .0306
@@ -35,12 +35,31 @@ def wrap(deg):
     return (deg + 180.) % 360. - 180.
 
 
+def inverse_near(x, z, lift):
+    """The existing positive elbow branch, unwrapped near the grip pose.
+
+    O2 is a calibration offset, not an extra elbow bend. Bounding b + O2
+    by pi incorrectly rejected the real folded arm (about 98 degrees).
+    Servo limits and per-step guards still bound every hardware target.
+    """
+    radius = math.hypot(x, z)
+    if not abs(L1 - L2) + 1e-6 < radius < L1 + L2 - 1e-6:
+        raise ValueError('末端超出二连杆工作空间')
+    bend = math.acos(max(-1., min(1., (radius * radius - L1 * L1 - L2 * L2) / (2 * L1 * L2))))
+    angle = math.atan2(z, x) + math.atan2(L2 * math.sin(bend), L1 + L2 * math.cos(bend))
+    reference = math.radians(90 - lift) - O1
+    angle += 2 * math.pi * round((reference - angle) / (2 * math.pi))
+    if not -.1 <= angle + O1 <= 3.45:
+        raise ValueError('末端逆解超过上游模型肩部范围')
+    return 90 - math.degrees(angle + O1), math.degrees(bend + O2) - 90
+
+
 def anchor(lift, elbow, wrist):
     """Geometry of the arm at grip time; raises ValueError outside the model."""
     x, z = forward(lift, elbow)
     reason = '当前折叠姿态不在跟随模型内，先用逐关节调整，再松开重握'
     try:
-        lift2, elbow2 = inverse(x, z)
+        lift2, elbow2 = inverse_near(x, z, lift)
     except ValueError as exc:
         raise ValueError(reason) from exc
     # The IK has one branch; a pose it cannot reproduce must not be followed.
@@ -49,7 +68,7 @@ def anchor(lift, elbow, wrist):
     total = lift + elbow + wrist
     psi = PSI_OFFSET - total
     tip = (x + TOOL_M * math.cos(math.radians(psi)), z + TOOL_M * math.sin(math.radians(psi)))
-    return {'x': x, 'z': z, 'sum': total, 'psi': psi, 'tip': tip, 'reach': PAN_OFFSET_M + tip[0]}
+    return {'x': x, 'z': z, 'sum': total, 'psi': psi, 'tip': tip, 'reach': PAN_OFFSET_M + tip[0], 'lift': lift}
 
 
 def follow(geometry, delta, pitch=0.):
@@ -80,7 +99,7 @@ def follow(geometry, delta, pitch=0.):
         scale = min(high, max(low, reach)) / reach
         wx, wz = wx * scale, wz * scale
     try:
-        lift, elbow = inverse(wx, wz)
+        lift, elbow = inverse_near(wx, wz, geometry['lift'])
     except ValueError as exc:
         raise ValueError('超出手臂工作空间') from exc
     return pan, lift, elbow, PSI_OFFSET - psi - lift - elbow, edge

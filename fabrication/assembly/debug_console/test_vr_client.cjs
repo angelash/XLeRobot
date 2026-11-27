@@ -15,7 +15,7 @@ const eventTarget = () => ({
   emit(name) { return Promise.all((this.listeners[name] || []).map(fn => fn())); },
 });
 
-async function page({delayStart = false, preview = false} = {}) {
+async function page({delayStart = false, preview = false, feedback = null} = {}) {
   const nodes = new Map(), calls = [], drawn = [];
   const drawing = new Proxy({measureText: s => ({width: s.length * 10}), fillText: s => drawn.push(s)},
     {get: (o, k) => o[k] || (() => {})});
@@ -36,14 +36,14 @@ async function page({delayStart = false, preview = false} = {}) {
     async requestReferenceSpace() { return {}; },
     updateRenderState() {}, async end() { await this.emit('end'); }};
   let resolveStart;
-  const startReply = () => ({active: true, mode: 'vr', session_id: 'mock-session', vr: {arms: {}}});
+  const startReply = () => ({active: true, mode: 'vr', session_id: 'mock-session', vr: {arms: {}, feedback}});
   const fetch = async (url, opts = {}) => {
     const body = opts.body && JSON.parse(opts.body);
     if (opts.method === 'POST') calls.push({url, body});
-    let data = {active: false};
+    let data = {active: false, channels: {}, feedback};
     if (url === '/api/web/start') {
       data = delayStart ? await new Promise(resolve => { resolveStart = () => resolve(startReply()); }) : startReply();
-    } else if (url === '/api/web/vr-input') data = {active: true, mode: 'vr', vr: {arms: {}}};
+    } else if (url === '/api/web/vr-input') data = {active: true, mode: 'vr', vr: {arms: {}, feedback}};
     return {ok: !url.includes('/camera/'), status: 503, json: async () => data};
   };
   const window = {...eventTarget(), VRMapping: M, VRModel: Model, VRPreview: Preview, isSecureContext: true};
@@ -131,16 +131,55 @@ const tests = {
     assert.equal(input.arms.left, null);
     assert.deepEqual(input.base, [0, 0]);
   },
-  async 'immersive preview offers deliberate two-stage live confirmation'() {
+  async 'preview buttons cannot switch to live control'() {
     const p = await page({preview: true}); await arm(p);
-    assert.equal(p.api.settings.mode, 'robot'); assert.equal(p.api.state().confirmInVR, true);
+    assert.equal(p.api.settings.mode, 'preview'); assert.equal(p.api.state().confirmInVR, false);
     assert.equal(p.calls.filter(c => c.url === '/api/web/start').length, 0);
     await p.frame(3300); assert.equal(p.calls.length, 0);
+    p.button('right', 5, true); await p.frame(3400);
+    assert.equal(p.api.settings.mode, 'preview');
+  },
+  async 'live confirmation and B stop keep the live mode and comparison display'() {
+    const p = await page(); p.document.getElementById('confirm').checked = false;
+    await arm(p);
+    assert.equal(p.api.settings.mode, 'robot'); assert.equal(p.api.state().confirmInVR, true);
+    assert.equal(p.calls.filter(c => c.url === '/api/web/start').length, 0);
     p.button('left', 4, false); p.button('right', 4, false); await p.frame(3400);
     p.button('left', 4, true); p.button('right', 4, true); await p.frame(3500); await p.frame(5100);
     assert.equal(p.api.state().control, true);
     p.button('right', 5, true); await p.frame(5200);
-    assert.equal(p.api.settings.mode, 'preview'); assert.equal(p.api.state().control, false);
+    assert.equal(p.api.settings.mode, 'robot'); assert.equal(p.api.state().control, false);
+    assert.deepEqual(Array.from(p.api.panelLayout(), p => p.name).sort(), ['head','left','preview','right','status']);
+    // In live mode every panel is at the same depth; the video, model and
+    // status rectangles must remain visible without covering one another.
+    const panels = p.api.panelLayout();
+    for (const [i,a] of panels.entries()) for (const b of panels.slice(i+1)) {
+      assert.ok(Math.abs(a.at[0]-b.at[0]) >= (a.size[0]+b.size[0])/2 ||
+        Math.abs(a.at[1]-b.at[1]) >= (a.size[1]+b.size[1])/2, `${a.name} overlaps ${b.name}`);
+    }
+    await p.document.getElementById('choose-robot').emit('click');
+    assert.equal(p.api.settings.mode, 'robot');
+  },
+  async 'live model shows sent targets and encoder feedback rather than free hand simulation'() {
+    const measured = {pan: 0, lift: -105, elbow: 98, wrist: 3.4, roll: 0, grip: .1};
+    const target = {...measured, lift: -100, roll: 20};
+    const feedback = {source:'encoder_cache', sampled_at:'2026-11-27T18:00:00+08:00', age_ms:50,
+      arms:{left:{measured,target},right:{measured:null,target:null}},head:[0,0]};
+    const p = await page({feedback}); await arm(p);
+    p.stick('right', .8, 0); p.button('left', 0, true); await p.frame(1700);
+    assert.equal(p.api.displayModel().left.lift, -100);
+    assert.equal(p.api.displayModel().measured.left.lift, -105);
+    assert.equal(p.api.displayModel().right, null);
+    p.api.drawPreview(p.document.getElementById('preview-views'));
+    assert.ok(p.drawn.includes('双臂三视图 · 实机目标与反馈'));
+    assert.ok(p.drawn.some(t => t.includes('白线：编码器反馈')));
+    assert.ok(p.drawn.some(t => t.includes('右：等待有效标定／编码器反馈')));
+  },
+  async 'live display labels stale feedback and preserves unknown arm data'() {
+    const p = await page({feedback:{source:'encoder_cache',age_ms:2200,arms:{},head:[0,0]}});
+    p.api.drawPreview(p.document.getElementById('preview-views'));
+    assert.equal(p.api.displayModel().left, null);
+    assert.ok(p.drawn.some(t => t.includes('反馈过期／未知')));
   },
   async 'screen recenter follows head pitch as well as yaw'() {
     const p = await page();
