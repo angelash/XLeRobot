@@ -38,9 +38,10 @@ FILES = [
     CONSOLE + name for name in (
         'web_teleop.py', 'web_teleop_api.py', 'original_runtime.py', 'vr_kinematics.py', 'vr_policy.py',
         'studio_tls.py', 'studio_cert.py', 'platform_app.py', 'platform_catalog.py', 'start-platform.ps1',
-        'platform_static/vr.html', 'platform_static/vr.js', 'platform_static/vr-mapping.js', 'platform_static/vr.css',
+        'platform_static/vr.html', 'platform_static/vr.js', 'platform_static/vr-mapping.js', 'platform_static/vr-model.js',
+        'platform_static/vr-preview.js', 'platform_static/vr.css',
         'platform_static/index.html', 'platform_static/studio.js', 'platform_static/diagrams.js',
-        'test_vr_teleop.py', 'test_studio_tls.py', 'test_platform.py', 'test_vr_mapping.cjs', 'test_vr_client.cjs',
+        'test_vr_teleop.py', 'test_studio_tls.py', 'test_platform.py', 'test_vr_mapping.cjs', 'test_vr_model.cjs', 'test_vr_client.cjs',
         'PICO_VR_ZH.md', 'PICO_VR_REQUIREMENTS_ZH.md', 'STUDIO_ZH.md', 'WEB_TELEOP_ZH.md')
 ] + ['deployment/fieldmap/journal.py', 'deployment/windows/configure-studio-network.ps1',
      'deployment/pico_vr/install-vehicle.ps1']

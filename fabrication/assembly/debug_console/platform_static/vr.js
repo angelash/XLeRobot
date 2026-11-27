@@ -4,7 +4,7 @@
 // Inputs are sent from the XR frame loop, so a removed headset or a paused page
 // stops renewing the 650 ms lease and the robot stops by itself.
 (() => {
-  const M = window.VRMapping, $ = id => document.getElementById(id);
+  const M = window.VRMapping, Model = window.VRModel, $ = id => document.getElementById(id);
   const SEND_MS = 50, COMBO_MS = 1500, SHORT_MS = 600;
   const CAMERAS = {head: 0, left: 2, right: 1};
   const JOINTS = {1: '肩水平', 2: '肩抬升', 3: '肘', 4: '腕俯仰', 5: '腕旋转'};
@@ -24,6 +24,8 @@
   const sim = {left: simArm(), right: simArm(), head: [0, 0], base: [0, 0, 0]};
   const cams = {};
   let lastPads = {left: [], right: []};
+  let previewWorker = null, previewBitmap = null, previewVersion = 0, previewKey = null;
+  const previewRender = {worker: false, pending: false, frames: 0, drawMs: null, presentMs: null, error: null};
 
   function newHand() { return {engage: 0, origin: null, pad: {}, since: {}, roll: 0, tracked: false, pose: null, state: null}; }
   function simArm() { return {lift: 0, elbow: 40, wrist: -30, pan: 0, roll: 0, grip: 0, anchor: null}; }
@@ -465,9 +467,14 @@
     const loc = name => gl.getUniformLocation(program, name), attr = name => gl.getAttribLocation(program, name);
     const buffer = data => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW); return b; };
     const quad = buffer([-.5, -.5, 0, 0, 1, .5, -.5, 0, 1, 1, .5, .5, 0, 1, 0, -.5, -.5, 0, 0, 1, .5, .5, 0, 1, 0, -.5, .5, 0, 0, 0]);
-    const faces = [[0, 1, 2, 0, 2, 3], [4, 6, 5, 4, 7, 6], [0, 4, 5, 0, 5, 1], [3, 2, 6, 3, 6, 7], [0, 3, 7, 0, 7, 4], [1, 5, 6, 1, 6, 2]];
-    const corner = i => [(i & 1) ^ ((i >> 1) & 1) ? .5 : -.5, i & 2 ? .5 : -.5, i & 4 ? .5 : -.5];
-    const cube = buffer(faces.flat().flatMap(i => [...corner(i), 0, 0]));
+    const solid = gl.createProgram();
+    gl.attachShader(solid, shader(gl.VERTEX_SHADER, 'attribute vec3 p,n,c;uniform mat4 P,V,W;varying vec3 color;void main(){vec3 N=normalize(mat3(W)*n);float light=.48+.52*max(0.,dot(N,normalize(vec3(-.3,.8,.5))));color=c*light;gl_Position=P*V*W*vec4(p,1.);}'));
+    gl.attachShader(solid, shader(gl.FRAGMENT_SHADER, 'precision mediump float;varying vec3 color;void main(){gl_FragColor=vec4(color,1.);}'));
+    gl.linkProgram(solid);
+    if (!gl.getProgramParameter(solid, gl.LINK_STATUS)) throw new Error('夹爪模型着色器不可用：' + gl.getProgramInfoLog(solid));
+    const solidUniform = Object.fromEntries(['P', 'V', 'W'].map(n => [n, gl.getUniformLocation(solid, n)]));
+    const solidAttr = Object.fromEntries(['p', 'n', 'c'].map(n => [n, gl.getAttribLocation(solid, n)]));
+    const handMeshes = {left: {buffer: gl.createBuffer()}, right: {buffer: gl.createBuffer()}};
     const texture = () => {
       const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
       for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
@@ -476,14 +483,13 @@
     };
     const textures = {head: texture(), left: texture(), right: texture(), status: texture(), preview: texture()};
     const statusCanvas = document.createElement('canvas'); statusCanvas.width = 1024; statusCanvas.height = 768;
-    const previewCanvas = document.createElement('canvas'); previewCanvas.width = 1536; previewCanvas.height = 640;
-    let statusDrawn = 0;
+    let statusDrawn = 0, uploadedPreview = -1;
     const panels = [
       {name: 'head', at: [0, 0, -1.6], size: [1.28, .96]},
       {name: 'left', at: [-1.0, -.6, -1.45], size: [.56, .42]},
       {name: 'right', at: [1.0, -.6, -1.45], size: [.56, .42]},
       {name: 'status', at: [0, -.8, -1.3], size: [.88, .44]},
-      {name: 'preview', at: [0, 0, -1.8], size: [1.65, .6875]},
+      {name: 'preview', at: [0, 0, -1.8], size: [1.65, .9625]},
     ];
     const bind = (b, stride) => {
       gl.bindBuffer(gl.ARRAY_BUFFER, b);
@@ -493,6 +499,17 @@
     gl.enable(gl.DEPTH_TEST);
     return {
       draw(frame, viewer, now) {
+        for (const side of ['left', 'right']) {
+          const h = hands[side], mesh = handMeshes[side];
+          if (!h.tracked || !h.pose) continue;
+          const grip = Math.round((h.pad.trigger || 0) * 128) / 128;
+          const key = grip + ':' + !!h.engage;
+          if (mesh.key !== key) {
+            const data = Model.vertices(Model.hand(side, grip, !!h.engage));
+            gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buffer); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+            mesh.count = data.length / 9; mesh.key = key;
+          }
+        }
         for (const name of ['head', 'left', 'right']) {
           const c = cams[name];
           if (c?.fresh && c.image) { gl.bindTexture(gl.TEXTURE_2D, textures[name]); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c.image); c.fresh = false; }
@@ -500,13 +517,16 @@
         if (now - statusDrawn > 200) {
           drawStatus(statusCanvas); statusDrawn = now;
           gl.bindTexture(gl.TEXTURE_2D, textures.status); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, statusCanvas);
-          drawPreview(previewCanvas);
-          gl.bindTexture(gl.TEXTURE_2D, textures.preview); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, previewCanvas);
+        }
+        if (uploadedPreview !== previewVersion) {
+          gl.bindTexture(gl.TEXTURE_2D, textures.preview); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, previewBitmap || preview2d);
+          uploadedPreview = previewVersion;
         }
         const layer = xr.renderState.baseLayer;
         gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
         gl.clearColor(.07, .08, .1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         for (const view of viewer.views) {
+          gl.useProgram(program);
           const v = layer.getViewport(view); gl.viewport(v.x, v.y, v.width, v.height);
           gl.uniformMatrix4fv(loc('P'), false, view.projectionMatrix);
           gl.uniformMatrix4fv(loc('V'), false, view.transform.inverse.matrix);
@@ -515,20 +535,25 @@
             const preview = settings.mode === 'preview';
             if (panel.name === 'preview' && !preview) continue;
             let at = panel.at, size = panel.size;
-            if (preview && panel.name === 'head') { at = [0, .7, -1.8]; size = [.64, .48]; }
-            if (panel.name === 'status') { at = [0, -1, -1.6]; size = [1.2, .9]; }
+            if (preview && panel.name === 'head') { at = [0, .82, -1.8]; size = [.64, .48]; }
+            if (panel.name === 'status') { at = [0, -1.12, -1.6]; size = [1.2, .9]; }
             gl.bindTexture(gl.TEXTURE_2D, textures[panel.name]);
             const screen = mat.mul(placement, mat.translate(settings.screenX, settings.screenY, 0));
             gl.uniformMatrix4fv(loc('W'), false, mat.mul(screen, mat.mul(mat.translate(...at), mat.scale(...size, 1))));
             gl.drawArrays(gl.TRIANGLES, 0, 6);
           }
-          bind(cube, 20); gl.uniform1f(loc('u'), 0);
+          gl.useProgram(solid);
+          gl.uniformMatrix4fv(solidUniform.P, false, view.projectionMatrix);
+          gl.uniformMatrix4fv(solidUniform.V, false, view.transform.inverse.matrix);
           for (const side of ['left', 'right']) {
             const h = hands[side]; if (!h.tracked || !h.pose) continue;
-            const engaged = !!h.engage, base = side === 'left' ? [.2, .55, 1] : [1, .55, .2];
-            gl.uniform4fv(loc('c'), engaged ? [...base, 1] : base.map(x => x * .45).concat(1));
-            gl.uniformMatrix4fv(loc('W'), false, mat.mul(h.pose.transform.matrix, mat.scale(.035, .035, .09)));
-            gl.drawArrays(gl.TRIANGLES, 0, 36);
+            const mesh = handMeshes[side];
+            gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buffer);
+            for (const [name, offset] of [['p', 0], ['n', 12], ['c', 24]]) {
+              gl.enableVertexAttribArray(solidAttr[name]); gl.vertexAttribPointer(solidAttr[name], 3, gl.FLOAT, false, 36, offset);
+            }
+            gl.uniformMatrix4fv(solidUniform.W, false, h.pose.transform.matrix);
+            gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
           }
         }
       },
@@ -562,6 +587,11 @@
         if (c) lines.push(c.follow_ready ? `${name}跟随已就绪：可松开重握` : `${name}跟随待准备：${c.follow_reason}`);
       }
     }
+    const trackedHands = ['left','right'].filter(s => hands[s].tracked && hands[s].pose);
+    if (trackedHands.length) lines.push('手柄姿态 ' + trackedHands.map(s => {
+      const o = M.orientation(hands[s].pose.transform.orientation);
+      return `${s === 'left' ? '左' : '右'} 俯仰${o.pitch.toFixed(0)}°／旋转${o.rollValid ? o.roll.toFixed(0)+'°' : '—'}`;
+    }).join('　'));
     if (!preview) {
       for (const key of ['head', 'base']) {
         const c = readiness?.channels?.[key];
@@ -592,61 +622,55 @@
     return y;
   }
   function drawPreview(canvas) {
-    const g = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
-    g.fillStyle = '#11161c'; g.fillRect(0, 0, W, H);
-    g.font = 'bold 30px "Microsoft YaHei", "Segoe UI", sans-serif'; g.fillStyle = '#e8edf2';
-    g.fillText('双臂三视图 · 预演', 24, 42);
-    g.font = '24px "Microsoft YaHei", "Segoe UI", sans-serif';
-    g.fillStyle = '#60a5fa'; g.fillText('左臂', W - 280, 42);
-    g.fillStyle = '#fb923c'; g.fillText('右臂', W - 180, 42);
-    const views = [['front', '正视 · 左右／上下'], ['side', '侧视 · 前后／上下'], ['top', '俯视 · 左右／前后']];
-    const gap = 16, boxW = (W - 4 * gap) / 3, boxH = H - 164;
-    for (const [i, [view, title]] of views.entries()) {
-      const x = gap + i * (boxW + gap), y = 64;
-      g.strokeStyle = '#475569'; g.lineWidth = 2; g.strokeRect(x, y, boxW, boxH);
-      g.fillStyle = '#e8edf2'; g.fillText(title, x + 16, y + 36);
-      const area = {x: x + 12, y: y + 56, w: boxW - 24, h: boxH - 100};
-      const ox = view === 'side' ? area.x + area.w * .25 : area.x + area.w / 2;
-      const oy = view === 'top' ? area.y + area.h * .82 : area.y + area.h * .65;
-      const scale = Math.min(area.w / .95, area.h / .65), grid = .05 * scale;
-      g.save(); g.beginPath(); g.rect(area.x, area.y, area.w, area.h); g.clip();
-      g.lineWidth = 1; g.strokeStyle = '#273444'; g.beginPath();
-      for (let a = ox - Math.ceil((ox - area.x) / grid) * grid; a < area.x + area.w; a += grid) {
-        if (a < area.x) continue; g.moveTo(a, area.y); g.lineTo(a, area.y + area.h);
-      }
-      for (let b = oy - Math.ceil((oy - area.y) / grid) * grid; b < area.y + area.h; b += grid) {
-        if (b < area.y) continue; g.moveTo(area.x, b); g.lineTo(area.x + area.w, b);
-      }
-      g.stroke();
-      const pixel = p => { const q = M.project(p, view); return [ox + q[0] * scale, oy + q[1] * scale]; };
-      for (const side of ['left', 'right']) {
-        const a = sim[side], pts = M.armPoints(side, a).map(pixel);
-        g.strokeStyle = side === 'left' ? '#60a5fa' : '#fb923c';
-        g.fillStyle = g.strokeStyle; g.lineWidth = 6;
-        // Side projection can overlap; dash the right arm so both remain legible.
-        g.setLineDash(view === 'side' && side === 'right' ? [12, 8] : []);
-        g.beginPath(); pts.forEach((p, n) => n ? g.lineTo(...p) : g.moveTo(...p)); g.stroke(); g.setLineDash([]);
-        for (const p of pts.slice(0, -1)) { g.beginPath(); g.arc(...p, 5, 0, 2 * Math.PI); g.fill(); }
-        const jaw = pts[pts.length - 1]; g.beginPath(); g.arc(...jaw, 6 + 9 * (1 - a.grip), 0, 2 * Math.PI); g.stroke();
-      }
-      g.restore(); g.fillStyle = '#aebccd';
-      g.font = '21px "Microsoft YaHei", "Segoe UI", sans-serif'; g.fillText('网格 5 cm', x + 16, y + boxH - 16);
-      g.font = '24px "Microsoft YaHei", "Segoe UI", sans-serif';
-    }
-    g.fillStyle = '#cbd5e1'; g.font = '23px "Microsoft YaHei", "Segoe UI", sans-serif';
-    g.fillText(`头部 水平 ${sim.head[0].toFixed(0)}° 俯仰 ${sim.head[1].toFixed(0)}°　底盘 ${sim.base[0].toFixed(2)} m / ${sim.base[1].toFixed(2)} m`, 24, H - 64);
-    g.fillStyle = '#aebccd'; g.fillText(jogMode ? `左臂逐关节 ${JOINTS[jogJoint]} · 模型示意，非实机位置／碰撞判定` :
-      '握把跟随 · 松开重置　模型示意，非实机位置／碰撞判定', 24, H - 24);
+    window.VRPreview.draw(canvas, sim, {jogMode, jointLabel: JOINTS[jogJoint]});
+  }
+  function startPreviewWorker() {
+    if (previewWorker || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return;
+    const worker = previewWorker = new Worker('/assets/vr-preview.js');
+    previewRender.worker = true;
+    worker.onmessage = event => {
+      if (previewWorker !== worker) { event.data.bitmap.close(); return; }
+      const started = performance.now(), previous = previewBitmap;
+      previewBitmap = event.data.bitmap;
+      preview2d.getContext('2d').drawImage(previewBitmap, 0, 0);
+      previous?.close();
+      previewVersion++; previewRender.frames++; previewRender.pending = false;
+      previewRender.drawMs = event.data.drawMs; previewRender.presentMs = performance.now() - started;
+    };
+    worker.onerror = event => {
+      previewRender.error = event.message || '夹爪绘制线程不可用';
+      worker.terminate(); previewWorker = null; previewRender.worker = false; previewRender.pending = false;
+      previewKey = null;
+    };
+  }
+  function updatePreview() {
+    if (document.hidden || previewRender.pending) return;
+    const pose = side => {
+      const a = sim[side];
+      return {lift:a.lift, elbow:a.elbow, wrist:a.wrist, pan:a.pan, roll:a.roll, grip:a.grip, anchor:!!a.anchor};
+    };
+    const job = {width:preview2d.width, height:preview2d.height,
+      sim:{left:pose('left'), right:pose('right'), head:[...sim.head], base:[...sim.base]},
+      options:{jogMode, jointLabel:JOINTS[jogJoint]}};
+    const key = JSON.stringify(job);
+    if (key === previewKey) return;
+    previewKey = key;
+    if (!previewWorker) { drawPreview(preview2d); previewVersion++; return; }
+    previewRender.pending = true; previewWorker.postMessage(job);
   }
 
   // ---------- lifecycle ----------
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopControl('页面切到后台，已停止'); });
-  window.addEventListener('pagehide', () => stopControl('页面关闭，已停止'));
+  window.addEventListener('pagehide', () => {
+    stopControl('页面关闭，已停止'); previewWorker?.terminate(); previewWorker = null;
+    previewRender.worker = false; previewRender.pending = false; previewBitmap?.close(); previewBitmap = null; previewKey = null;
+  });
+  window.addEventListener('pageshow', startPreviewWorker);
   bindSettings(); checkReady(); pollRobot(); pollReadiness();
   setInterval(() => { pollRobot(); pollReadiness(); }, 1500);
   const preview2d = $('preview-views');
-  drawPreview(preview2d); setInterval(() => drawPreview(preview2d), 200);
+  drawPreview(preview2d); previewVersion++; startPreviewWorker(); updatePreview(); setInterval(updatePreview, 200);
   window.XLeRobotVR = {hands, sim, settings, payload, drawStatus, drawPreview,
     state: () => ({control: !!control, robot, robotNote, readiness, confirmInVR, jogMode, jogJoint, inputReady,
-      xrActive: !!xr, placement: placement ? Array.from(placement) : null})};
+      previewRender:{...previewRender}, xrActive: !!xr, placement: placement ? Array.from(placement) : null})};
 })();

@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const M = require('./platform_static/vr-mapping.js');
+const Model = require('./platform_static/vr-model.js');
+const Preview = require('./platform_static/vr-preview.js');
 const source = fs.readFileSync(path.join(__dirname, 'platform_static/vr.js'), 'utf8');
 
 const settle = async () => { for (let i = 0; i < 16; i++) await Promise.resolve(); };
@@ -44,7 +46,7 @@ async function page({delayStart = false, preview = false} = {}) {
     } else if (url === '/api/web/vr-input') data = {active: true, mode: 'vr', vr: {arms: {}}};
     return {ok: !url.includes('/camera/'), status: 503, json: async () => data};
   };
-  const window = {...eventTarget(), VRMapping: M, isSecureContext: true};
+  const window = {...eventTarget(), VRMapping: M, VRModel: Model, VRPreview: Preview, isSecureContext: true};
   const context = {window, document, navigator: {xr: {
     isSessionSupported: async () => true, requestSession: async () => session}},
     localStorage: {getItem: () => null, setItem() {}}, location: {protocol: 'http:', hostname: 'localhost'},

@@ -60,8 +60,8 @@
       <label>屏幕高度 <output id="screenY-out">0 cm</output><input type="range" id="screenY" min="-0.6" max="0.6" step="0.02" value="0"></label>
     </div>
     <button class="button" id="screen-reset">恢复屏幕默认位置</button>
-    <canvas id="preview-views" width="1536" height="640" aria-label="机械臂正视、侧视、俯视示意">浏览器需支持Canvas以查看三视图。</canvas>
-    <p class="hint">蓝色左臂、橙色右臂，网格每格 5 cm。三视图是操作预演，不表示实测机械臂位置或碰撞净空。</p>
+    <canvas id="preview-views" width="1536" height="896" aria-label="机械臂正视、侧视、俯视与夹爪放大图，显示开合、俯仰和腕旋转">浏览器需支持Canvas以查看三视图。</canvas>
+    <p class="hint">蓝色左臂、橙色右臂，网格每格 5 cm；每个视角下方放大夹爪。黄色面标记夹爪顶部，两指的明暗可区分翻转；绿色轴朝夹爪前方。手柄旁的立体夹爪随手腕旋转、随扳机开合。三视图为操作预演，不表示实测机械臂位置或碰撞净空。</p>
   </section>
 
   <section class="card" aria-labelledby="map-title">
@@ -83,6 +83,8 @@
   </section>
 </main>
 <script src="/assets/vr-mapping.js"></script>
+<script src="/assets/vr-model.js"></script>
+<script src="/assets/vr-preview.js"></script>
 <script src="/assets/vr.js"></script>
 </body>
 </html>
