@@ -91,8 +91,17 @@ $path = Join-Path $repo '.local-deploy\studio-network.json'
 $previous = if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
 $origins = @($origin)
 if ($previous -and $previous.tls) { $origins += 'https://'+$ListenAddress+':8770' }
-$config = [ordered]@{listen_host='0.0.0.0';public_origin=$origin;allowed_origins=$origins;client_addresses=@($ClientAddress)}
-if ($previous -and $previous.tls) { $config.tls = $previous.tls }
+# Keep deployment-specific data locations and future settings when adding a
+# headset. Dropping fieldmap_data_dir would hide the existing robot maps after
+# the next Studio restart.
+$config = [ordered]@{}
+if ($previous) {
+    foreach ($property in $previous.PSObject.Properties) { $config[$property.Name] = $property.Value }
+}
+$config.listen_host = '0.0.0.0'
+$config.public_origin = $origin
+$config.allowed_origins = $origins
+$config.client_addresses = @($ClientAddress)
 New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
 if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination ($path+'.before-'+(Get-Date -Format 'yyyyMMddHHmmss')) }
 [System.IO.File]::WriteAllText($path,($config | ConvertTo-Json -Depth 4),(New-Object System.Text.UTF8Encoding($false)))
