@@ -2044,3 +2044,10 @@ status: active
 - **用户指示／范围**：用户确认安全边界已处理，随后明确要求改用Wi-Fi ADB，以便拔掉USB戴上操作；授权切换头显调试通道，不扩大实机运动权限。
 - **执行与验证（本地系统核验）**：先按USB设备选择器核对Neo3及当前`.124`地址，仅对该头显执行`adb tcpip 5555`，连接`192.168.137.124:5555`。无线选择器实际返回`device`，型号／设备身份与原USB一致，已安装的启动器版本1.0可读；ADB列表中Neo3只剩TCP传输，联想平板USB传输保持。通过该TCP连接在PICO上验证原8770的HTTPS控制状态为inactive，说明后续指令已独立走Wi-Fi；已告知用户可拔线，但不把此时软件切换当作物理拔线实测。
 - **交接／限制**：后续均用明确的`-s 192.168.137.124:5555`；回执在私有`wireless-adb.json`与`handoff.json`。头显系统此前反复进入休眠，普通Android启动器实际位于虚拟display16，默认UI导出只得到VR外壳；需戴着保持唤醒再核对用户真实画面。未关闭休眠／安全边界，未验证重启后TCP调试保持；重启或地址变化时重新核对并连接。证书浏览器信任、WebXR、预演和实机效果仍分项待验收，机器人控制未开启。
+
+### 2026-11-27（续）用户询问ADB唤醒、保持常亮与安全区
+
+- **用户指示／范围**：用户希望利用ADB唤醒、避免反复自动休眠，并询问安全区处理；本段仅头显电源能力核验，无机器人运动或实机接管。
+- **读回（头显系统核验）**：Android`screen_off_timeout=-1`、`sleep_timeout=-1`、`wifi_sleep_policy=2`，普通超时原本已关闭；PICO服务另有Gyroscope／Proximity电源策略。`KEYCODE_WAKEUP`可从无线ADB唤醒并使Activity恢复，随后约10–16.5秒又出现休眠，`mLastSleepReason=sleep_button`。该标签不能单独证明是用户按键还是厂商策略，未把推断写成根因。
+- **有限试验与还原（系统行为核验）**：依次测试实际存在的`persist.pvr.sleep_by_static:1→0`、每4秒发送普通唤醒、`persist.pvr.psensor_checkmode:1→0`。两项属性写回成功均未保持常亮；轮询唤醒时各采样看似Awake，但`mLastSleepTime`反复增加，说明中间仍有短暂睡眠，不能判成连续唤醒成功。试验结束后两项属性均实读还原为1，唤醒循环自然结束，无后台保持任务、重启或工厂测试模式改动。回执在私有`headset-power-settings-before.json`、`no-static-sleep-trial.json`、`keepawake-trial.json`、`psensor-mode-trial.json`。
+- **安全区／交接**：读到原地半径1.0米，guardian服务启用，休眠时`sys.pxr.boundary.ready=0`；不据此推翻用户“边界好了”的陈述，需唤醒并完成场地定位后再判断。未改边界或6DoF跟踪，也未将“可以远程唤醒”写成“已关闭摘机休眠”。当前无线ADB可用、保持常亮尚未解决；停止继续猜测属性，后续需要明确的PICO管理接口或可观察的原生设置再处理。
